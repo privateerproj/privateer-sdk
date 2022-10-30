@@ -1,5 +1,5 @@
 // Package probeengine contains the types and functions responsible for managing tests and test execution.  This is the primary
-// entry point to the core of the application and should be utilised by the probr library to create, execute and report
+// entry point to the core of the application and should be utilised by the privateer library to create, execute and report
 // on tests.
 package probeengine
 
@@ -8,7 +8,7 @@ import (
 	"log"
 	"sync"
 
-	audit "github.com/probr/probr-sdk/audit"
+	audit "github.com/privateerproj/privateer-sdk/audit"
 )
 
 // ProbeStatus type describes the status of the test, e.g. Pending, Running, CompleteSuccess, CompleteFail and Error
@@ -25,7 +25,14 @@ const (
 )
 
 func (s ProbeStatus) String() string {
-	return [...]string{"Pending", "Running", "CompleteSuccess", "CompleteFail", "Error", "Excluded"}[s]
+	return [...]string{
+		"Pending",
+		"Running",
+		"CompleteSuccess",
+		"CompleteFail",
+		"Error",
+		"Excluded",
+	}[s]
 }
 
 // ProbeStore maintains a collection of probes to be run and their status.  FailedProbes is an explicit
@@ -116,7 +123,7 @@ func (ps *ProbeStore) ExecAllProbes() (int, error) {
 			status = st
 		}
 	}
-	ps.Summary.SetProbrStatus()
+	ps.Summary.SetPrivateerStatus()
 	return status, err
 }
 

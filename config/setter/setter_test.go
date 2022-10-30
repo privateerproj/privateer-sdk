@@ -96,8 +96,8 @@ func TestSetStringSliceVar(t *testing.T) {
 }
 
 func Test_setStringVar(t *testing.T) {
-	defaultValuePROBRWRITEDIRECTORY := "probr_output"
-	envVarValuePROBRWRITEDIRECTORY := "ValueFromEnvVar_WriteDirectory"
+	defaultValuePVTRWRITEDIRECTORY := "privateer_output"
+	envVarValuePVTRWRITEDIRECTORY := "ValueFromEnvVar_WriteDirectory"
 
 	tests := []struct {
 		testName            string
@@ -109,16 +109,16 @@ func Test_setStringVar(t *testing.T) {
 		{
 			testName:            "Test that set value is returned when provided",
 			varName:             "ENV_VAR_1",
-			envVarValue:         envVarValuePROBRWRITEDIRECTORY,
-			defaultValue:        defaultValuePROBRWRITEDIRECTORY,
-			expectedReturnValue: envVarValuePROBRWRITEDIRECTORY,
+			envVarValue:         envVarValuePVTRWRITEDIRECTORY,
+			defaultValue:        defaultValuePVTRWRITEDIRECTORY,
+			expectedReturnValue: envVarValuePVTRWRITEDIRECTORY,
 		},
 		{
 			testName:            "Test that default value is returned when no value is provided",
 			varName:             "ENV_VAR_2",
 			envVarValue:         "",
-			defaultValue:        defaultValuePROBRWRITEDIRECTORY,
-			expectedReturnValue: defaultValuePROBRWRITEDIRECTORY,
+			defaultValue:        defaultValuePVTRWRITEDIRECTORY,
+			expectedReturnValue: defaultValuePVTRWRITEDIRECTORY,
 		},
 	}
 	for _, tt := range tests {

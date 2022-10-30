@@ -1,4 +1,4 @@
-module github.com/probr/probr-sdk
+module github.com/privateerproj/privateer-sdk
 
 go 1.14
 

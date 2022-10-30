@@ -6,34 +6,34 @@ import (
 	hcplugin "github.com/hashicorp/go-plugin"
 )
 
-// ServicePack is the interface that we're exposing as a plugin.
-type ServicePack interface {
-	RunProbes() error
+// Raid is the interface that we're exposing as a plugin.
+type Raid interface {
+	Start() error
 }
 
-// ServicePackRPC is an implementation that talks over RPC
-type ServicePackRPC struct{ client *rpc.Client }
+// RaidRPC is an implementation that talks over RPC
+type RaidRPC struct{ client *rpc.Client }
 
-// RunProbes returns a message
-func (g *ServicePackRPC) RunProbes() error {
+// Start returns a message
+func (g *RaidRPC) Start() error {
 	var err error
-	return g.client.Call("Plugin.RunProbes", new(interface{}), &err)
+	return g.client.Call("Plugin.Start", new(interface{}), &err)
 }
 
-// ServicePackRPCServer is the RPC server that ServicePackRPC talks to, conforming to
+// RaidRPCServer is the RPC server that RaidRPC talks to, conforming to
 // the requirements of net/rpc
-type ServicePackRPCServer struct {
+type RaidRPCServer struct {
 	// This is the real implementation
-	Impl ServicePack
+	Impl Raid
 }
 
-// RunProbes is a wrapper for interface implementation
-func (s *ServicePackRPCServer) RunProbes(args interface{}, resp *error) error {
-	*resp = s.Impl.RunProbes()
+// Start is a wrapper for interface implementation
+func (s *RaidRPCServer) Start(args interface{}, resp *error) error {
+	*resp = s.Impl.Start()
 	return *resp
 }
 
-// ServicePackPlugin is the implementation of plugin.Plugin so we can serve/consume this
+// RaidPlugin is the implementation of plugin.Plugin so we can serve/consume this
 //
 // This has two methods: Server must return an RPC server for this plugin
 // type. We construct a GreeterRPCServer for this.
@@ -43,17 +43,17 @@ func (s *ServicePackRPCServer) RunProbes(args interface{}, resp *error) error {
 //
 // Ignore MuxBroker. That is used to create more multiplexed streams on our
 // plugin connection and is a more advanced use case.
-type ServicePackPlugin struct {
+type RaidPlugin struct {
 	// Impl Injection
-	Impl ServicePack
+	Impl Raid
 }
 
 // Server implements RPC server
-func (p *ServicePackPlugin) Server(*hcplugin.MuxBroker) (interface{}, error) {
-	return &ServicePackRPCServer{Impl: p.Impl}, nil
+func (p *RaidPlugin) Server(*hcplugin.MuxBroker) (interface{}, error) {
+	return &RaidRPCServer{Impl: p.Impl}, nil
 }
 
 // Client implements RPC client
-func (ServicePackPlugin) Client(b *hcplugin.MuxBroker, c *rpc.Client) (interface{}, error) {
-	return &ServicePackRPC{client: c}, nil
+func (RaidPlugin) Client(b *hcplugin.MuxBroker, c *rpc.Client) (interface{}, error) {
+	return &RaidRPC{client: c}, nil
 }

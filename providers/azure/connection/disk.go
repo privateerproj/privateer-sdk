@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-03-01/compute"
-	"github.com/probr/probr-sdk/utils"
+	"github.com/privateerproj/privateer-sdk/utils"
 )
 
 // AzureDisk contains the state of the Azure Disk context

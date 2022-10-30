@@ -7,8 +7,8 @@ import (
 	"log"
 	"path/filepath"
 
-	"github.com/probr/probr-sdk/config"
-	"github.com/probr/probr-sdk/utils"
+	"github.com/privateerproj/privateer-sdk/config"
+	"github.com/privateerproj/privateer-sdk/utils"
 )
 
 // SummaryState is a stateful object intended to hold all the high-level info about a probe execution
@@ -67,8 +67,8 @@ func (s *SummaryState) summary() []byte {
 	return utils.JSON(limitedObj)
 }
 
-// SetProbrStatus evaluates the current SummaryState state to set the Status
-func (s *SummaryState) SetProbrStatus() {
+// SetPrivateerStatus evaluates the current SummaryState state to set the Status
+func (s *SummaryState) SetPrivateerStatus() {
 	attempted := (len(s.Probes) - s.ProbesSkipped)
 	succeeded := (attempted - s.ProbesFailed)
 	s.Status = fmt.Sprintf("Complete - %d/%d Succeeded (%d Skipped)", succeeded, attempted, s.ProbesSkipped)

@@ -95,7 +95,7 @@ func TestCallerPath(t *testing.T) {
 		testArgs       args
 		expectedResult string
 	}{
-		{"CallerPath(%v) - Expected: %q", args{up: 0}, "github.com/probr/probr-sdk/utils.TestCallerPath.func1"},
+		{"CallerPath(%v) - Expected: %q", args{up: 0}, "github.com/privateerproj/privateer-sdk/utils.TestCallerPath.func1"},
 		{"CallerPath(%v) - Expected: %q", args{up: 1}, "testing.tRunner"},
 	}
 

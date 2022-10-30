@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/cucumber/godog"
-	"github.com/probr/probr-sdk/config"
+	"github.com/privateerproj/privateer-sdk/config"
 )
 
 // ProbeRunner describes the interface that should be implemented to support the execution of tests.

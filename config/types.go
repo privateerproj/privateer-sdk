@@ -3,7 +3,7 @@ package config
 import (
 	"time"
 
-	ac "github.com/probr/probr-sdk/providers/azure/config"
+	ac "github.com/privateerproj/privateer-sdk/providers/azure/config"
 )
 
 // CloudProviders config options

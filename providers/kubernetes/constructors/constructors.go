@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/probr/probr-sdk/utils"
+	"github.com/privateerproj/privateer-sdk/utils"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -44,7 +44,7 @@ func PodSpec(baseName, namespace, image string) *apiv1.Pod {
 			Name:      podName,
 			Namespace: namespace,
 			Labels: map[string]string{
-				"app": "probr-probe",
+				"app": "privateer-probe",
 			},
 			Annotations: annotations,
 		},
@@ -113,7 +113,7 @@ func DynamicPersistentVolumeClaim(baseName, namespace, storageClass string) *api
 			Name:      config.Name,
 			Namespace: namespace,
 			Labels: map[string]string{
-				"app": "probr-probe",
+				"app": "privateer-probe",
 			},
 		},
 		Spec: apiv1.PersistentVolumeClaimSpec{
@@ -135,15 +135,15 @@ func AddPVCToPod(pod *apiv1.Pod, pvc *apiv1.PersistentVolumeClaim) {
 	}
 
 	volume := apiv1.Volume{
-		Name: "probr",
+		Name: "Privateer",
 		VolumeSource: apiv1.VolumeSource{
 			PersistentVolumeClaim: &pvcSource,
 		},
 	}
 
 	volumeMount := apiv1.VolumeMount{
-		Name:      "probr",
-		MountPath: "/probr",
+		Name:      "Privateer",
+		MountPath: "/Privateer",
 	}
 
 	pod.Spec.Volumes = append(pod.Spec.Volumes, volume)

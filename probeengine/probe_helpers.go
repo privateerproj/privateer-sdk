@@ -10,8 +10,8 @@ import (
 
 	"github.com/cucumber/godog"
 
-	"github.com/probr/probr-sdk/config"
-	"github.com/probr/probr-sdk/utils"
+	"github.com/privateerproj/privateer-sdk/config"
+	"github.com/privateerproj/privateer-sdk/utils"
 )
 
 // Probe is an interface used by probes that are to be exported from any service pack

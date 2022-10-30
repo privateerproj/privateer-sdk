@@ -1,6 +1,6 @@
 package azureconfig
 
-import "github.com/probr/probr-sdk/config/setter"
+import "github.com/privateerproj/privateer-sdk/config/setter"
 
 // Azure config options that may be required by any service pack
 type Azure struct {
@@ -16,10 +16,10 @@ type Azure struct {
 
 // SetEnvAndDefaults will associate ENV variables and default values to each Azure field
 func (ctx *Azure) SetEnvAndDefaults() {
-	setter.SetVar(&ctx.TenantID, "PROBR_AZURE_TENANT_ID", "")
-	setter.SetVar(&ctx.SubscriptionID, "PROBR_AZURE_SUBSCRIPTION_ID", "")
-	setter.SetVar(&ctx.ClientID, "PROBR_AZURE_CLIENT_ID", "")
-	setter.SetVar(&ctx.ClientSecret, "PROBR_AZURE_CLIENT_SECRET", "")
-	setter.SetVar(&ctx.ResourceGroup, "PROBR_AZURE_RESOURCE_GROUP", "")
-	setter.SetVar(&ctx.ResourceLocation, "PROBR_AZURE_RESOURCE_LOCATION", "")
+	setter.SetVar(&ctx.TenantID, "Privateer_AZURE_TENANT_ID", "")
+	setter.SetVar(&ctx.SubscriptionID, "Privateer_AZURE_SUBSCRIPTION_ID", "")
+	setter.SetVar(&ctx.ClientID, "Privateer_AZURE_CLIENT_ID", "")
+	setter.SetVar(&ctx.ClientSecret, "Privateer_AZURE_CLIENT_SECRET", "")
+	setter.SetVar(&ctx.ResourceGroup, "Privateer_AZURE_RESOURCE_GROUP", "")
+	setter.SetVar(&ctx.ResourceLocation, "Privateer_AZURE_RESOURCE_LOCATION", "")
 }

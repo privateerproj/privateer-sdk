@@ -1,8 +1,8 @@
 package azure
 
 import (
-	"github.com/probr/probr-sdk/config"
-	"github.com/probr/probr-sdk/utils"
+	"github.com/privateerproj/privateer-sdk/config"
+	"github.com/privateerproj/privateer-sdk/utils"
 )
 
 // TenantID returns the azure Tenant in which the tests should be executed, configured by the user and may be set by the environment variable AZURE_TENANT_ID.
@@ -37,7 +37,7 @@ func SubscriptionID() (string, error) {
 	return config.GlobalConfig.CloudProviders.Azure.SubscriptionID, nil
 }
 
-// ResourceGroup returns the Probr user's azure resource group in which resurces should be created fpr testing, configured by the user and may be set by the environment variable AZURE_RESOURCE_GROUP.
+// ResourceGroup returns the Privateer user's azure resource group in which resurces should be created fpr testing, configured by the user and may be set by the environment variable AZURE_RESOURCE_GROUP.
 func ResourceGroup() (string, error) {
 	if config.GlobalConfig.CloudProviders.Azure.ResourceGroup == "" {
 		return "", utils.ReformatError("Required config var not set: CloudProviders.Azure.ResourceGroup")

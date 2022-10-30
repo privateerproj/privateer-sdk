@@ -4,7 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/probr/probr-sdk/config/setter"
+	"github.com/privateerproj/privateer-sdk/config/setter"
 )
 
 // Kubernetes contains common variables needed when using the Kubernetes provider
@@ -18,11 +18,11 @@ type Kubernetes struct {
 
 // SetEnvAndDefaults will set value from os.Getenv and default to the specified value
 func (ctx *Kubernetes) SetEnvAndDefaults() {
-	setter.SetVar(&ctx.KeepPods, "PROBR_KEEP_PODS", "false")
+	setter.SetVar(&ctx.KeepPods, "Privateer_KEEP_PODS", "false")
 	setter.SetVar(&ctx.KubeConfigPath, "KUBE_CONFIG", getDefaultKubeConfigPath())
 	setter.SetVar(&ctx.KubeContext, "KUBE_CONTEXT", "")
-	setter.SetVar(&ctx.AuthorisedContainerImage, "PROBR_AUTHORISED_IMAGE", "")
-	setter.SetVar(&ctx.ProbeNamespace, "PROBR_K8S_PROBE_NAMESPACE", "probr-general-test-ns")
+	setter.SetVar(&ctx.AuthorisedContainerImage, "Privateer_AUTHORISED_IMAGE", "")
+	setter.SetVar(&ctx.ProbeNamespace, "Privateer_K8S_PROBE_NAMESPACE", "privateer-general-test-ns")
 }
 
 func getDefaultKubeConfigPath() string {

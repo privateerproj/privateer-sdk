@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/probr/probr-sdk/providers/kubernetes/errors"
-	"github.com/probr/probr-sdk/utils"
+	"github.com/privateerproj/privateer-sdk/providers/kubernetes/errors"
+	"github.com/privateerproj/privateer-sdk/utils"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -441,12 +441,12 @@ func (connection *Conn) bootstrapDefaultNamespace() {
 	}
 	_, err = connection.GetOrCreateNamespace(connection.Namespace)
 	if err != nil {
-		connection.clusterIsDeployed = utils.ReformatError("Failed to retrieve or create default Probr namespace: %v", err)
+		connection.clusterIsDeployed = utils.ReformatError("Failed to retrieve or create default Privateer namespace: %v", err)
 	}
 }
 
 func (connection *Conn) modifyContext(rawConfig clientcmdapi.Config, context string) {
-	log.Printf("[DEBUG] Modifying Kubernetes context based on Probr config vars")
+	log.Printf("[DEBUG] Modifying Kubernetes context based on Privateer config vars")
 	if rawConfig.Contexts[context] == nil {
 		connection.clusterIsDeployed = utils.ReformatError("Required context does not exist in provided kubeconfig: %v", context)
 	}

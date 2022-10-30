@@ -6,8 +6,8 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2019-04-01/storage"
 	"github.com/Azure/go-autorest/autorest/to"
-	"github.com/probr/probr-sdk/providers/azure"
-	"github.com/probr/probr-sdk/utils"
+	"github.com/privateerproj/privateer-sdk/providers/azure"
+	"github.com/privateerproj/privateer-sdk/utils"
 )
 
 // AzureStorageAccount ...

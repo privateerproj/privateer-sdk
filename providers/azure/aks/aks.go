@@ -5,7 +5,7 @@ import (
 	"log"
 
 	aibv1 "github.com/Azure/aad-pod-identity/pkg/apis/aadpodidentity"
-	"github.com/probr/probr-sdk/providers/kubernetes/connection"
+	"github.com/privateerproj/privateer-sdk/providers/kubernetes/connection"
 )
 
 // AKS implements the Azure Kubernetes Service wrapper

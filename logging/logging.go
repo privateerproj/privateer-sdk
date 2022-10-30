@@ -6,7 +6,7 @@ import (
 	"os"
 
 	hclog "github.com/hashicorp/go-hclog"
-	"github.com/probr/probr-sdk/config"
+	"github.com/privateerproj/privateer-sdk/config"
 )
 
 var (

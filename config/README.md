@@ -4,7 +4,7 @@ Internal code to manage config, including Cloud Driver parameters and Test Packs
 
 ## Log Filter Guidelines
 
-Probr Log Levels:
+Privateer Log Levels:
 - **ERROR** - Behavior that is a result of a definite misconfiguration or code failure
 - **WARN** - Behavior that is likely due to a misconfiguration, but is not fatal
 - **NOTICE** - (1) User config information to prevent confusion, or (2) behavior that could result from a misconfiguration but also may be intentional
@@ -27,16 +27,16 @@ log.Printf("[NOTICE] %s", myVar)
 
 ## Config
 
-Configuration docs are located in the README at the top level of the probr repository.
+Configuration docs are located in the README at the top level of the privateer repository.
 
 When creating new config vars, remember to do the following:
 
 1. Add an entry to the struct `ConfigVars` in `internal/config/config.go`
 1. Add an entry (matching the config vars struct) to `setEnvOrDefaults` in `internal/config/defaults.go`
-1. If appropriate, add logic to `cmd/probr-cli/flags.go`
+1. If appropriate, add logic to `cmd/privateer-cli/flags.go`
 
 By following the above steps, you will have accomplished the following:
-1. A new variable will be available across the entire probr codebase
+1. A new variable will be available across the entire privateer codebase
 1. That variable will have a default value
 1. An environment variable can be set to override the default value
 1. The env var can be overridden by a provided yaml config file

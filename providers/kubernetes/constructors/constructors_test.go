@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/probr/probr-sdk/utils"
+	"github.com/privateerproj/privateer-sdk/utils"
 	apiv1 "k8s.io/api/core/v1"
 )
 
@@ -93,7 +93,7 @@ func TestPodSpec(t *testing.T) {
 			},
 		},
 		{
-			name: "Container uses the provided probr image name",
+			name: "Container uses the provided Privateer image name",
 			args: args{
 				baseName:  "pod4",
 				namespace: "pod4",

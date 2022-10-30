@@ -12,7 +12,7 @@ spec:
     supplementalGroups: [ 1 ]    
   containers:
   - name: sec-ctx-demo
-    image: {{ probr-compatible-image }}
+    image: {{ privateer-compatible-image }}
     command: [ "sh", "-c", "touch /tmp/healthy; sleep 1h" ]
     livenessProbe:
       exec:

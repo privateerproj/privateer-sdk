@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/cucumber/godog"
-	"github.com/probr/probr-sdk/config"
+	"github.com/privateerproj/privateer-sdk/config"
 )
 
 func TestMain(m *testing.M) {
