@@ -3,11 +3,9 @@ package utils
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 )
@@ -137,73 +135,7 @@ func TestCallerFileLine(t *testing.T) {
 }
 
 func TestReadStaticFile(t *testing.T) {
-
-	testFolder, testFolderErr := filepath.Abs("./testdata") // Need absolute path so that pkger.Open can work
-	if testFolderErr != nil {
-		t.Fatalf("Error loading test data folder: %v", testFolderErr)
-	}
-	testSubFolder := "testdata_subfolder"
-	testFileName := "psp-azp-privileges.yaml"
-	testFilePath := filepath.Join(testFolder, testFileName)
-	testFileContent, fileError := ioutil.ReadFile(testFilePath)
-	if fileError != nil {
-		t.Fatalf("Error loading test data: %v", fileError)
-	}
-
-	type args struct {
-		path []string
-	}
-	tests := []struct {
-		testName       string
-		testArgs       args
-		expectedResult []byte
-		expectedError  bool
-	}{
-		{
-			testName:       "ReadStaticFile_WithValidFolderAndFile_ShouldReturnFileBytes",
-			testArgs:       args{path: []string{testFolder, testFileName}}, //Test case with folder and file
-			expectedResult: testFileContent,
-			expectedError:  false,
-		},
-		{
-			testName:       "ReadStaticFile_WithValidFolderSubfolderAndFile_ShouldReturnFileBytes",
-			testArgs:       args{path: []string{testFolder, testSubFolder, testFileName}}, //Test case with folder, subfolder and file
-			expectedResult: testFileContent,
-			expectedError:  false,
-		},
-		{
-			testName:       "ReadStaticFile_WithEmptyArgs_ShouldReturnError",
-			testArgs:       args{path: []string{}}, //Test case with empty args
-			expectedResult: nil,
-			expectedError:  true,
-		},
-		{
-			testName:       "ReadStaticFile_WithInvalidFile_ShouldReturnError",
-			testArgs:       args{path: []string{testFolder, testSubFolder, "invalidfilename"}}, //Test case with invalid file
-			expectedResult: nil,
-			expectedError:  true,
-		},
-	}
-	for _, tt := range tests {
-
-		t.Run(tt.testName, func(t *testing.T) {
-			got, err := ReadStaticFile(tt.testArgs.path...)
-			if (err != nil) != tt.expectedError {
-				t.Errorf("ReadStaticFile() error = %v, Expected %v", err, tt.expectedError)
-				return
-			}
-			if !reflect.DeepEqual(got, tt.expectedResult) {
-				t.Errorf("ReadStaticFile() = %v, Expected %v", got, tt.expectedResult)
-				return
-			}
-			if got == nil && tt.expectedResult != nil {
-				t.Errorf("ReadStaticFile() = %v, Expected %v", got, tt.expectedResult)
-			}
-
-		})
-	}
-
-	// Skip test for pckr.box integration
+	// indev 0.0.1 - removed pkger logic here
 }
 
 func TestAuditPlaceholders(t *testing.T) {

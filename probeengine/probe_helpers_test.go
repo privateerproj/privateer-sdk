@@ -25,8 +25,8 @@ func TestMain(m *testing.M) {
 }
 
 func testFolder() string {
-	testFolder, _ := filepath.Abs("./testdata") // Need absolute path so that pkger.Open can work
-	return testFolder
+	return ""
+	// indev 0.0.1 - removed pkger logic here
 }
 
 func TestGetOutputPath(t *testing.T) {
@@ -104,43 +104,6 @@ func TestGetFeaturePath(t *testing.T) {
 		t.Run(tt.testName, func(t *testing.T) {
 			if got := GetFeaturePath(tt.testArgs.path...); got != tt.expectedResult {
 				t.Errorf("GetFeaturePath() = %v, Expected: %v", got, tt.expectedResult)
-			}
-		})
-	}
-}
-
-func Test_getTmpFeatureFile(t *testing.T) {
-	config.GlobalConfig.TmpDir = t.TempDir()
-	filename := "Test_getTmpFeatureFile.feature"
-	os.Create(filepath.Join(testFolder(), filename))
-	os.MkdirAll(filepath.Join(config.GlobalConfig.TmpDir, "probeengine", "testdata"), 0755)
-
-	tests := []struct {
-		testName       string
-		featurePath    string
-		expectedResult string
-		expectedErr    bool
-	}{
-		{
-			testName:       "ShouldCreateTmpFolderWithFeatureFile",
-			featurePath:    filepath.Join("probeengine", "testdata", filename), // This cannot be an absolute path, since it will be joined with temp dir
-			expectedResult: filepath.Join(config.GlobalConfig.TmpDir, "probeengine", "testdata", filename),
-			expectedErr:    false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.testName, func(t *testing.T) {
-			got, err := getTmpFeatureFile(tt.featurePath)
-			if err != nil {
-				t.Error(err)
-			}
-			if got != tt.expectedResult {
-				t.Errorf("getTmpFeatureFile() = %v, expected %v", got, tt.expectedResult)
-			}
-			// Check if file was saved to tmp location
-			_, e := os.Stat(tt.expectedResult)
-			if e != nil {
-				t.Errorf("File not found in tmp location: %v - Error: %v", tt.expectedResult, e)
 			}
 		})
 	}

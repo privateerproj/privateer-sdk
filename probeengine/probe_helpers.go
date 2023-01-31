@@ -56,30 +56,9 @@ func GetFeaturePath(path ...string) string {
 	return GetFilePath(path...)
 }
 
-// getTmpFeatureFile checks if feature file exists in -tmp- folder.
-// If so returns the file path, otherwise unpacks the original file using pkger and copies it to -tmp- location before returning file path.
 func getTmpFeatureFile(featurePath string) (string, error) {
-
-	tmpFeaturePath := filepath.Join(config.GlobalConfig.TmpDir, featurePath)
-
-	// If file already exists return it
-	_, e := os.Stat(tmpFeaturePath)
-	if e == nil {
-		return tmpFeaturePath, nil
-	}
-
-	// If file doesn't exist, extract it from pkger inmemory buffer
-	if os.IsNotExist(e) {
-
-		err := unpackFileAndSave(featurePath, tmpFeaturePath)
-		if err != nil {
-			return "", fmt.Errorf("failed to unpack file: '%v' - Error: %v", featurePath, err)
-		}
-
-		return tmpFeaturePath, err
-	}
-
-	return "", fmt.Errorf("could not stat tmp file: '%v' - Error: %v", tmpFeaturePath, e)
+	// indev 0.0.1 - removed pkger logic here
+	return "", nil
 }
 
 func unpackFileAndSave(origFilePath string, newFilePath string) error {

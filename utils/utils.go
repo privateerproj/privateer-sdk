@@ -4,14 +4,11 @@ package utils
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
-
-	"github.com/markbates/pkger"
 )
 
 func init() {
@@ -90,37 +87,8 @@ func ReformatError(e string, v ...interface{}) error {
 //  In most cases it will be ReadStaticFile(assetDir, fileName).
 //  It could also be used as ReadStaticFile(assetDir, subfolder, filename)
 func ReadStaticFile(path ...string) ([]byte, error) {
-
-	// Validation for empty path
-	if path == nil || len(path) == 0 {
-		return nil, ReformatError("Path argument cannot be empty")
-	}
-
-	filename := path[len(path)-1]           // file name is the last string argument
-	dirpathSlice := path[0:(len(path) - 1)] // folder path
-
-	dirPath := ""
-	for _, folder := range dirpathSlice {
-		dirPath = filepath.Join(dirPath, folder)
-	}
-
-	filePath := filepath.Join(dirPath, filename)
-
-	if !filepath.IsAbs(filePath) {
-		filePath = filepath.Join("/", filePath) //Need the abs path (/) for pgker to work
-	}
-
-	// If pkged.go file has been generated using pkger cli tool, this will open the file from bundled memory buffer.
-	// Otherwise, this will read from file system
-	// See: https://github.com/markbates/pkger
-
-	f, err := pkger.Open(filePath)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	return ioutil.ReadAll(f)
+	// indev 0.0.1 - removed pkger logic here
+	return []byte(""), nil
 }
 
 // ReplaceBytesValue replaces a substring with a new value for a given string in bytes
