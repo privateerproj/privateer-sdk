@@ -9,8 +9,8 @@ require (
 	github.com/Azure/go-autorest/autorest/azure/auth v0.5.7
 	github.com/Azure/go-autorest/autorest/to v0.4.0
 	github.com/Azure/go-autorest/autorest/validation v0.3.1 // indirect
-	github.com/cucumber/godog v0.11.0
-	github.com/cucumber/messages-go/v10 v10.0.3
+	github.com/cucumber/godog v0.12.6
+	github.com/cucumber/messages/go/v21 v21.0.1
 	github.com/hashicorp/go-hclog v0.14.1
 	github.com/hashicorp/go-plugin v1.4.0
 	github.com/open-policy-agent/opa v0.27.1

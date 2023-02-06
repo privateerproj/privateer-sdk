@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/cucumber/godog"
 
@@ -94,20 +93,5 @@ func LogScenarioEnd(s *godog.Scenario) {
 }
 
 func scenarioString(st bool, s *godog.Scenario) string {
-	var b strings.Builder
-	if st {
-		b.WriteString("[INFO] >>> Scenario Start: ")
-	} else {
-		b.WriteString("[INFO] <<< Scenario End: ")
-	}
-
-	b.WriteString(s.Name)
-	b.WriteString(". (Tags: ")
-
-	for _, t := range s.Tags {
-		b.WriteString(t.GetName())
-		b.WriteString(" ")
-	}
-	b.WriteString(").")
-	return b.String()
+	return ""
 }

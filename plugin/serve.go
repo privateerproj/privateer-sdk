@@ -26,7 +26,7 @@ var handshakeConfig = GetHandshakeConfig()
 // ServeOpts are the configurations to serve a plugin.
 type ServeOpts struct {
 	//Interface implementation
-	Pack Raid
+	Plugin Raid
 
 	// Logger is the logger that go-plugin will use.
 	Logger hclog.Logger
@@ -51,10 +51,10 @@ func Serve(opts *ServeOpts) {
 
 	// Plugin implementation
 	// Guard Clause: Ensure plugin is not nil
-	if opts.Pack == nil {
+	if opts.Plugin == nil {
 		log.Panic("Invalid (nil) plugin implementation provided")
 	}
-	raidPack := opts.Pack
+	raidPack := opts.Plugin
 
 	// hcpluginMap is the map of hcplugins we can dispense.
 	var hcpluginMap = map[string]hcplugin.Plugin{

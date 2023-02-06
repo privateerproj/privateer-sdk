@@ -9,6 +9,8 @@ import (
 	"sync"
 
 	audit "github.com/privateerproj/privateer-sdk/audit"
+	"github.com/privateerproj/privateer-sdk/raidengine"
+
 )
 
 // ProbeStatus type describes the status of the test, e.g. Pending, Running, CompleteSuccess, CompleteFail and Error
@@ -58,13 +60,14 @@ func NewProbeStore(name string, tags string, summaryState *audit.SummaryState) *
 }
 
 // RunAllProbes retrieves and executes all probes that have been included
-func (ps *ProbeStore) RunAllProbes(probes []Probe) (int, error) {
+func (ps *ProbeStore) RunAllProbes(probes []raidengine.Strike) (exitCode int, err error) {
 	for _, probe := range probes {
-		ps.AddProbe(probe)
+		err = probe()
+		if err != nil {
+			return 1, err
+		}
 	}
-
-	s, err := ps.ExecAllProbes() // Executes all added (queued) tests
-	return s, err
+	return 0, nil
 }
 
 // AddProbe provided GodogProbe to the ProbeStore.

@@ -1,7 +1,7 @@
 package audit
 
 import (
-	"github.com/cucumber/messages-go/v10"
+	"github.com/cucumber/messages/go/v21"
 )
 
 // Probe is passed through various functions to audit the probe's progress
@@ -42,7 +42,7 @@ func (e *Probe) countResults() {
 }
 
 // InitializeAuditor creates a new audit entry for the specified scenario
-func (e *Probe) InitializeAuditor(name string, tags []*messages.Pickle_PickleTag) *Scenario {
+func (e *Probe) InitializeAuditor(name string, tags []*messages.PickleTag) *Scenario {
 	if e.Scenarios == nil {
 		e.Scenarios = make(map[int]*Scenario)
 	}

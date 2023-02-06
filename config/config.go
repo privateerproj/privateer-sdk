@@ -126,6 +126,7 @@ func (ctx *GlobalOpts) PrepareOutputDirectory(subdirectories ...string) {
 	}
 }
 
+// TODO: fix that this is defaulting to creating a new directory when using -h
 // Create directory if possible, otherwise log error to console
 func ensureDirReadiness(directory string) {
 	err := os.MkdirAll(directory, 0755)
