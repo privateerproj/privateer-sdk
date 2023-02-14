@@ -6,7 +6,7 @@ import (
 	"os"
 
 	hclog "github.com/hashicorp/go-hclog"
-	"github.com/privateerproj/privateer-sdk/config"
+	"github.com/spf13/viper"
 )
 
 var (
@@ -37,7 +37,7 @@ func newLogger(writer io.Writer, jsonFormat bool) hclog.Logger {
 	// For level options, reference:
 	// https://github.com/hashicorp/go-hclog/blob/master/logger.go#L19
 	return hclog.New(&hclog.LoggerOptions{
-		Level:      hclog.LevelFromString(config.GlobalConfig.LogLevel),
+		Level:      hclog.LevelFromString(viper.GetString("loglevel")),
 		Output:     writer,
 		JSONFormat: jsonFormat, // TODO: Check env var to determine json format
 	})
