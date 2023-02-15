@@ -3,6 +3,7 @@ package command
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
@@ -21,6 +22,9 @@ func SetBase(cmd *cobra.Command) {
 
 	cmd.PersistentFlags().BoolP("silent", "s", false, "Shh! Only show essential log information.")
 	viper.BindPFlag("silent", cmd.PersistentFlags().Lookup("silent"))
+
+	cmd.PersistentFlags().StringP("binaries-path", "b", defaultBinariesPath(), "The Armory! Path to the location where raid binaries are stored.")
+	viper.BindPFlag("binaries-path", cmd.PersistentFlags().Lookup("binaries-path"))
 }
 
 func initConfig() {
@@ -39,10 +43,8 @@ func initConfig() {
 
 	if err := viper.ReadInConfig(); err == nil {
 		msg := fmt.Sprintf("Using config file: %s (loglevel: %s)", viper.ConfigFileUsed(), viper.GetString("loglevel"))
-		log.Info(msg)
 		log.Debug(msg)
 	} else {
-		log.Info("No config file used")
 		log.Debug("No config file used")
 	}
 }
@@ -53,4 +55,9 @@ func defaultConfigPath() string {
 		return ""
 	}
 	return filepath.Join(workDir, "config.yml")
+}
+
+func defaultBinariesPath() string {
+	home, _ := os.UserHomeDir() // sue me
+	return path.Join(home, "privateer", "bin")
 }

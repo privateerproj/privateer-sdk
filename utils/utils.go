@@ -72,6 +72,7 @@ func CallerFileLine() (string, int) {
 }
 
 // ReformatError prefixes the error string ready for logging and/or output
+// TODO: this should be obsolete after changing to hclog.Error()
 func ReformatError(e string, v ...interface{}) error {
 	var b strings.Builder
 	b.WriteString("[ERROR] ")
