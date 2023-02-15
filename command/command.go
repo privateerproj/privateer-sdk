@@ -5,6 +5,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -28,6 +29,8 @@ func SetBase(cmd *cobra.Command) {
 }
 
 func initConfig() {
+	logger := logging.UseLogger("core", "error")
+
 	viper.SetConfigFile(viper.GetString("config"))
 	viper.AutomaticEnv()
 
@@ -39,13 +42,18 @@ func initConfig() {
 		loglevel = "off"
 	}
 	viper.Set("loglevel", loglevel)
-	log := logging.UseLogger("core", loglevel)
+	logger = logging.UseLogger("core", loglevel)
 
-	if err := viper.ReadInConfig(); err == nil {
-		msg := fmt.Sprintf("Using config file: %s (loglevel: %s)", viper.ConfigFileUsed(), viper.GetString("loglevel"))
-		log.Debug(msg)
+	if err := viper.ReadInConfig(); err != nil {
+		if strings.HasSuffix(err.Error(), "no such file or directory") {
+			logger.Debug(err.Error())
+		} else {
+			logger.Error(err.Error())
+			os.Exit(1)
+		}
 	} else {
-		log.Debug("No config file used")
+		msg := fmt.Sprintf("Using config file: %s (loglevel: %s)", viper.ConfigFileUsed(), viper.GetString("loglevel"))
+		logger.Trace(msg)
 	}
 }
 
