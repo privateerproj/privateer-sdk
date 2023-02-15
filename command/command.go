@@ -18,14 +18,16 @@ func SetBase(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringP("config", "c", defaultConfigPath(), "Configuration File, JSON or YAML")
 	viper.BindPFlag("config", cmd.PersistentFlags().Lookup("config"))
 
-	cmd.PersistentFlags().BoolP("verbose", "v", false, "Louder now! Increase log verbosity to maximum.")
+	cmd.PersistentFlags().BoolP("verbose", "v", false, "Louder now! Increase log verbosity to maximum")
 	viper.BindPFlag("verbose", cmd.PersistentFlags().Lookup("verbose"))
 
-	cmd.PersistentFlags().BoolP("silent", "s", false, "Shh! Only show essential log information.")
+	cmd.PersistentFlags().BoolP("silent", "s", false, "Shh! Only show essential log information")
 	viper.BindPFlag("silent", cmd.PersistentFlags().Lookup("silent"))
 
-	cmd.PersistentFlags().StringP("binaries-path", "b", defaultBinariesPath(), "The Armory! Path to the location where raid binaries are stored.")
+	cmd.PersistentFlags().StringP("binaries-path", "b", defaultBinariesPath(), "The Armory! Path to the location where raid binaries are stored")
 	viper.BindPFlag("binaries-path", cmd.PersistentFlags().Lookup("binaries-path"))
+
+	cmd.PersistentFlags().BoolP("help", "h", false, fmt.Sprintf("Give me a heading! Help for the specified command",))
 }
 
 func initConfig() {
