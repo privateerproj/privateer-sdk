@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -14,7 +15,6 @@ import (
 )
 
 func SetBase(cmd *cobra.Command) {
-	cobra.OnInitialize(initConfig)
 	cmd.PersistentFlags().StringP("config", "c", defaultConfigPath(), "Configuration File, JSON or YAML")
 	viper.BindPFlag("config", cmd.PersistentFlags().Lookup("config"))
 
@@ -27,24 +27,24 @@ func SetBase(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringP("binaries-path", "b", defaultBinariesPath(), "The Armory! Path to the location where raid binaries are stored")
 	viper.BindPFlag("binaries-path", cmd.PersistentFlags().Lookup("binaries-path"))
 
-	cmd.PersistentFlags().BoolP("help", "h", false, fmt.Sprintf("Give me a heading! Help for the specified command",))
-}
+	cmd.PersistentFlags().BoolP("help", "h", false, fmt.Sprintf("Give me a heading! Help for the specified command"))
 
-func initConfig() {
-	logger := logging.UseLogger("core", "error")
+	logger := logging.GetLogger("setup", "error", false)
 
 	viper.SetConfigFile(viper.GetString("config"))
 	viper.AutomaticEnv()
 
 	viper.SetDefault("loglevel", "info")
 	loglevel := viper.GetString("loglevel")
+	log.Printf("Loglevel: %s", loglevel)
 	if viper.GetBool("verbose") {
 		loglevel = "trace"
 	} else if viper.GetBool("silent") {
 		loglevel = "off"
 	}
 	viper.Set("loglevel", loglevel)
-	logger = logging.UseLogger("core", loglevel)
+
+	logger = logging.GetLogger("setup", loglevel, false)
 
 	if err := viper.ReadInConfig(); err != nil {
 		if strings.HasSuffix(err.Error(), "no such file or directory") {
