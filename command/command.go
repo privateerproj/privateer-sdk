@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 
@@ -24,9 +23,6 @@ func SetBase(cmd *cobra.Command) {
 	cmd.PersistentFlags().BoolP("silent", "s", false, "Shh! Only show essential log information")
 	viper.BindPFlag("silent", cmd.PersistentFlags().Lookup("silent"))
 
-	cmd.PersistentFlags().StringP("binaries-path", "b", defaultBinariesPath(), "The Armory! Path to the location where raid binaries are stored")
-	viper.BindPFlag("binaries-path", cmd.PersistentFlags().Lookup("binaries-path"))
-
 	cmd.PersistentFlags().BoolP("help", "h", false, fmt.Sprintf("Give me a heading! Help for the specified command"))
 }
 
@@ -45,11 +41,7 @@ func InitializeConfig(cmd *cobra.Command, args []string) {
 		loglevel = "off"
 	}
 	viper.Set("loglevel", loglevel)
-	logger.Error(fmt.Sprintf("verbose: %v", viper.GetBool("verbose")))
 	logger = logging.GetLogger("setup", loglevel, false)
-
-	logger.Error(fmt.Sprintf("Config file flag: %s (loglevel: %s)", viper.GetString("config"), viper.GetString("loglevel")))
-	logger.Error(fmt.Sprintf("Using config file: %s (loglevel: %s)", viper.ConfigFileUsed(), viper.GetString("loglevel")))
 
 	if err := viper.ReadInConfig(); err != nil {
 		if strings.HasSuffix(err.Error(), "no such file or directory") {
@@ -59,7 +51,7 @@ func InitializeConfig(cmd *cobra.Command, args []string) {
 			os.Exit(1)
 		}
 	} else {
-		msg := fmt.Sprintf("Using config file: %s (loglevel: %s)", viper.ConfigFileUsed(), viper.GetString("loglevel"))
+		msg := fmt.Sprintf("Using config: %s (loglevel: %s)", viper.ConfigFileUsed(), viper.GetString("loglevel"))
 		logger.Trace(msg)
 	}
 }
@@ -70,9 +62,4 @@ func defaultConfigPath() string {
 		return ""
 	}
 	return filepath.Join(workDir, "config.yml")
-}
-
-func defaultBinariesPath() string {
-	home, _ := os.UserHomeDir() // sue me
-	return path.Join(home, "privateer", "bin")
 }
