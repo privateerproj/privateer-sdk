@@ -28,10 +28,12 @@ func SetBase(cmd *cobra.Command) {
 	viper.BindPFlag("binaries-path", cmd.PersistentFlags().Lookup("binaries-path"))
 
 	cmd.PersistentFlags().BoolP("help", "h", false, fmt.Sprintf("Give me a heading! Help for the specified command"))
+	fmt.Print("1\n")
 }
 
-func InitializeConfig(cmd *cobra.Command, args []string) {
+func InitializeConfig() {
 	logger := logging.GetLogger("setup", "error", false)
+	fmt.Print("2\n")
 
 	viper.SetConfigFile(viper.GetString("config"))
 	viper.AutomaticEnv()
