@@ -11,9 +11,11 @@ require (
 	github.com/Azure/go-autorest/autorest/validation v0.3.1 // indirect
 	github.com/cucumber/godog v0.12.6
 	github.com/cucumber/messages/go/v21 v21.0.1
-	github.com/hashicorp/go-hclog v0.14.1
+	github.com/hashicorp/go-hclog v1.2.0
 	github.com/hashicorp/go-plugin v1.4.0
 	github.com/open-policy-agent/opa v0.27.1
+	github.com/spf13/cobra v1.4.0
+	github.com/spf13/viper v1.15.0
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.19.6
 	k8s.io/apimachinery v0.19.6
