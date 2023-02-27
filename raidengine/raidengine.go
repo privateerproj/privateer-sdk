@@ -3,24 +3,35 @@ package raidengine
 import (
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
 	"reflect"
 	"runtime"
 	"strings"
+	"syscall"
 
 	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/privateerproj/privateer-sdk/utils"
 )
 
 type Strike func() error
+type cleanupFunc func() error
+
+var cleanup = func() error {
+	log.Printf("[ERROR] No custom cleanup specified by this raid") // Default to be overriden by SetupCloseHandler
+	return nil
+}
 
 // Run is used to execute a list of strikes, intended to be pre-parsed by UniqueAttacks
 func Run(strikes []Strike) (errors []error) {
+	closeHandler()
 	for _, strike := range strikes {
 		err := execStrike(strike)
 		if err != nil {
 			errors = append(errors, err)
 		}
 	}
+	cleanup()
 	writeRaidLog(errors)
 	return
 }
@@ -86,4 +97,26 @@ func GetOutput(raids []Strike, errors []error) error {
 
 	log.Print(output)
 	return nil
+}
+
+// SetupCloseHandler creates a 'listener' on a new goroutine which will notify the
+// program if it receives an interrupt from the OS. We then handle this by calling
+// our clean up procedure and exiting the program.
+// Ref: https://golangcode.com/handle-ctrl-c-exit-in-terminal/
+func SetupCloseHandler(customFunction cleanupFunc) {
+	cleanup = customFunction
+}
+
+func closeHandler() {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		log.Printf("Execution aborted - %v", "SIGTERM")
+		defer config.GlobalConfig.CleanupTmp()
+		if err := cleanup(); err != nil {
+			log.Printf("[ERROR] Cleanup may not be complete. %v", err.Error()) // Perform any custom cleanup for the
+		}
+		os.Exit(0)
+	}()
 }
