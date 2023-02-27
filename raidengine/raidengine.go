@@ -18,7 +18,7 @@ type Strike func() error
 type cleanupFunc func() error
 
 var cleanup = func() error {
-	log.Printf("[ERROR] No custom cleanup specified by this raid") // Default to be overriden by SetupCloseHandler
+	log.Printf("[TRACE] No custom cleanup specified by this raid") // Default to be overriden by SetupCloseHandler
 	return nil
 }
 
@@ -38,7 +38,8 @@ func Run(name string, availableStrikes map[string][]Strike) error {
 
 	cleanup()
 	writeRaidLog(errs)
-	output := fmt.Sprintf("%v/%v attacks succeeded. View the output logs for more details.", len(strikes)-len(errs), len(strikes))
+	output := fmt.Sprintf(
+		"%s: %v/%v attacks succeeded. View the output logs for more details.", name, len(strikes)-len(errs), len(strikes))
 	log.Print(output)
 	if len(errs) > 0 {
 		return errors.New(output)
@@ -93,19 +94,6 @@ func uniqueStrikes(allStrikes []Strike) (strikes []Strike) {
 
 func getFunctionAddress(i Strike) string {
 	return runtime.FuncForPC(reflect.ValueOf(i).Pointer()).Name()
-}
-
-func GetOutput(raids []Strike, errors []error) error {
-	raidsRequested := len(raids)
-	raidsSucceeded := len(raids) - len(errors)
-	output := fmt.Sprintf("%v/%v attacks succeeded. View the output logs for more details.", raidsSucceeded, raidsRequested)
-
-	if errors != nil {
-		return utils.ReformatError(output)
-	}
-
-	log.Print(output)
-	return nil
 }
 
 // SetupCloseHandler creates a 'listener' on a new goroutine which will notify the
