@@ -1,6 +1,7 @@
 package raidengine
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -23,17 +24,27 @@ var cleanup = func() error {
 }
 
 // Run is used to execute a list of strikes, intended to be pre-parsed by UniqueAttacks
-func Run(strikes []Strike) (errors []error) {
+func Run(name string, availableStrikes map[string][]Strike) error {
+	log.Printf("Initializing Raid: %s", name)
 	closeHandler()
+	var errs []error
+	strikes := availableStrikes["CIS"]
+
 	for _, strike := range strikes {
 		err := execStrike(strike)
 		if err != nil {
-			errors = append(errors, err)
+			errs = append(errs, err)
 		}
 	}
+
 	cleanup()
-	writeRaidLog(errors)
-	return
+	writeRaidLog(errs)
+	output := fmt.Sprintf("%v/%v attacks succeeded. View the output logs for more details.", len(strikes)-len(errs), len(strikes))
+	log.Print(output)
+	if len(errs) > 0 {
+		return errors.New(output)
+	}
+	return nil
 }
 
 func execStrike(strike Strike) error {
