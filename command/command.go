@@ -2,11 +2,9 @@ package command
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path"
 	"path/filepath"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -33,37 +31,30 @@ func SetBase(cmd *cobra.Command) {
 
 func InitializeConfig() {
 	logger := logging.GetLogger("setup", "error", false)
-	fmt.Print("2\n")
 
 	viper.SetConfigFile(viper.GetString("config"))
 	viper.AutomaticEnv()
 
 	viper.SetDefault("loglevel", "info")
 	loglevel := viper.GetString("loglevel")
-	log.Printf("Loglevel: %s", loglevel)
 	if viper.GetBool("verbose") {
 		loglevel = "trace"
 	} else if viper.GetBool("silent") {
 		loglevel = "off"
 	}
-	viper.Set("loglevel", loglevel)
-	logger.Error(fmt.Sprintf("verbose: %v", viper.GetBool("verbose")))
-	logger = logging.GetLogger("setup", loglevel, false)
+	logger.Trace(fmt.Sprintf("Loglevel: %v", loglevel))
 
-	logger.Error(fmt.Sprintf("Config file flag: %s (loglevel: %s)", viper.GetString("config"), viper.GetString("loglevel")))
-	logger.Error(fmt.Sprintf("Using config file: %s (loglevel: %s)", viper.ConfigFileUsed(), viper.GetString("loglevel")))
+	viper.Set("loglevel", loglevel)
+	logger = logging.GetLogger("execution", loglevel, false)
+
+	logger.Trace(fmt.Sprintf("Config file flag: %s (loglevel: %s)", viper.GetString("config"), viper.GetString("loglevel")))
 
 	if err := viper.ReadInConfig(); err != nil {
-		if strings.HasSuffix(err.Error(), "no such file or directory") {
-			logger.Debug(err.Error())
-		} else {
-			logger.Error(err.Error())
-			os.Exit(1)
-		}
-	} else {
-		msg := fmt.Sprintf("Using config file: %s (loglevel: %s)", viper.ConfigFileUsed(), viper.GetString("loglevel"))
-		logger.Trace(msg)
+		logger.Error(err.Error())
+		fmt.Print("???")
 	}
+	msg := fmt.Sprintf("Using config file: %s (loglevel: %s)", viper.ConfigFileUsed(), viper.GetString("loglevel"))
+	logger.Trace(msg) // TODO: this doesn't print within the raid even with loglevel set
 }
 
 func defaultConfigPath() string {
