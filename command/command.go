@@ -22,7 +22,6 @@ func SetBase(cmd *cobra.Command) {
 	viper.BindPFlag("silent", cmd.PersistentFlags().Lookup("silent"))
 
 	cmd.PersistentFlags().BoolP("help", "h", false, fmt.Sprintf("Give me a heading! Help for the specified command"))
-	fmt.Print("1\n")
 }
 
 func InitializeConfig() {
@@ -34,7 +33,7 @@ func InitializeConfig() {
 	viper.SetDefault("loglevel", "info")
 	loglevel := viper.GetString("loglevel")
 	if viper.GetBool("verbose") {
-		loglevel = "trace"
+		loglevel = "info"
 	} else if viper.GetBool("silent") {
 		loglevel = "off"
 	}
@@ -43,14 +42,11 @@ func InitializeConfig() {
 	viper.Set("loglevel", loglevel)
 	logger = logging.GetLogger("execution", loglevel, false)
 
-	logger.Trace(fmt.Sprintf("Config file flag: %s (loglevel: %s)", viper.GetString("config"), viper.GetString("loglevel")))
+	logger.Trace(fmt.Sprintf("Using config file: %s (loglevel: %s)", viper.GetString("config"), viper.GetString("loglevel")))
 
 	if err := viper.ReadInConfig(); err != nil {
 		logger.Error(err.Error())
-		fmt.Print("???")
 	}
-	msg := fmt.Sprintf("Using config file: %s (loglevel: %s)", viper.ConfigFileUsed(), viper.GetString("loglevel"))
-	logger.Trace(msg) // TODO: this doesn't print within the raid even with loglevel set
 }
 
 func defaultConfigPath() string {
