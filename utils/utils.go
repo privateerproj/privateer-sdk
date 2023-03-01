@@ -72,7 +72,6 @@ func CallerFileLine() (string, int) {
 }
 
 // ReformatError prefixes the error string ready for logging and/or output
-// TODO: this should be obsolete after changing to hclog.Error()
 func ReformatError(e string, v ...interface{}) error {
 	var b strings.Builder
 	b.WriteString("[ERROR] ")
@@ -81,15 +80,6 @@ func ReformatError(e string, v ...interface{}) error {
 	s := fmt.Sprintf(b.String(), v...)
 
 	return fmt.Errorf(s)
-}
-
-// ReadStaticFile returns the bytes for a given static file
-// Path:
-//  In most cases it will be ReadStaticFile(assetDir, fileName).
-//  It could also be used as ReadStaticFile(assetDir, subfolder, filename)
-func ReadStaticFile(path ...string) ([]byte, error) {
-	// indev 0.0.1 - removed pkger logic here
-	return []byte(""), nil
 }
 
 // ReplaceBytesValue replaces a substring with a new value for a given string in bytes
@@ -102,11 +92,6 @@ func ReplaceBytesValue(b []byte, old string, new string) []byte {
 func ReplaceBytesMultipleValues(b []byte, replacer *strings.Replacer) []byte {
 	newString := replacer.Replace(string(b))
 	return []byte(newString)
-}
-
-// AuditPlaceholders creates empty objects to reduce code repetition when auditing probe steps
-func AuditPlaceholders() (strings.Builder, interface{}, error) {
-	return *new(strings.Builder), *new(interface{}), *new(error)
 }
 
 // WriteAllowed determines whether a given filepath can be written to

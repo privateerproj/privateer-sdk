@@ -138,13 +138,6 @@ func TestReadStaticFile(t *testing.T) {
 	// indev 0.0.1 - removed pkger logic here
 }
 
-func TestAuditPlaceholders(t *testing.T) {
-	str, interf, err := AuditPlaceholders()
-	if str.String() != "" || interf != nil || err != nil {
-		t.Errorf("Audit Placeholder objects did not return as expected")
-	}
-}
-
 func TestGetExecutableName(t *testing.T) {
 
 	// Get current executable name for test runner

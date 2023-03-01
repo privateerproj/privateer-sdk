@@ -11,7 +11,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/privateerproj/privateer-sdk/utils"
 )
 
@@ -57,7 +56,6 @@ func execStrike(strike Strike) error {
 }
 
 func writeRaidLog(errors []error) {
-	config.GlobalConfig.PrepareOutputDirectory()
 	// TODO: Get user feedback on desired output
 	// for i, err := range errors {
 	// 	log.Printf("%v: %v", i, err)
@@ -124,9 +122,11 @@ func closeHandler() {
 	go func() {
 		<-c
 		log.Printf("Execution aborted - %v", "SIGTERM")
-		defer config.GlobalConfig.CleanupTmp()
-		if err := cleanup(); err != nil {
-			log.Printf("[ERROR] Cleanup may not be complete. %v", err.Error()) // Perform any custom cleanup for the
+		// defer cleanupTmp() TODO: replace the old logic that was here
+		if cleanup != nil {
+			if err := cleanup(); err != nil {
+				log.Printf("[ERROR] Cleanup may not be complete. %v", err.Error()) // Perform any custom cleanup for the
+			}
 		}
 		os.Exit(0)
 	}()
