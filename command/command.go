@@ -15,17 +15,16 @@ func SetBase(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringP("config", "c", defaultConfigPath(), "Configuration File, JSON or YAML")
 	viper.BindPFlag("config", cmd.PersistentFlags().Lookup("config"))
 
-	cmd.PersistentFlags().BoolP("verbose", "v", false, "Louder now! Increase log verbosity to maximum")
+	cmd.PersistentFlags().BoolP("verbose", "v", false, "Louder now! Set log verbosity to INFO")
 	viper.BindPFlag("verbose", cmd.PersistentFlags().Lookup("verbose"))
 
 	cmd.PersistentFlags().BoolP("silent", "s", false, "Shh! Only show essential log information")
 	viper.BindPFlag("silent", cmd.PersistentFlags().Lookup("silent"))
 
-	cmd.PersistentFlags().BoolP("help", "h", false, fmt.Sprintf("Give me a heading! Help for the specified command"))
+	cmd.PersistentFlags().BoolP("help", "h", false, "Give me a heading! Help for the specified command")
 }
 
 func InitializeConfig() {
-	logger := logging.GetLogger("setup", "error", false)
 
 	viper.SetConfigFile(viper.GetString("config"))
 	viper.AutomaticEnv()
@@ -37,15 +36,14 @@ func InitializeConfig() {
 	} else if viper.GetBool("silent") {
 		loglevel = "off"
 	}
-	logger.Trace(fmt.Sprintf("Loglevel: %v", loglevel))
 
 	viper.Set("loglevel", loglevel)
-	logger = logging.GetLogger("execution", loglevel, false)
+	logger := logging.GetLogger("execution", loglevel, false)
 
 	logger.Trace(fmt.Sprintf("Using config file: %s (loglevel: %s)", viper.GetString("config"), viper.GetString("loglevel")))
 
 	if err := viper.ReadInConfig(); err != nil {
-		logger.Error(err.Error())
+		logger.Debug(err.Error())
 	}
 }
 
