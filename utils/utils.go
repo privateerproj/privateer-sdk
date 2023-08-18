@@ -95,16 +95,15 @@ func ReplaceBytesMultipleValues(b []byte, replacer *strings.Replacer) []byte {
 }
 
 // WriteAllowed determines whether a given filepath can be written to
-func WriteAllowed(path string) bool {
+func WriteAllowed(path string) error {
 	_, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0644)
 	if os.IsPermission(err) {
-		log.Printf("[ERROR] Permissions prevent this from writing to file: %s", path)
-		return false
+		return ReformatError("Permissions prevent this from writing to file: ", path)
 	} else if err != nil {
-		log.Printf("[ERROR] Could not create or write to file: %s. Error: %s", path, err)
-		return false
+		return ReformatError(fmt.Sprintf(
+			"Could not create or write to file: %s. Error: %s", path, err))
 	}
-	return true
+	return nil
 }
 
 // GetExecutableName returns name of executable without file extension

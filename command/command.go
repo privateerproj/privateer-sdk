@@ -26,25 +26,28 @@ func SetBase(cmd *cobra.Command) {
 
 func InitializeConfig() {
 
+	loglevel := setLogLevelFromFlag()
+	viper.Set("loglevel", loglevel)
+
 	viper.SetConfigFile(viper.GetString("config"))
 	viper.AutomaticEnv()
 
-	viper.SetDefault("loglevel", "info")
-	loglevel := viper.GetString("loglevel")
-	if viper.GetBool("verbose") {
-		loglevel = "info"
-	} else if viper.GetBool("silent") {
-		loglevel = "off"
-	}
-
-	viper.Set("loglevel", loglevel)
 	logger := logging.GetLogger("execution", loglevel, false)
 
-	logger.Trace(fmt.Sprintf("Using config file: %s (loglevel: %s)", viper.GetString("config"), viper.GetString("loglevel")))
-
+	logger.Debug(fmt.Sprintf("Reading config file: %s (loglevel: %s)", viper.GetString("config"), loglevel))
 	if err := viper.ReadInConfig(); err != nil {
 		logger.Debug(err.Error())
 	}
+}
+
+func setLogLevelFromFlag() string {
+	viper.SetDefault("loglevel", "error")
+	if viper.GetBool("verbose") {
+		return "debug"
+	} else if viper.GetBool("silent") {
+		return "off"
+	}
+	return viper.GetString("loglevel")
 }
 
 func defaultConfigPath() string {

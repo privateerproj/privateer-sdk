@@ -11,20 +11,27 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/hashicorp/go-hclog"
+
+	"github.com/privateerproj/privateer-sdk/command"
+	"github.com/privateerproj/privateer-sdk/logging"
 	"github.com/privateerproj/privateer-sdk/utils"
+	"github.com/spf13/viper"
 )
 
 type Strike func() error
 type cleanupFunc func() error
 
+var logger hclog.Logger
+
 var cleanup = func() error {
-	log.Printf("[TRACE] No custom cleanup specified by this raid") // Default to be overriden by SetupCloseHandler
+	logger.Debug("No custom cleanup specified by this raid") // Default to be overriden by SetupCloseHandler
 	return nil
 }
 
 // Run is used to execute a list of strikes, intended to be pre-parsed by UniqueAttacks
 func Run(name string, availableStrikes map[string][]Strike) error {
-	log.Printf("Initializing Raid: %s", name)
+	logger = logging.GetLogger("cli", viper.GetString("loglevel"), true)
 	closeHandler()
 	var errs []error
 	strikes := availableStrikes["CIS"]
@@ -40,7 +47,7 @@ func Run(name string, availableStrikes map[string][]Strike) error {
 	writeRaidLog(errs)
 	output := fmt.Sprintf(
 		"%s: %v/%v attacks succeeded. View the output logs for more details.", name, len(strikes)-len(errs), len(strikes))
-	log.Print(output)
+	logger.Info(output)
 	if len(errs) > 0 {
 		return errors.New(output)
 	}
@@ -48,7 +55,7 @@ func Run(name string, availableStrikes map[string][]Strike) error {
 }
 
 func execStrike(strike Strike) error {
-	log.Printf("Initiating Strike: %v", getFunctionAddress(strike))
+	logger.Debug("Initiating Strike: %v", getFunctionAddress(strike))
 	err := strike()
 	if err != nil {
 		log.Print(err)
@@ -64,7 +71,8 @@ func writeRaidLog(errors []error) {
 }
 
 func GetUniqueStrikes(strikePacks map[string][]Strike, policies ...string) (strikes []Strike) {
-	log.Printf("Policies Requested: %s", strings.Join(policies, ","))
+	logger.Debug(fmt.Sprintf(
+		"Policies Requested: %s", strings.Join(policies, ",")))
 
 	if len(policies) == 1 {
 		// If set via environment variables, this value may come in as a comma delineated string
@@ -105,16 +113,19 @@ func SetupCloseHandler(customFunction cleanupFunc) {
 }
 
 func closeHandler() {
+	command.InitializeConfig()
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
-		log.Printf("Execution aborted - %v", "SIGTERM")
+		logger.Error("Execution aborted - %v", "SIGTERM")
 		// defer cleanupTmp() TODO: replace the old logic that was here
 		if cleanup != nil {
 			if err := cleanup(); err != nil {
-				log.Printf("[ERROR] Cleanup may not be complete. %v", err.Error()) // Perform any custom cleanup for the
+				logger.Error("Cleanup returned an error, and may not be complete: %v", err.Error())
 			}
+		} else {
+			logger.Trace("No custom cleanup was provided by the terminated Raid.")
 		}
 		os.Exit(0)
 	}()
