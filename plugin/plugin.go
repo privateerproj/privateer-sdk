@@ -14,7 +14,7 @@ type Raid interface {
 // RaidRPC is an implementation that talks over RPC
 type RaidRPC struct{ client *rpc.Client }
 
-// Start returns a message
+// Start is a wrapper for interface implementation of Start
 func (g *RaidRPC) Start() error {
 	var err error
 	return g.client.Call("Plugin.Start", new(interface{}), &err)

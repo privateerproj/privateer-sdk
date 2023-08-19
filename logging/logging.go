@@ -9,14 +9,11 @@ import (
 
 var (
 	activeLogger hclog.Logger
-	loggers      map[string]hclog.Logger
+	loggers      map[string]hclog.Logger // map of loggers by name
 )
 
 func init() {
-	// Initialize default logger
-	// name := "default"
 	loggers = make(map[string]hclog.Logger)
-	// UseLogger(name)
 }
 
 // Logger returns the active logger for use in
@@ -27,10 +24,11 @@ func Logger() hclog.Logger {
 
 // GetLogger returns an hc logger with the provided name.
 // It will creates or update the logger to use the provided level and format.
+// If the logger already exists, it will return the existing logger.
+// For level options, reference:
+// https://github.com/hashicorp/go-hclog/blob/master/logger.go#L19
 func GetLogger(name string, level string, jsonFormat bool) hclog.Logger {
 	if loggers[name] == nil {
-		// For level options, reference:
-		// https://github.com/hashicorp/go-hclog/blob/master/logger.go#L19
 		hcLevel := hclog.LevelFromString(level)
 		loggers[name] = hclog.New(&hclog.LoggerOptions{
 			Level:      hcLevel,
@@ -39,12 +37,13 @@ func GetLogger(name string, level string, jsonFormat bool) hclog.Logger {
 	}
 	logger := loggers[name]
 	writer := logger.StandardWriter(&hclog.StandardLoggerOptions{InferLevels: true})
-	SetLogWriter(name, writer)
+	SetLogWriter(writer)
 	return logger
 }
 
-// SetLogWriter sets the log package to use the provided writer
-func SetLogWriter(name string, logWriter io.Writer) {
+// SetLogWriter modifies the output for the standard logger.
+// This aligns the functionality of the hclog logger with the standard logger.
+func SetLogWriter(logWriter io.Writer) {
 	log.SetFlags(0)
 	log.SetOutput(logWriter)
 }

@@ -6,13 +6,14 @@ import (
 	"unsafe"
 )
 
-const letters = "abcdefghijklmnopqrstuvwxyz"
 const (
-	letterIndexBits = 6                    // 6 bits to represent a letter index
-	letterIdxMask = 1<<letterIndexBits - 1 // All 1-bits, as many as letterIndexBits
-	letterIdxMax  = 63 / letterIndexBits   // # of letter indices fitting in 63 bits
+	letters         = "abcdefghijklmnopqrstuvwxyz"
+	letterIndexBits = 6                      // 6 bits to represent a letter index
+	letterIdxMask   = 1<<letterIndexBits - 1 // All 1-bits, as many as letterIndexBits
+	letterIdxMax    = 63 / letterIndexBits   // # of letter indices fitting in 63 bits
 )
 
+// src is a global variable that generates a new seed for the random number generator
 var src = rand.NewSource(time.Now().UnixNano())
 
 // RandomString generates a pseudo-random number of characters of length n

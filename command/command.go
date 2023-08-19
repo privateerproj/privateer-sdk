@@ -11,6 +11,7 @@ import (
 	"github.com/privateerproj/privateer-sdk/logging"
 )
 
+// SetBase sets the base flags for all commands
 func SetBase(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringP("config", "c", defaultConfigPath(), "Configuration File, JSON or YAML")
 	viper.BindPFlag("config", cmd.PersistentFlags().Lookup("config"))
@@ -24,32 +25,32 @@ func SetBase(cmd *cobra.Command) {
 	cmd.PersistentFlags().BoolP("help", "h", false, "Give me a heading! Help for the specified command")
 }
 
+// InitializeConfig reads in config file and ENV variables if set.
 func InitializeConfig() {
 
-	loglevel := setLogLevelFromFlag()
-	viper.Set("loglevel", loglevel)
-
+	viper.SetDefault("loglevel", "Error")
 	viper.SetConfigFile(viper.GetString("config"))
+	loglevel := setLogLevelFromFlag()
 	viper.AutomaticEnv()
-
 	logger := logging.GetLogger("execution", loglevel, false)
 
-	logger.Debug(fmt.Sprintf("Reading config file: %s (loglevel: %s)", viper.GetString("config"), loglevel))
+	logger.Info(fmt.Sprintf("Reading config file: %s (loglevel: %s)", viper.GetString("config"), loglevel))
 	if err := viper.ReadInConfig(); err != nil {
 		logger.Debug(err.Error())
 	}
 }
 
+// setLogLevelFromFlag sets the log level based on the verbose and silent flags
 func setLogLevelFromFlag() string {
-	viper.SetDefault("loglevel", "error")
 	if viper.GetBool("verbose") {
-		return "debug"
+		viper.Set("loglevel", "debug")
 	} else if viper.GetBool("silent") {
-		return "off"
+		viper.Set("loglevel", "off")
 	}
 	return viper.GetString("loglevel")
 }
 
+// defaultConfigPath returns the default config path
 func defaultConfigPath() string {
 	workDir, err := os.Getwd()
 	if err != nil {

@@ -24,14 +24,16 @@ type cleanupFunc func() error
 
 var logger hclog.Logger
 
+// cleanup is a function that is called when the program is interrupted
+// This default behavior will be overriden by SetupCloseHandler if used by a Raid
 var cleanup = func() error {
-	logger.Debug("No custom cleanup specified by this raid") // Default to be overriden by SetupCloseHandler
+	logger.Debug("No custom cleanup specified by this raid")
 	return nil
 }
 
 // Run is used to execute a list of strikes, intended to be pre-parsed by UniqueAttacks
 func Run(name string, availableStrikes map[string][]Strike) error {
-	logger = logging.GetLogger("cli", viper.GetString("loglevel"), true)
+	logger = logging.GetLogger("cli", viper.GetString("loglevel"), false)
 	closeHandler()
 	var errs []error
 	strikes := availableStrikes["CIS"]
@@ -47,7 +49,7 @@ func Run(name string, availableStrikes map[string][]Strike) error {
 	writeRaidLog(errs)
 	output := fmt.Sprintf(
 		"%s: %v/%v attacks succeeded. View the output logs for more details.", name, len(strikes)-len(errs), len(strikes))
-	logger.Info(output)
+	logger.Info(output) // currently is printing in JSON erroneously
 	if len(errs) > 0 {
 		return errors.New(output)
 	}
@@ -70,6 +72,7 @@ func writeRaidLog(errors []error) {
 	// }
 }
 
+// GetUniqueStrikes returns a list of unique strikes
 func GetUniqueStrikes(strikePacks map[string][]Strike, policies ...string) (strikes []Strike) {
 	logger.Debug(fmt.Sprintf(
 		"Policies Requested: %s", strings.Join(policies, ",")))
@@ -88,6 +91,7 @@ func GetUniqueStrikes(strikePacks map[string][]Strike, policies ...string) (stri
 	return uniqueStrikes(strikes)
 }
 
+// uniqueStrikes formats the list of unique strikes
 func uniqueStrikes(allStrikes []Strike) (strikes []Strike) {
 	used := make(map[string]bool)
 	for _, strike := range allStrikes {
@@ -100,18 +104,20 @@ func uniqueStrikes(allStrikes []Strike) (strikes []Strike) {
 	return
 }
 
+// getFunctionAddress returns the address of a function as a string
 func getFunctionAddress(i Strike) string {
 	return runtime.FuncForPC(reflect.ValueOf(i).Pointer()).Name()
 }
 
-// SetupCloseHandler creates a 'listener' on a new goroutine which will notify the
-// program if it receives an interrupt from the OS. We then handle this by calling
-// our clean up procedure and exiting the program.
-// Ref: https://golangcode.com/handle-ctrl-c-exit-in-terminal/
+// SetupCloseHandler sets the cleanup function to be called when the program is interrupted
 func SetupCloseHandler(customFunction cleanupFunc) {
 	cleanup = customFunction
 }
 
+// closeHandler creates a 'listener' on a new goroutine which will notify the
+// program if it receives an interrupt from the OS. We then handle this by calling
+// our clean up procedure and exiting the program.
+// Ref: https://golangcode.com/handle-ctrl-c-exit-in-terminal/
 func closeHandler() {
 	command.InitializeConfig()
 	c := make(chan os.Signal, 1)
