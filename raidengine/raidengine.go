@@ -32,7 +32,7 @@ var cleanup = func() error {
 }
 
 // Run is used to execute a list of strikes, intended to be pre-parsed by UniqueAttacks
-func Run(name string, availableStrikes map[string][]Strike) error {
+func Run(availableStrikes map[string][]Strike) error {
 	logger = logging.GetLogger("cli", viper.GetString("loglevel"), false)
 	closeHandler()
 	var errs []error
@@ -48,7 +48,7 @@ func Run(name string, availableStrikes map[string][]Strike) error {
 	cleanup()
 	writeRaidLog(errs)
 	output := fmt.Sprintf(
-		"%s: %v/%v attacks succeeded. View the output logs for more details.", name, len(strikes)-len(errs), len(strikes))
+		"%v/%v attacks succeeded. View the output logs for more details.", len(strikes)-len(errs), len(strikes))
 	logger.Info(output) // currently is printing in JSON erroneously
 	if len(errs) > 0 {
 		return errors.New(output)
