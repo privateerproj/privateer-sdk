@@ -130,10 +130,6 @@ func TestCallerName(t *testing.T) {
 	}
 }
 
-func TestCallerFileLine(t *testing.T) {
-	t.Skip("Skip for now since it is used for internal testing only")
-}
-
 func TestReadStaticFile(t *testing.T) {
 	// indev 0.0.1 - removed pkger logic here
 }
@@ -161,6 +157,27 @@ func TestGetExecutableName(t *testing.T) {
 		t.Run(tt.testName, func(t *testing.T) {
 			if got := GetExecutableName(); got != tt.expectedResult {
 				t.Errorf("GetExecutableName() = %v, want %v", got, tt.expectedResult)
+			}
+		})
+	}
+}
+
+func TestCallerFileLine(t *testing.T) {
+	type result struct {
+		file string
+		line int
+	}
+	tests := []struct {
+		testName       string
+		expectedResult result
+	}{
+		{"CallerFileLine() - Expected: %q", result{file: "/usr/local/go/src/testing/testing.go", line: 1576}},
+	}
+	for _, tt := range tests {
+		tt.testName = fmt.Sprintf(tt.testName, tt.expectedResult)
+		t.Run(tt.testName, func(t *testing.T) {
+			if file, line := CallerFileLine(); file != tt.expectedResult.file || line != tt.expectedResult.line {
+				t.Errorf("CallerFileLine() = %v, %v, Expected: %v", file, line, tt.expectedResult)
 			}
 		})
 	}
