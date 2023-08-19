@@ -4,7 +4,9 @@ on:
       - main
     paths-ignore:
       - "**/*.md"
-  
+
+permissions: read
+
 jobs:
   CI:
     runs-on: ubuntu-latest
@@ -48,6 +50,9 @@ jobs:
                 echo "Failed"
                 exit 1
             fi
+      permissions:
+          contents: read
+          pull-requests: write
 
-    - name: Build
+    - name: Ensure build is functional
       run: go build ./...
