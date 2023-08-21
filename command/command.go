@@ -1,14 +1,13 @@
 package command
 
 import (
-	"fmt"
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-
-	"github.com/privateerproj/privateer-sdk/logging"
 )
 
 // SetBase sets the base flags for all commands
@@ -30,19 +29,21 @@ func InitializeConfig() {
 
 	viper.SetDefault("loglevel", "Error")
 	viper.SetConfigFile(viper.GetString("config"))
-	loglevel := setLogLevelFromFlag()
+	setLogLevelFromFlag()
 	viper.AutomaticEnv()
-	logger := logging.GetLogger("execution", loglevel, false)
 
-	logger.Info(fmt.Sprintf("Reading config file: %s (loglevel: %s)", viper.GetString("config"), loglevel))
 	if err := viper.ReadInConfig(); err != nil {
-		logger.Debug(err.Error())
+		log.Print(err.Error())
 	}
+
+	// TODO: Logging at this location has unexpected behavior related to the WriteDirectory and loglevel
+	// raidengine.GetLogger("overview", false).Debug("Lauching Privateer with loglevel '%s' and config file: %s", loglevel, viper.GetString("config"))
 }
 
 // setLogLevelFromFlag sets the log level based on the verbose and silent flags
 func setLogLevelFromFlag() string {
-	if viper.GetBool("verbose") {
+	// If verbose is set, and loglevel is not trace (highest level), set loglevel to debug
+	if viper.GetBool("verbose") && !strings.EqualFold(viper.GetString("loglevel"), "trace") {
 		viper.Set("loglevel", "debug")
 	} else if viper.GetBool("silent") {
 		viper.Set("loglevel", "off")

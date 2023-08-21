@@ -10,16 +10,28 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/hashicorp/go-hclog"
 
-	"github.com/privateerproj/privateer-sdk/command"
-	"github.com/privateerproj/privateer-sdk/logging"
 	"github.com/privateerproj/privateer-sdk/utils"
-	"github.com/spf13/viper"
 )
 
-type Strike func() error
+// StrikeResult is a struct that contains the results of a test
+type StrikeResult struct {
+	Passed  bool   // Passed is true if the test passed
+	Message string // Message is a human-readable description of the test
+	DocsURL string // DocsURL is a link to the documentation for the test
+}
+
+// RaidResults is a struct that contains the results of all strikes, orgainzed by name
+type RaidResults struct {
+	RaidName      string                  // RaidName is the name of the raid
+	StartTime     string                  // StartTime is the time the raid started
+	EndTime       string                  // EndTime is the time the raid ended
+	StrikeResults map[string]StrikeResult // StrikeResults is a map of strike names to their results
+}
+type Strike func() (strikeName string, result StrikeResult)
 type cleanupFunc func() error
 
 var logger hclog.Logger
@@ -31,48 +43,50 @@ var cleanup = func() error {
 	return nil
 }
 
-// Run is used to execute a list of strikes, intended to be pre-parsed by UniqueAttacks
-func Run(availableStrikes map[string][]Strike) error {
-	logger = logging.GetLogger("cli", viper.GetString("loglevel"), false)
+// Run is used to execute a list of strikes provided by a Raid and customize by user config
+func Run(raidName string, availableStrikes map[string][]Strike) error {
+	logger = GetLogger(raidName, false)
 	closeHandler()
-	var errs []error
-	strikes := availableStrikes["CIS"]
 
-	for _, strike := range strikes {
-		err := execStrike(strike)
-		if err != nil {
-			errs = append(errs, err)
-		}
+	var attempts int
+	var failures int
+	strikes := availableStrikes["CIS"] // TODO: Make this configurable
+	raidResults := &RaidResults{
+		RaidName:  raidName,
+		StartTime: time.Now().String(),
 	}
 
+	for _, strike := range strikes {
+		attempts += 1
+		name, strikeResult := strike()
+		if strikeResult.Message == "" {
+			strikeResult.Message = "Strike did not return a result, and may still be under construction."
+		}
+		if strikeResult.Passed {
+			logger.Info(strikeResult.Message)
+		} else {
+			failures += 1
+			logger.Error(strikeResult.Message)
+		}
+		logger.Info("%s result:", strikeResult.Message)
+		raidResults.AddStrikeResult(name, strikeResult)
+	}
+	raidResults.EndTime = time.Now().String()
+	raidResults.WriteStrikeResultsJSON()
+	raidResults.WriteStrikeResultsYAML()
 	cleanup()
-	writeRaidLog(errs)
 	output := fmt.Sprintf(
-		"%v/%v attacks succeeded. View the output logs for more details.", len(strikes)-len(errs), len(strikes))
-	logger.Info(output) // currently is printing in JSON erroneously
-	if len(errs) > 0 {
+		"%v/%v strikes succeeded. View the output logs for more details.", failures, attempts)
+	logger.Info(output)
+	if failures > 0 {
 		return errors.New(output)
 	}
 	return nil
 }
 
-func execStrike(strike Strike) error {
-	logger.Debug("Initiating Strike: %v", getFunctionAddress(strike))
-	err := strike()
-	if err != nil {
-		log.Print(err)
-	}
-	return err
-}
-
-func writeRaidLog(errors []error) {
-	// TODO: Get user feedback on desired output
-	// for i, err := range errors {
-	// 	log.Printf("%v: %v", i, err)
-	// }
-}
-
-// GetUniqueStrikes returns a list of unique strikes
+// GetUniqueStrikes returns a list of unique strikes based on the provided policies
+// Strikes listed are unique based on their function address
+// Not currently in use. Use this when strike policies are configurable.
 func GetUniqueStrikes(strikePacks map[string][]Strike, policies ...string) (strikes []Strike) {
 	logger.Debug(fmt.Sprintf(
 		"Policies Requested: %s", strings.Join(policies, ",")))
@@ -119,13 +133,11 @@ func SetupCloseHandler(customFunction cleanupFunc) {
 // our clean up procedure and exiting the program.
 // Ref: https://golangcode.com/handle-ctrl-c-exit-in-terminal/
 func closeHandler() {
-	command.InitializeConfig()
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
 		logger.Error("Execution aborted - %v", "SIGTERM")
-		// defer cleanupTmp() TODO: replace the old logic that was here
 		if cleanup != nil {
 			if err := cleanup(); err != nil {
 				logger.Error("Cleanup returned an error, and may not be complete: %v", err.Error())

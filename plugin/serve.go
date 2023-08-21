@@ -5,7 +5,6 @@ import (
 
 	hclog "github.com/hashicorp/go-hclog"
 	hcplugin "github.com/hashicorp/go-plugin"
-	"github.com/privateerproj/privateer-sdk/logging"
 )
 
 // RaidPluginName TODO: why did we put this here? what is this doing? Review and justify this.
@@ -24,26 +23,11 @@ type ServeOpts struct {
 
 	// Logger is the logger that go-plugin will use.
 	Logger hclog.Logger
-
-	// Set NoLogOutputOverride to not override the log output with an hclog
-	// adapter. This should only be used when running the plugin in
-	// acceptance tests.
-	NoLogOutputOverride bool
 }
 
 // Serve serves a plugin. This function never returns and should be the final
 // function called in the main function of the plugin.
-func Serve(opts *ServeOpts) {
-	if !opts.NoLogOutputOverride {
-		// In order to allow go-plugin to correctly pass log-levels through,
-		// we need to use an hclog.Logger with JSON output. We can
-		// inject this into the std `log` package here, so existing providers will
-		// make use of it automatically.
-		logger := logging.GetLogger("", "Error", true)
-		log.SetOutput(logger.StandardWriter(&hclog.StandardLoggerOptions{InferLevels: true}))
-	}
-
-	// Plugin implementation
+func Serve(raidName string, opts *ServeOpts) {
 	// Guard Clause: Ensure plugin is not nil
 	if opts.Plugin == nil {
 		log.Panic("Invalid (nil) plugin implementation provided")
@@ -59,6 +43,7 @@ func Serve(opts *ServeOpts) {
 		Plugins:         hcpluginMap,
 		Logger:          opts.Logger,
 	})
+	log.Printf("Successfully completed raid: %s", raidName)
 }
 
 // GetHandshakeConfig provides handshake config details. It is used by core and service packs.
