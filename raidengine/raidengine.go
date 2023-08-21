@@ -19,9 +19,11 @@ import (
 
 // StrikeResult is a struct that contains the results of a test
 type StrikeResult struct {
-	Passed  bool   // Passed is true if the test passed
-	Message string // Message is a human-readable description of the test
-	DocsURL string // DocsURL is a link to the documentation for the test
+	Passed      bool   // Passed is true if the test passed
+	Description string // Description is a human-readable description of the test
+	Message     string // Message is a human-readable description of the test result
+	DocsURL     string // DocsURL is a link to the documentation for the test
+	ControlID   string // ControlID is the ID of the control that the test is validating
 }
 
 // RaidResults is a struct that contains the results of all strikes, orgainzed by name
