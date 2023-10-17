@@ -46,17 +46,18 @@ var cleanup = func() error {
 }
 
 // Run is used to execute a list of strikes provided by a Raid and customize by user config
-func Run(raidName string, strikeSet string, availableStrikes map[string][]Strike) error {
+func Run(raidName string, tactic string, availableStrikes map[string][]Strike) error {
 	logger = GetLogger(raidName, false)
 	closeHandler()
 
 	var attempts int
 	var failures int
-	strikes := availableStrikes[strikeSet]
+	strikes := availableStrikes[tactic]
 
 	if len(strikes) == 0 {
-		logger.Info("No strikes were found for the provided strike set: %s", strikeSet)
-		return nil
+		message := fmt.Sprintf("No strikes were found for the provided strike set: %s", tactic)
+		logger.Error(message)
+		return errors.New(message)
 	}
 	raidResults := &RaidResults{
 		RaidName:  raidName,
@@ -75,7 +76,7 @@ func Run(raidName string, strikeSet string, availableStrikes map[string][]Strike
 			failures += 1
 			logger.Error(strikeResult.Message)
 		}
-		logger.Info("%s result:", strikeResult.Message)
+		logger.Info(fmt.Sprintf("%s result:", strikeResult.Message))
 		raidResults.AddStrikeResult(name, strikeResult)
 	}
 	raidResults.EndTime = time.Now().String()

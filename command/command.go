@@ -15,6 +15,9 @@ func SetBase(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringP("config", "c", defaultConfigPath(), "Configuration File, JSON or YAML")
 	viper.BindPFlag("config", cmd.PersistentFlags().Lookup("config"))
 
+	cmd.PersistentFlags().StringP("tactic", "t", "default", "Named set of strikes to execute from the raid")
+	viper.BindPFlag("tactic", cmd.PersistentFlags().Lookup("tactic"))
+
 	cmd.PersistentFlags().BoolP("verbose", "v", false, "Louder now! Set log verbosity to INFO")
 	viper.BindPFlag("verbose", cmd.PersistentFlags().Lookup("verbose"))
 
