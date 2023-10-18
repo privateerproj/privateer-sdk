@@ -17,13 +17,23 @@ import (
 	"github.com/privateerproj/privateer-sdk/utils"
 )
 
-// StrikeResult is a struct that contains the results of a test
+// MovementResult is a struct that contains the results of a single step within a strike
+type MovementResult struct {
+	Passed      bool        // Passed is true if the test passed
+	Description string      // Description is a human-readable description of the test
+	Message     string      // Message is a human-readable description of the test result
+	Function    string      // Function is the name of the code that was executed
+	Value       interface{} // Value is the object that was returned during the movement
+}
+
+// StrikeResult is a struct that contains the results of a check for a single control
 type StrikeResult struct {
-	Passed      bool   // Passed is true if the test passed
-	Description string // Description is a human-readable description of the test
-	Message     string // Message is a human-readable description of the test result
-	DocsURL     string // DocsURL is a link to the documentation for the test
-	ControlID   string // ControlID is the ID of the control that the test is validating
+	Passed      bool                      // Passed is true if the test passed
+	Description string                    // Description is a human-readable description of the test
+	Message     string                    // Message is a human-readable description of the test result
+	DocsURL     string                    // DocsURL is a link to the documentation for the test
+	ControlID   string                    // ControlID is the ID of the control that the test is validating
+	Movements   map[string]MovementResult // Movements is a list of functions that were executed during the test
 }
 
 // RaidResults is a struct that contains the results of all strikes, orgainzed by name
