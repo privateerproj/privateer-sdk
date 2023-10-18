@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-hclog"
+	"github.com/spf13/viper"
 
 	"github.com/privateerproj/privateer-sdk/utils"
 )
@@ -43,7 +44,13 @@ type RaidResults struct {
 	EndTime       string                  // EndTime is the time the raid ended
 	StrikeResults map[string]StrikeResult // StrikeResults is a map of strike names to their results
 }
+
+type Strikes interface {
+	SetLogger(loggerName string)
+}
+
 type Strike func() (strikeName string, result StrikeResult)
+
 type cleanupFunc func() error
 
 var logger hclog.Logger
@@ -55,16 +62,52 @@ var cleanup = func() error {
 	return nil
 }
 
-// Run is used to execute a list of strikes provided by a Raid and customize by user config
-func Run(raidName string, strikes []Strike) error {
-	logger = GetLogger(raidName, false)
+func Run(raidName string, availableStrikes map[string][]Strike, strikes Strikes) (err error) {
+	tacticsMultiple := fmt.Sprintf("raids.%s.tactics", raidName)
+	tacticSingular := fmt.Sprintf("raids.%s.tactic", raidName)
+	if viper.IsSet(tacticsMultiple) {
+		tactics := viper.GetStringSlice(tacticsMultiple)
+		for _, tactic := range tactics {
+			viper.Set(tacticSingular, tactic)
+			loggerName := fmt.Sprintf("%s-%s", raidName, tactic)
+			strikes.SetLogger(loggerName)
+			newErr := RunRaid(loggerName, getStrikes(raidName, availableStrikes))
+			if newErr != nil {
+				if err != nil {
+					err = fmt.Errorf("%s\n%s", err.Error(), newErr.Error())
+				} else {
+					err = newErr
+				}
+			}
+		}
+		return err
+	}
+	loggerName := fmt.Sprintf("%s-%s", raidName, viper.GetString(tacticSingular))
+	strikes.SetLogger(loggerName)
+	return RunRaid(loggerName, getStrikes(raidName, availableStrikes)) // Return errors from strike executions
+}
+
+// GetStrikes returns a list of probe objects
+func getStrikes(raidName string, availableStrikes map[string][]Strike) []Strike {
+	tactic := viper.GetString(fmt.Sprintf("raids.%s.tactic", raidName))
+	strikes := availableStrikes[tactic]
+	if len(strikes) == 0 {
+		message := fmt.Sprintf("No strikes were found for the provided strike set: %s", tactic)
+		logger.Error(message)
+	}
+	return strikes
+}
+
+// RunRaid is used to execute a list of strikes provided by a Raid and customize by user config
+func RunRaid(name string, strikes []Strike) error {
+	logger = GetLogger(name, false)
 	closeHandler()
 
 	var attempts int
 	var failures int
 
 	raidResults := &RaidResults{
-		RaidName:  raidName,
+		RaidName:  name,
 		StartTime: time.Now().String(),
 	}
 
