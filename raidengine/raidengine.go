@@ -104,6 +104,7 @@ func RunRaid(name string, strikes []Strike) error {
 	closeHandler()
 
 	var attempts int
+	var successes int
 	var failures int
 
 	raidResults := &RaidResults{
@@ -118,6 +119,7 @@ func RunRaid(name string, strikes []Strike) error {
 			strikeResult.Message = "Strike did not return a result, and may still be under construction."
 		}
 		if strikeResult.Passed {
+			successes += 1
 			logger.Info(strikeResult.Message)
 		} else {
 			failures += 1
@@ -131,7 +133,7 @@ func RunRaid(name string, strikes []Strike) error {
 	raidResults.WriteStrikeResultsYAML()
 	cleanup()
 	output := fmt.Sprintf(
-		"%v/%v strikes succeeded. View the output logs for more details.", failures, attempts)
+		"%v/%v strikes succeeded. View the output logs for more details.", successes, attempts)
 	logger.Info(output)
 	if failures > 0 {
 		return errors.New(output)
