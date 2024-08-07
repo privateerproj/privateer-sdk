@@ -53,7 +53,9 @@ type Strike func() (strikeName string, result StrikeResult)
 
 type cleanupFunc func() error
 
+// hcLogger isn't working from the grpc package
 var logger hclog.Logger
+var loggerName string
 
 // cleanup is a function that is called when the program is interrupted
 // This default behavior will be overriden by SetupCloseHandler if used by a Raid
@@ -62,16 +64,22 @@ var cleanup = func() error {
 	return nil
 }
 
+// strikes is coming in as an empty object. Why?
 func Run(raidName string, availableStrikes map[string][]Strike, strikes Strikes) (err error) {
 	tacticsMultiple := fmt.Sprintf("raids.%s.tactics", raidName)
 	tacticSingular := fmt.Sprintf("raids.%s.tactic", raidName)
+	if tacticsMultiple == "" && tacticSingular == "" {
+		err = fmt.Errorf("no tactics were specified in the config for the raid '%s'", raidName)
+		logger.Error(err.Error())
+		return err
+	}
+
 	if viper.IsSet(tacticsMultiple) {
 		tactics := viper.GetStringSlice(tacticsMultiple)
 		for _, tactic := range tactics {
 			viper.Set(tacticSingular, tactic)
-			loggerName := fmt.Sprintf("%s-%s", raidName, tactic)
-			strikes.SetLogger(loggerName)
-			newErr := RunRaid(loggerName, getStrikes(raidName, availableStrikes))
+			loggerName = fmt.Sprintf("%s-%s", raidName, tactic)
+			newErr := RunRaid(getStrikes(raidName, availableStrikes))
 			if newErr != nil {
 				if err != nil {
 					err = fmt.Errorf("%s\n%s", err.Error(), newErr.Error())
@@ -82,15 +90,18 @@ func Run(raidName string, availableStrikes map[string][]Strike, strikes Strikes)
 		}
 		return err
 	}
-	loggerName := fmt.Sprintf("%s-%s", raidName, viper.GetString(tacticSingular))
-	strikes.SetLogger(loggerName)
-	return RunRaid(loggerName, getStrikes(raidName, availableStrikes)) // Return errors from strike executions
+	// panic(viper.GetString(tacticSingular)) - empty string
+	loggerName = fmt.Sprintf("%s-%s", raidName, viper.GetString(tacticSingular))
+	return RunRaid(getStrikes(raidName, availableStrikes)) // Return errors from strike executions
 }
 
 // GetStrikes returns a list of probe objects
 func getStrikes(raidName string, availableStrikes map[string][]Strike) []Strike {
 	tactic := viper.GetString(fmt.Sprintf("raids.%s.tactic", raidName))
+	logger = GetLogger(loggerName, false)
+	logger.Debug(fmt.Sprintf("Tactic Requested: %s", tactic))
 	strikes := availableStrikes[tactic]
+	logger.Debug(fmt.Sprintf("Strikes Found: %d", len(strikes)))
 	if len(strikes) == 0 {
 		message := fmt.Sprintf("No strikes were found for the provided strike set: %s", tactic)
 		logger.Error(message)
@@ -99,8 +110,8 @@ func getStrikes(raidName string, availableStrikes map[string][]Strike) []Strike 
 }
 
 // RunRaid is used to execute a list of strikes provided by a Raid and customize by user config
-func RunRaid(name string, strikes []Strike) error {
-	logger = GetLogger(name, false)
+func RunRaid(strikes []Strike) error {
+	logger = GetLogger(loggerName, false)
 	closeHandler()
 
 	var attempts int
@@ -108,7 +119,7 @@ func RunRaid(name string, strikes []Strike) error {
 	var failures int
 
 	raidResults := &RaidResults{
-		RaidName:  name,
+		RaidName:  loggerName,
 		StartTime: time.Now().String(),
 	}
 
@@ -116,7 +127,7 @@ func RunRaid(name string, strikes []Strike) error {
 		attempts += 1
 		name, strikeResult := strike()
 		if strikeResult.Message == "" {
-			strikeResult.Message = "Strike did not return a result, and may still be under construction."
+			strikeResult.Message = "Strike did not return a result, and may still be under development."
 		}
 		if strikeResult.Passed {
 			successes += 1
