@@ -53,21 +53,21 @@ func GetLogger(name string, jsonFormat bool) hclog.Logger {
 	return logger
 }
 
-// AddStrikeResult adds a StrikeResult to the RaidResults
-func (r *RaidResults) AddStrikeResult(name string, result StrikeResult) {
+// AddStrikeResult adds a StrikeResult to the Tactic
+func (r *Tactic) AddStrikeResult(name string, result StrikeResult) {
 	if r.StrikeResults == nil {
 		r.StrikeResults = make(map[string]StrikeResult)
 	}
 	r.StrikeResults[name] = result
 }
 
-// WriteStrikeResultsJSON unmarhals the RaidResults into a JSON file in the user's WriteDirectory
-func (r *RaidResults) WriteStrikeResultsJSON() error {
+// WriteStrikeResultsJSON unmarhals the Tactic into a JSON file in the user's WriteDirectory
+func (r *Tactic) WriteStrikeResultsJSON() error {
 	// Log an error if RaidName was not provided
-	if r.RaidName == "" {
+	if r.TacticName == "" {
 		return errors.New("RaidName was not provided before attempting to write results")
 	}
-	filepath := path.Join(viper.GetString("WriteDirectory"), r.RaidName, "results.json")
+	filepath := path.Join(viper.GetString("WriteDirectory"), r.TacticName, "results.json")
 
 	// Create log file and directory if it doesn't exist
 	if _, err := os.Stat(filepath); os.IsNotExist(err) {
@@ -97,13 +97,13 @@ func (r *RaidResults) WriteStrikeResultsJSON() error {
 	return nil
 }
 
-// WriteStrikeResultsYAML unmarhals the RaidResults into a YAML file in the user's WriteDirectory
-func (r *RaidResults) WriteStrikeResultsYAML() error {
+// WriteStrikeResultsYAML unmarhals the Tactic into a YAML file in the user's WriteDirectory
+func (r *Tactic) WriteStrikeResultsYAML() error {
 	// Log an error if RaidName was not provided
-	if r.RaidName == "" {
-		return errors.New("RaidName was not provided before attempting to write results")
+	if r.TacticName == "" {
+		panic("RaidName was not provided before attempting to write results")
 	}
-	filepath := path.Join(viper.GetString("WriteDirectory"), r.RaidName, "results.yaml")
+	filepath := path.Join(viper.GetString("WriteDirectory"), r.TacticName, "results.yaml")
 
 	// Create log file and directory if it doesn't exist
 	if _, err := os.Stat(filepath); os.IsNotExist(err) {
