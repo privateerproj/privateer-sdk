@@ -3,7 +3,6 @@ package raidengine
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"reflect"
@@ -14,8 +13,6 @@ import (
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/spf13/viper"
-
-	"github.com/privateerproj/privateer-sdk/utils"
 )
 
 // MovementResult is a struct that contains the results of a single step within a strike
@@ -45,41 +42,36 @@ type RaidResults struct {
 	StrikeResults map[string]StrikeResult // StrikeResults is a map of strike names to their results
 }
 
-type Strikes interface {
-	SetLogger(loggerName string)
+type Armory interface {
+	SetLogger(loggerName string) hclog.Logger
+	GetTactics() map[string][]Strike
 }
 
 type Strike func() (strikeName string, result StrikeResult)
 
 type cleanupFunc func() error
 
-// hcLogger isn't working from the grpc package
 var logger hclog.Logger
 var loggerName string
 
 // cleanup is a function that is called when the program is interrupted
-// This default behavior will be overriden by SetupCloseHandler if used by a Raid
 var cleanup = func() error {
-	logger.Debug("No custom cleanup specified by this raid")
+	logger.Debug("no custom cleanup specified by this raid, it is likely still under construction")
 	return nil
 }
 
-// strikes is coming in as an empty object. Why?
-func Run(raidName string, availableStrikes map[string][]Strike, strikes Strikes) (err error) {
+func Run(raidName string, strikes Armory) (err error) {
+	logger = strikes.SetLogger(raidName)
+
 	tacticsMultiple := fmt.Sprintf("raids.%s.tactics", raidName)
 	tacticSingular := fmt.Sprintf("raids.%s.tactic", raidName)
-	if tacticsMultiple == "" && tacticSingular == "" {
-		err = fmt.Errorf("no tactics were specified in the config for the raid '%s'", raidName)
-		logger.Error(err.Error())
-		return err
-	}
 
 	if viper.IsSet(tacticsMultiple) {
 		tactics := viper.GetStringSlice(tacticsMultiple)
 		for _, tactic := range tactics {
+			strikes.SetLogger(fmt.Sprintf("%s-%s", raidName, tactic))
 			viper.Set(tacticSingular, tactic)
-			loggerName = fmt.Sprintf("%s-%s", raidName, tactic)
-			newErr := RunRaid(getStrikes(raidName, availableStrikes))
+			newErr := RunRaid(getStrikes(raidName, strikes.GetTactics()))
 			if newErr != nil {
 				if err != nil {
 					err = fmt.Errorf("%s\n%s", err.Error(), newErr.Error())
@@ -89,19 +81,22 @@ func Run(raidName string, availableStrikes map[string][]Strike, strikes Strikes)
 			}
 		}
 		return err
+	} else if !viper.IsSet(tacticSingular) {
+		err = fmt.Errorf("no tactics were specified in the config for the raid '%s'", raidName)
+		logger.Error(err.Error())
+		return err
 	}
-	// panic(viper.GetString(tacticSingular)) - empty string
-	loggerName = fmt.Sprintf("%s-%s", raidName, viper.GetString(tacticSingular))
-	return RunRaid(getStrikes(raidName, availableStrikes)) // Return errors from strike executions
+
+	// In case both 'tactics' and 'tactic' are set in the config for some ungodly reason:
+	strikes.SetLogger(fmt.Sprintf("%s-%s", raidName, viper.GetString(tacticSingular)))
+	err = RunRaid(getStrikes(raidName, strikes.GetTactics()))
+	return err
 }
 
 // GetStrikes returns a list of probe objects
-func getStrikes(raidName string, availableStrikes map[string][]Strike) []Strike {
+func getStrikes(raidName string, tactics map[string][]Strike) []Strike {
 	tactic := viper.GetString(fmt.Sprintf("raids.%s.tactic", raidName))
-	logger = GetLogger(loggerName, false)
-	logger.Debug(fmt.Sprintf("Tactic Requested: %s", tactic))
-	strikes := availableStrikes[tactic]
-	logger.Debug(fmt.Sprintf("Strikes Found: %d", len(strikes)))
+	strikes := tactics[tactic]
 	if len(strikes) == 0 {
 		message := fmt.Sprintf("No strikes were found for the provided strike set: %s", tactic)
 		logger.Error(message)
@@ -111,7 +106,6 @@ func getStrikes(raidName string, availableStrikes map[string][]Strike) []Strike 
 
 // RunRaid is used to execute a list of strikes provided by a Raid and customize by user config
 func RunRaid(strikes []Strike) error {
-	logger = GetLogger(loggerName, false)
 	closeHandler()
 
 	var attempts int
@@ -165,7 +159,7 @@ func GetUniqueStrikes(strikePacks map[string][]Strike, policies ...string) (stri
 	}
 	for _, strike := range policies {
 		if _, ok := strikePacks[strike]; !ok {
-			log.Print(utils.ReformatError("Strike pack not found for policy: %s (Skipping)", strike))
+			logger.Error("Strike pack not found for policy: %s (Skipping)", strike)
 			continue
 		}
 		strikes = append(strikes, strikePacks[strike]...)
