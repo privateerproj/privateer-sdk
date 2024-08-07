@@ -3,7 +3,6 @@ package raidengine
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"reflect"
@@ -14,8 +13,6 @@ import (
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/spf13/viper"
-
-	"github.com/privateerproj/privateer-sdk/utils"
 )
 
 // MovementResult is a struct that contains the results of a single step within a strike
@@ -45,8 +42,9 @@ type RaidResults struct {
 	StrikeResults map[string]StrikeResult // StrikeResults is a map of strike names to their results
 }
 
-type Strikes interface {
-	SetLogger(loggerName string)
+type Armory interface {
+	SetLogger(loggerName string) hclog.Logger
+	GetTactics() map[string][]Strike
 }
 
 type Strike func() (strikeName string, result StrikeResult)
@@ -54,24 +52,26 @@ type Strike func() (strikeName string, result StrikeResult)
 type cleanupFunc func() error
 
 var logger hclog.Logger
+var loggerName string
 
 // cleanup is a function that is called when the program is interrupted
-// This default behavior will be overriden by SetupCloseHandler if used by a Raid
 var cleanup = func() error {
-	logger.Debug("No custom cleanup specified by this raid")
+	logger.Debug("no custom cleanup specified by this raid, it is likely still under construction")
 	return nil
 }
 
-func Run(raidName string, availableStrikes map[string][]Strike, strikes Strikes) (err error) {
+func Run(raidName string, strikes Armory) (err error) {
+	logger = strikes.SetLogger(raidName)
+
 	tacticsMultiple := fmt.Sprintf("raids.%s.tactics", raidName)
 	tacticSingular := fmt.Sprintf("raids.%s.tactic", raidName)
+
 	if viper.IsSet(tacticsMultiple) {
 		tactics := viper.GetStringSlice(tacticsMultiple)
 		for _, tactic := range tactics {
+			strikes.SetLogger(fmt.Sprintf("%s-%s", raidName, tactic))
 			viper.Set(tacticSingular, tactic)
-			loggerName := fmt.Sprintf("%s-%s", raidName, tactic)
-			strikes.SetLogger(loggerName)
-			newErr := RunRaid(loggerName, getStrikes(raidName, availableStrikes))
+			newErr := RunRaid(getStrikes(raidName, strikes.GetTactics()))
 			if newErr != nil {
 				if err != nil {
 					err = fmt.Errorf("%s\n%s", err.Error(), newErr.Error())
@@ -81,16 +81,22 @@ func Run(raidName string, availableStrikes map[string][]Strike, strikes Strikes)
 			}
 		}
 		return err
+	} else if !viper.IsSet(tacticSingular) {
+		err = fmt.Errorf("no tactics were specified in the config for the raid '%s'", raidName)
+		logger.Error(err.Error())
+		return err
 	}
-	loggerName := fmt.Sprintf("%s-%s", raidName, viper.GetString(tacticSingular))
-	strikes.SetLogger(loggerName)
-	return RunRaid(loggerName, getStrikes(raidName, availableStrikes)) // Return errors from strike executions
+
+	// In case both 'tactics' and 'tactic' are set in the config for some ungodly reason:
+	strikes.SetLogger(fmt.Sprintf("%s-%s", raidName, viper.GetString(tacticSingular)))
+	err = RunRaid(getStrikes(raidName, strikes.GetTactics()))
+	return err
 }
 
 // GetStrikes returns a list of probe objects
-func getStrikes(raidName string, availableStrikes map[string][]Strike) []Strike {
+func getStrikes(raidName string, tactics map[string][]Strike) []Strike {
 	tactic := viper.GetString(fmt.Sprintf("raids.%s.tactic", raidName))
-	strikes := availableStrikes[tactic]
+	strikes := tactics[tactic]
 	if len(strikes) == 0 {
 		message := fmt.Sprintf("No strikes were found for the provided strike set: %s", tactic)
 		logger.Error(message)
@@ -99,8 +105,7 @@ func getStrikes(raidName string, availableStrikes map[string][]Strike) []Strike 
 }
 
 // RunRaid is used to execute a list of strikes provided by a Raid and customize by user config
-func RunRaid(name string, strikes []Strike) error {
-	logger = GetLogger(name, false)
+func RunRaid(strikes []Strike) error {
 	closeHandler()
 
 	var attempts int
@@ -108,7 +113,7 @@ func RunRaid(name string, strikes []Strike) error {
 	var failures int
 
 	raidResults := &RaidResults{
-		RaidName:  name,
+		RaidName:  loggerName,
 		StartTime: time.Now().String(),
 	}
 
@@ -116,7 +121,7 @@ func RunRaid(name string, strikes []Strike) error {
 		attempts += 1
 		name, strikeResult := strike()
 		if strikeResult.Message == "" {
-			strikeResult.Message = "Strike did not return a result, and may still be under construction."
+			strikeResult.Message = "Strike did not return a result, and may still be under development."
 		}
 		if strikeResult.Passed {
 			successes += 1
@@ -154,7 +159,7 @@ func GetUniqueStrikes(strikePacks map[string][]Strike, policies ...string) (stri
 	}
 	for _, strike := range policies {
 		if _, ok := strikePacks[strike]; !ok {
-			log.Print(utils.ReformatError("Strike pack not found for policy: %s (Skipping)", strike))
+			logger.Error("Strike pack not found for policy: %s (Skipping)", strike)
 			continue
 		}
 		strikes = append(strikes, strikePacks[strike]...)

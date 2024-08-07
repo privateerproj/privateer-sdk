@@ -1,10 +1,13 @@
 package command
 
+// Wontfix: Logging in this file has unexpected behavior related to the WriteDirectory and loglevel values.
+
 import (
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -31,6 +34,7 @@ func SetBase(cmd *cobra.Command) {
 func InitializeConfig() {
 
 	viper.SetDefault("loglevel", "Error")
+	viper.SetDefault("WriteDirectory", defaultWritePath())
 	viper.SetConfigFile(viper.GetString("config"))
 	setLogLevelFromFlag()
 	viper.AutomaticEnv()
@@ -38,9 +42,6 @@ func InitializeConfig() {
 	if err := viper.ReadInConfig(); err != nil {
 		log.Print(err.Error())
 	}
-
-	// TODO: Logging at this location has unexpected behavior related to the WriteDirectory and loglevel
-	// raidengine.GetLogger("overview", false).Debug("Lauching Privateer with loglevel '%s' and config file: %s", loglevel, viper.GetString("config"))
 }
 
 // setLogLevelFromFlag sets the log level based on the verbose and silent flags
@@ -61,4 +62,14 @@ func defaultConfigPath() string {
 		return ""
 	}
 	return filepath.Join(workDir, "config.yml")
+}
+
+func defaultWritePath() string {
+	home, err := os.UserHomeDir()
+	datetime := time.Now().Local().Format(time.RFC3339)
+	dirName := strings.Replace(datetime, ":", "", -1)
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, "privateer", "logs", dirName)
 }
