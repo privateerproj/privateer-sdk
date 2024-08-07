@@ -7,7 +7,6 @@ import (
 	"os/signal"
 	"reflect"
 	"runtime"
-	"strings"
 	"syscall"
 	"time"
 
@@ -34,9 +33,9 @@ type StrikeResult struct {
 	Movements   map[string]MovementResult // Movements is a list of functions that were executed during the test
 }
 
-// RaidResults is a struct that contains the results of all strikes, orgainzed by name
-type RaidResults struct {
-	RaidName      string                  // RaidName is the name of the raid
+// Tactic is a struct that contains the results of all strikes, orgainzed by name
+type Tactic struct {
+	TacticName    string                  // TacticName is the name of the Tactic
 	StartTime     string                  // StartTime is the time the raid started
 	EndTime       string                  // EndTime is the time the raid ended
 	StrikeResults map[string]StrikeResult // StrikeResults is a map of strike names to their results
@@ -52,7 +51,7 @@ type Strike func() (strikeName string, result StrikeResult)
 type cleanupFunc func() error
 
 var logger hclog.Logger
-var loggerName string
+var loggerName string // This is used for setting up the CLI logger as well as initializing the output logs
 
 // cleanup is a function that is called when the program is interrupted
 var cleanup = func() error {
@@ -69,9 +68,10 @@ func Run(raidName string, strikes Armory) (err error) {
 	if viper.IsSet(tacticsMultiple) {
 		tactics := viper.GetStringSlice(tacticsMultiple)
 		for _, tactic := range tactics {
-			strikes.SetLogger(fmt.Sprintf("%s-%s", raidName, tactic))
+			loggerName = fmt.Sprintf("%s-%s", raidName, tactic)
+			strikes.SetLogger(loggerName)
 			viper.Set(tacticSingular, tactic)
-			newErr := RunRaid(getStrikes(raidName, strikes.GetTactics()))
+			newErr := ExecuteTactic(getStrikes(raidName, strikes.GetTactics()))
 			if newErr != nil {
 				if err != nil {
 					err = fmt.Errorf("%s\n%s", err.Error(), newErr.Error())
@@ -88,8 +88,9 @@ func Run(raidName string, strikes Armory) (err error) {
 	}
 
 	// In case both 'tactics' and 'tactic' are set in the config for some ungodly reason:
-	strikes.SetLogger(fmt.Sprintf("%s-%s", raidName, viper.GetString(tacticSingular)))
-	err = RunRaid(getStrikes(raidName, strikes.GetTactics()))
+	loggerName := fmt.Sprintf("%s-%s", raidName, viper.GetString(tacticSingular))
+	strikes.SetLogger(loggerName)
+	err = ExecuteTactic(getStrikes(raidName, strikes.GetTactics()))
 	return err
 }
 
@@ -104,17 +105,17 @@ func getStrikes(raidName string, tactics map[string][]Strike) []Strike {
 	return strikes
 }
 
-// RunRaid is used to execute a list of strikes provided by a Raid and customize by user config
-func RunRaid(strikes []Strike) error {
+// ExecuteTactic is used to execute a list of strikes provided by a Raid and customized by user config
+func ExecuteTactic(strikes []Strike) error {
 	closeHandler()
 
 	var attempts int
 	var successes int
 	var failures int
 
-	raidResults := &RaidResults{
-		RaidName:  loggerName,
-		StartTime: time.Now().String(),
+	tactic := &Tactic{
+		TacticName: loggerName,
+		StartTime:  time.Now().String(),
 	}
 
 	for _, strike := range strikes {
@@ -131,40 +132,21 @@ func RunRaid(strikes []Strike) error {
 			logger.Error(strikeResult.Message)
 		}
 		logger.Info(fmt.Sprintf("%s result:", strikeResult.Message))
-		raidResults.AddStrikeResult(name, strikeResult)
+		tactic.AddStrikeResult(name, strikeResult)
 	}
-	raidResults.EndTime = time.Now().String()
-	raidResults.WriteStrikeResultsJSON()
-	raidResults.WriteStrikeResultsYAML()
+	tactic.EndTime = time.Now().String()
+	tactic.WriteStrikeResultsJSON()
+	tactic.WriteStrikeResultsYAML()
 	cleanup()
+
+	// TODO: This message gets daisy-chained with other raid results... this isn't a good output for chaining like that.
 	output := fmt.Sprintf(
-		"%v/%v strikes succeeded. View the output logs for more details.", successes, attempts)
+		"[%s: %v/%v strikes succeeded]", tactic.TacticName, successes, attempts)
 	logger.Info(output)
 	if failures > 0 {
 		return errors.New(output)
 	}
 	return nil
-}
-
-// GetUniqueStrikes returns a list of unique strikes based on the provided policies
-// Strikes listed are unique based on their function address
-// Not currently in use. Use this when strike policies are configurable.
-func GetUniqueStrikes(strikePacks map[string][]Strike, policies ...string) (strikes []Strike) {
-	logger.Debug(fmt.Sprintf(
-		"Policies Requested: %s", strings.Join(policies, ",")))
-
-	if len(policies) == 1 {
-		// If set via environment variables, this value may come in as a comma delineated string
-		policies = strings.Split(policies[0], ",")
-	}
-	for _, strike := range policies {
-		if _, ok := strikePacks[strike]; !ok {
-			logger.Error("Strike pack not found for policy: %s (Skipping)", strike)
-			continue
-		}
-		strikes = append(strikes, strikePacks[strike]...)
-	}
-	return uniqueStrikes(strikes)
 }
 
 // uniqueStrikes formats the list of unique strikes
