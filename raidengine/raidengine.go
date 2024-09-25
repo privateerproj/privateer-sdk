@@ -167,6 +167,25 @@ func getFunctionAddress(i Strike) string {
 	return runtime.FuncForPC(reflect.ValueOf(i).Pointer()).Name()
 }
 
+// RunMovement is a helper function to run a movement function and update the result
+func ExecuteMovement(strikeResult *raidengine.StrikeResult, movementFunc func() raidengine.MovementResult) {
+	// get name of movementFunc as string
+	movementFuncName := runtime.FuncForPC(reflect.ValueOf(movementFunc).Pointer()).Name()
+	// get the last part of the name, which is the actual function name
+	movementName := strings.Split(movementFuncName, ".")[len(strings.Split(movementFuncName, "."))-1]
+
+	movementResult := movementFunc()
+
+	// update the parent strike result with the movement result
+	strikeResult.Movements[movementName] = movementResult
+	if !movementResult.Passed {
+		strikeResult.Message = movementResult.Message
+		return
+	}
+	strikeResult.Passed = true
+	return
+}
+
 // SetupCloseHandler sets the cleanup function to be called when the program is interrupted
 func SetupCloseHandler(customFunction cleanupFunc) {
 	cleanup = customFunction
