@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"syscall"
 	"time"
+	"strings"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/spf13/viper"
@@ -168,7 +169,7 @@ func getFunctionAddress(i Strike) string {
 }
 
 // RunMovement is a helper function to run a movement function and update the result
-func ExecuteMovement(strikeResult *raidengine.StrikeResult, movementFunc func() raidengine.MovementResult) {
+func ExecuteMovement(strikeResult *StrikeResult, movementFunc func() MovementResult) {
 	// get name of movementFunc as string
 	movementFuncName := runtime.FuncForPC(reflect.ValueOf(movementFunc).Pointer()).Name()
 	// get the last part of the name, which is the actual function name
