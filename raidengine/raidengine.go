@@ -7,9 +7,9 @@ import (
 	"os/signal"
 	"reflect"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
-	"strings"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/spf13/viper"
@@ -179,12 +179,8 @@ func ExecuteMovement(strikeResult *StrikeResult, movementFunc func() MovementRes
 
 	// update the parent strike result with the movement result
 	strikeResult.Movements[movementName] = movementResult
-	if !movementResult.Passed {
-		strikeResult.Message = movementResult.Message
-		return
-	}
-	strikeResult.Passed = true
-	return
+	strikeResult.Passed = movementResult.Passed
+	strikeResult.Message = movementResult.Message
 }
 
 // SetupCloseHandler sets the cleanup function to be called when the program is interrupted
