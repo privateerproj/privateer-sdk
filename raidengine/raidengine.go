@@ -45,6 +45,7 @@ type Tactic struct {
 type Armory interface {
 	SetLogger(loggerName string) hclog.Logger
 	GetTactics() map[string][]Strike
+	Initialize() error // For any custom startup logic, such as bulk config handling
 }
 
 type Strike func() (strikeName string, result StrikeResult)
@@ -60,8 +61,13 @@ var cleanup = func() error {
 	return nil
 }
 
-func Run(raidName string, strikes Armory) (err error) {
-	logger = strikes.SetLogger(raidName)
+func Run(raidName string, armory Armory) (err error) {
+	logger = armory.SetLogger(raidName)
+	err = armory.Initialize()
+	if err != nil {
+		logger.Error("Error initializing the raid armory: %v", err.Error())
+		return err
+	}
 
 	tacticsMultiple := fmt.Sprintf("raids.%s.tactics", raidName)
 	tacticSingular := fmt.Sprintf("raids.%s.tactic", raidName)
@@ -70,9 +76,9 @@ func Run(raidName string, strikes Armory) (err error) {
 		tactics := viper.GetStringSlice(tacticsMultiple)
 		for _, tactic := range tactics {
 			loggerName = fmt.Sprintf("%s-%s", raidName, tactic)
-			strikes.SetLogger(loggerName)
+			armory.SetLogger(loggerName)
 			viper.Set(tacticSingular, tactic)
-			newErr := ExecuteTactic(getStrikes(raidName, strikes.GetTactics()))
+			newErr := ExecuteTactic(getStrikes(raidName, armory.GetTactics()))
 			if newErr != nil {
 				if err != nil {
 					err = fmt.Errorf("%s\n%s", err.Error(), newErr.Error())
@@ -90,8 +96,8 @@ func Run(raidName string, strikes Armory) (err error) {
 
 	// In case both 'tactics' and 'tactic' are set in the config for some ungodly reason:
 	loggerName := fmt.Sprintf("%s-%s", raidName, viper.GetString(tacticSingular))
-	strikes.SetLogger(loggerName)
-	err = ExecuteTactic(getStrikes(raidName, strikes.GetTactics()))
+	armory.SetLogger(loggerName)
+	err = ExecuteTactic(getStrikes(raidName, armory.GetTactics()))
 	return err
 }
 
