@@ -138,7 +138,6 @@ func ExecuteTactic(strikes []Strike) error {
 			failures += 1
 			logger.Error(strikeResult.Message)
 		}
-		logger.Info(fmt.Sprintf("%s result:", strikeResult.Message))
 		tactic.AddStrikeResult(name, strikeResult)
 	}
 	tactic.EndTime = time.Now().String()
