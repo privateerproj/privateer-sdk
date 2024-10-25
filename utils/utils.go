@@ -129,11 +129,13 @@ func GetExecutableName() string {
 
 func GetRequiredVariable(variableName string, result *raidengine.MovementResult) (value interface{}) {
 	value = viper.Get(variableName)
-	if value == "" || value == nil {
-		result.Passed = false
-		result.Message = fmt.Sprintf("Required variable does not have a value: %s", variableName)
-	} else {
-		result.Passed = true
+	if result != nil {
+		if value == "" || value == nil {
+			result.Passed = false
+			result.Message = fmt.Sprintf("Required variable does not have a value: %s", variableName)
+		} else {
+			result.Passed = true
+		}
 	}
 	return
 }
