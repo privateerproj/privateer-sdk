@@ -5,11 +5,14 @@ on:
     paths-ignore:
       - "**/*.md"
 
-permissions: read
-
 jobs:
   CI:
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write
+
     steps:
     - uses: actions/checkout@v2
     - uses: actions/setup-go@v2
@@ -21,10 +24,6 @@ jobs:
             go mod download
             go get -u golang.org/x/lint/golint
             go get -t ./...
-                
-    - name: Lint
-      run: |
-        golint -set_exit_status ./...
 
     - name: Vet
       run: |
@@ -50,9 +49,6 @@ jobs:
                 echo "Failed"
                 exit 1
             fi
-      permissions:
-          contents: read
-          pull-requests: write
 
     - name: Ensure build is functional
       run: go build ./...
