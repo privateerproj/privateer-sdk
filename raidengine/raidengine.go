@@ -182,10 +182,12 @@ func ExecuteMovement(strikeResult *StrikeResult, movementFunc func() MovementRes
 
 	movementResult := movementFunc()
 
-	// update the parent strike result with the movement result
+	// if this is the first movement or previous movements have passed, accept any results
+	if len(strikeResult.Movements) == 0 || strikeResult.Passed {
+		strikeResult.Passed = movementResult.Passed
+		strikeResult.Message = movementResult.Message
+	}
 	strikeResult.Movements[movementName] = movementResult
-	strikeResult.Passed = movementResult.Passed
-	strikeResult.Message = movementResult.Message
 }
 
 // SetupCloseHandler sets the cleanup function to be called when the program is interrupted
