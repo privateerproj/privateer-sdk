@@ -173,7 +173,7 @@ func getFunctionAddress(i Strike) string {
 	return runtime.FuncForPC(reflect.ValueOf(i).Pointer()).Name()
 }
 
-// RunMovement is a helper function to run a movement function and update the result
+// ExecuteMovement is a helper function to run a movement function and update the result
 func ExecuteMovement(strikeResult *StrikeResult, movementFunc func() MovementResult) {
 	// get name of movementFunc as string
 	movementFuncName := runtime.FuncForPC(reflect.ValueOf(movementFunc).Pointer()).Name()
@@ -188,6 +188,15 @@ func ExecuteMovement(strikeResult *StrikeResult, movementFunc func() MovementRes
 		strikeResult.Message = movementResult.Message
 	}
 	strikeResult.Movements[movementName] = movementResult
+}
+
+// ExecuteInvasiveMovement is a helper function to run a movement function and update the result
+func ExecuteInvasiveMovement(strikeResult *StrikeResult, movementFunc func() MovementResult) {
+	if viper.GetBool("invasive") {
+		ExecuteMovement(strikeResult, movementFunc)
+	} else {
+		logger.Trace("Invasive movements are disabled, skipping movement")
+	}
 }
 
 // SetupCloseHandler sets the cleanup function to be called when the program is interrupted
