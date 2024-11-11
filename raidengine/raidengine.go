@@ -193,6 +193,7 @@ func ExecuteMovement(strikeResult *StrikeResult, movementFunc func() MovementRes
 // ExecuteInvasiveMovement is a helper function to run a movement function and update the result
 func ExecuteInvasiveMovement(strikeResult *StrikeResult, movementFunc func() MovementResult) {
 	if viper.GetBool("invasive") {
+		// Allow movement to be executed
 		ExecuteMovement(strikeResult, movementFunc)
 	} else {
 		logger.Trace("Invasive movements are disabled, skipping movement")
