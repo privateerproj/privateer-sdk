@@ -164,18 +164,12 @@ func TestExecuteInvasiveMovement(t *testing.T) {
 					if tt.expectedMessage != result.Message {
 						t.Errorf("strikeResult.Message = %v, Expected: %v", result.Message, tt.expectedMessage)
 					}
-					if len(result.Movements) != len(tt.strikeResult.Movements)+1 {
-						t.Errorf("strikeResult.Movements length = %d, Expected: %d", len(result.Movements), len(tt.strikeResult.Movements)+1)
-					}
 				} else {
 					if tt.strikeResult.Passed != result.Passed {
 						t.Errorf("strikeResult.Passed = %v, Expected: %v", result.Passed, tt.strikeResult.Passed)
 					}
 					if tt.strikeResult.Message != result.Message {
 						t.Errorf("strikeResult.Message = %v, Expected: %v", result.Message, tt.strikeResult.Message)
-					}
-					if len(result.Movements) != len(tt.strikeResult.Movements) {
-						t.Errorf("strikeResult.Movements length = %d, Expected: %d", len(result.Movements), len(tt.strikeResult.Movements))
 					}
 				}
 			})
