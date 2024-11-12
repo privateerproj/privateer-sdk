@@ -122,7 +122,7 @@ var executeMovementTests = []struct {
 func TestExecuteMovement(t *testing.T) {
 	for _, tt := range executeMovementTests {
 		t.Run(tt.testName, func(t *testing.T) {
-			ExecuteMovement(tt.strikeResult, func() MovementResult {
+			tt.strikeResult.ExecuteMovement(func() MovementResult {
 				return tt.movementResult
 			})
 
@@ -153,7 +153,7 @@ func TestExecuteInvasiveMovement(t *testing.T) {
 				viper.Set("invasive", invasive)
 
 				// Simulate a movement function execution
-				ExecuteInvasiveMovement(result, func() MovementResult {
+				result.ExecuteInvasiveMovement(func() MovementResult {
 					return tt.movementResult
 				})
 

@@ -174,7 +174,7 @@ func getFunctionAddress(i Strike) string {
 }
 
 // ExecuteMovement is a helper function to run a movement function and update the result
-func ExecuteMovement(strikeResult *StrikeResult, movementFunc func() MovementResult) {
+func (s *StrikeResult) ExecuteMovement(movementFunc func() MovementResult) {
 	// get name of movementFunc as string
 	movementFuncName := runtime.FuncForPC(reflect.ValueOf(movementFunc).Pointer()).Name()
 	// get the last part of the name, which is the actual function name
@@ -183,18 +183,17 @@ func ExecuteMovement(strikeResult *StrikeResult, movementFunc func() MovementRes
 	movementResult := movementFunc()
 
 	// if this is the first movement or previous movements have passed, accept any results
-	if len(strikeResult.Movements) == 0 || strikeResult.Passed {
-		strikeResult.Passed = movementResult.Passed
-		strikeResult.Message = movementResult.Message
+	if len(s.Movements) == 0 || s.Passed {
+		s.Passed = movementResult.Passed
+		s.Message = movementResult.Message
 	}
-	strikeResult.Movements[movementName] = movementResult
+	s.Movements[movementName] = movementResult
 }
 
 // ExecuteInvasiveMovement is a helper function to run a movement function and update the result
-func ExecuteInvasiveMovement(strikeResult *StrikeResult, movementFunc func() MovementResult) {
+func (s *StrikeResult) ExecuteInvasiveMovement(movementFunc func() MovementResult) {
 	if viper.GetBool("invasive") {
-		// Allow movement to be executed
-		ExecuteMovement(strikeResult, movementFunc)
+		s.ExecuteMovement(movementFunc)
 	} else {
 		logger.Trace("Invasive movements are disabled, skipping movement")
 	}
