@@ -5,9 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"reflect"
-	"runtime"
-	"strings"
 	"syscall"
 	"time"
 
@@ -24,16 +21,6 @@ type MovementResult struct {
 	Value       interface{} // Value is the object that was returned during the movement
 }
 
-// StrikeResult is a struct that contains the results of a check for a single control
-type StrikeResult struct {
-	Passed      bool                      // Passed is true if the test passed
-	Description string                    // Description is a human-readable description of the test
-	Message     string                    // Message is a human-readable description of the test result
-	DocsURL     string                    // DocsURL is a link to the documentation for the test
-	ControlID   string                    // ControlID is the ID of the control that the test is validating
-	Movements   map[string]MovementResult // Movements is a list of functions that were executed during the test
-}
-
 // Tactic is a struct that contains the results of all strikes, orgainzed by name
 type Tactic struct {
 	TacticName    string                  // TacticName is the name of the Tactic
@@ -47,8 +34,6 @@ type Armory interface {
 	GetTactics() map[string][]Strike
 	Initialize() error // For any custom startup logic, such as bulk config handling
 }
-
-type Strike func() (strikeName string, result StrikeResult)
 
 type cleanupFunc func() error
 
@@ -101,17 +86,6 @@ func Run(raidName string, armory Armory) (err error) {
 	return err
 }
 
-// GetStrikes returns a list of probe objects
-func getStrikes(raidName string, tactics map[string][]Strike) []Strike {
-	tactic := viper.GetString(fmt.Sprintf("raids.%s.tactic", raidName))
-	strikes := tactics[tactic]
-	if len(strikes) == 0 {
-		message := fmt.Sprintf("No strikes were found for the provided strike set: %s", tactic)
-		logger.Error(message)
-	}
-	return strikes
-}
-
 // ExecuteTactic is used to execute a list of strikes provided by a Raid and customized by user config
 func ExecuteTactic(strikes []Strike) error {
 	closeHandler()
@@ -153,51 +127,6 @@ func ExecuteTactic(strikes []Strike) error {
 		return errors.New(output)
 	}
 	return nil
-}
-
-// uniqueStrikes formats the list of unique strikes
-func uniqueStrikes(allStrikes []Strike) (strikes []Strike) {
-	used := make(map[string]bool)
-	for _, strike := range allStrikes {
-		name := getFunctionAddress(strike)
-		if _, ok := used[name]; !ok {
-			used[name] = true
-			strikes = append(strikes, strike)
-		}
-	}
-	return
-}
-
-// getFunctionAddress returns the address of a function as a string
-func getFunctionAddress(i Strike) string {
-	return runtime.FuncForPC(reflect.ValueOf(i).Pointer()).Name()
-}
-
-// ExecuteMovement is a helper function to run a movement function and update the result
-func ExecuteMovement(strikeResult *StrikeResult, movementFunc func() MovementResult) {
-	// get name of movementFunc as string
-	movementFuncName := runtime.FuncForPC(reflect.ValueOf(movementFunc).Pointer()).Name()
-	// get the last part of the name, which is the actual function name
-	movementName := strings.Split(movementFuncName, ".")[len(strings.Split(movementFuncName, "."))-1]
-
-	movementResult := movementFunc()
-
-	// if this is the first movement or previous movements have passed, accept any results
-	if len(strikeResult.Movements) == 0 || strikeResult.Passed {
-		strikeResult.Passed = movementResult.Passed
-		strikeResult.Message = movementResult.Message
-	}
-	strikeResult.Movements[movementName] = movementResult
-}
-
-// ExecuteInvasiveMovement is a helper function to run a movement function and update the result
-func ExecuteInvasiveMovement(strikeResult *StrikeResult, movementFunc func() MovementResult) {
-	if viper.GetBool("invasive") {
-		// Allow movement to be executed
-		ExecuteMovement(strikeResult, movementFunc)
-	} else {
-		logger.Trace("Invasive movements are disabled, skipping movement")
-	}
 }
 
 // SetupCloseHandler sets the cleanup function to be called when the program is interrupted
