@@ -47,7 +47,7 @@ var changes = []struct {
 	{
 		testName: "No revert function specified (B)",
 		change: &Change{
-			RevertFunc: nilFunc,
+			ApplyFunc: nilFunc,
 			Applied:    false,
 			Reverted:   true,
 		},
