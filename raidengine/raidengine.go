@@ -83,13 +83,5 @@ func runTactic(raidName string, tacticName string, armory Armory) (err error) {
 		strikes:    armory.GetTactics()[tacticName],
 	}
 
-	newErr := tactic.Execute()
-	if newErr != nil {
-		if err != nil {
-			err = fmt.Errorf("%s\n%s", err.Error(), newErr.Error())
-		} else {
-			err = newErr
-		}
-	}
-	return
+	return tactic.Execute()
 }
