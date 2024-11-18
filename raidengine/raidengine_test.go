@@ -80,7 +80,7 @@ var testData = []struct {
 		testName:   "A test in the tactic fails",
 		tacticName: "failTactic",
 		armory:     &testArmory{},
-		runErr:     "[A_test_in_the_tactic_fails-failTactic: 0/1 strikes succeeded]",
+		runErr:     "A_test_in_the_tactic_fails-failTactic: 0/1 strikes succeeded",
 	},
 }
 
