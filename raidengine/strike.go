@@ -1,7 +1,6 @@
 package raidengine
 
 import (
-	"fmt"
 	"reflect"
 	"runtime"
 	"strings"
@@ -45,17 +44,6 @@ func (s *StrikeResult) ExecuteInvasiveMovement(movementFunc func() MovementResul
 	} else {
 		logger.Trace("Invasive movements are disabled, skipping movement")
 	}
-}
-
-// GetStrikes returns a list of strike objects
-func getStrikes(raidName string, tactics map[string][]Strike) []Strike {
-	tactic := viper.GetString(fmt.Sprintf("raids.%s.tactic", raidName))
-	strikes := tactics[tactic]
-	if len(strikes) == 0 {
-		message := fmt.Sprintf("No strikes were found for the provided strike set: %s", tactic)
-		logger.Error(message)
-	}
-	return strikes
 }
 
 // uniqueStrikes formats the list of unique strikes
