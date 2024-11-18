@@ -5,3 +5,4 @@ __debug_bin
 
 # Test
 coverage.out
+**/tmp

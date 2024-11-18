@@ -65,7 +65,7 @@ func (r *Tactic) AddStrikeResult(name string, result StrikeResult) {
 func (r *Tactic) WriteStrikeResultsJSON() error {
 	// Log an error if RaidName was not provided
 	if r.TacticName == "" {
-		return errors.New("RaidName was not provided before attempting to write results")
+		return errors.New("Tactic name was not provided before attempting to write results")
 	}
 	filepath := path.Join(viper.GetString("WriteDirectory"), r.TacticName, "results.json")
 
@@ -101,7 +101,7 @@ func (r *Tactic) WriteStrikeResultsJSON() error {
 func (r *Tactic) WriteStrikeResultsYAML() error {
 	// Log an error if RaidName was not provided
 	if r.TacticName == "" {
-		panic("RaidName was not provided before attempting to write results")
+		panic("Tactic name was not provided before attempting to write results")
 	}
 	filepath := path.Join(viper.GetString("WriteDirectory"), r.TacticName, "results.yaml")
 

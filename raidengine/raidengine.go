@@ -1,12 +1,7 @@
 package raidengine
 
 import (
-	"errors"
 	"fmt"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/spf13/viper"
@@ -21,31 +16,26 @@ type MovementResult struct {
 	Value       interface{} // Value is the object that was returned during the movement
 }
 
-// Tactic is a struct that contains the results of all strikes, orgainzed by name
-type Tactic struct {
-	TacticName    string                  // TacticName is the name of the Tactic
-	StartTime     string                  // StartTime is the time the raid started
-	EndTime       string                  // EndTime is the time the raid ended
-	StrikeResults map[string]StrikeResult // StrikeResults is a map of strike names to their results
-}
-
 type Armory interface {
 	SetLogger(loggerName string) hclog.Logger
 	GetTactics() map[string][]Strike
 	Initialize() error // For any custom startup logic, such as bulk config handling
 }
 
-type cleanupFunc func() error
-
 var logger hclog.Logger
 var loggerName string // This is used for setting up the CLI logger as well as initializing the output logs
 
-// cleanup is a function that is called when the program is interrupted
-var cleanup = func() error {
-	logger.Debug("no custom cleanup specified by this raid, it is likely still under construction")
-	return nil
-}
-
+// Run executes the raid with the given name using the provided armory.
+// It initializes the armory and then executes the tactics specified in the configuration.
+// If multiple tactics are specified, it runs each tactic in sequence.
+// If an error occurs during initialization or execution of any tactic, it logs the error and returns it.
+//
+// Parameters:
+//   - raidName: The name of the raid to execute.
+//   - armory: The armory to use for the raid.
+//
+// Returns:
+//   - err: An error if any occurred during initialization or execution of the raid.
 func Run(raidName string, armory Armory) (err error) {
 	logger = armory.SetLogger(raidName)
 	err = armory.Initialize()
@@ -53,104 +43,53 @@ func Run(raidName string, armory Armory) (err error) {
 		logger.Error("Error initializing the raid armory: %v", err.Error())
 		return err
 	}
+	tacticNames := viper.GetStringSlice(fmt.Sprintf("raids.%s.tactics", raidName))
+	tacticName := viper.GetString(fmt.Sprintf("raids.%s.tactics", raidName))
 
-	tacticsMultiple := fmt.Sprintf("raids.%s.tactics", raidName)
-	tacticSingular := fmt.Sprintf("raids.%s.tactic", raidName)
-
-	if viper.IsSet(tacticsMultiple) {
-		tactics := viper.GetStringSlice(tacticsMultiple)
-		for _, tactic := range tactics {
-			loggerName = fmt.Sprintf("%s-%s", raidName, tactic)
-			armory.SetLogger(loggerName)
-			viper.Set(tacticSingular, tactic)
-			newErr := ExecuteTactic(getStrikes(raidName, armory.GetTactics()))
-			if newErr != nil {
-				if err != nil {
-					err = fmt.Errorf("%s\n%s", err.Error(), newErr.Error())
-				} else {
-					err = newErr
-				}
-			}
+	if len(tacticNames) > 0 {
+		// Multiple tactics are specified
+		for _, tacticName := range tacticNames {
+			runTactic(raidName, tacticName, armory)
 		}
 		return err
-	} else if !viper.IsSet(tacticSingular) {
+	} else if tacticName != "" {
+		// Single tactic is specified, and multiple are NOT specified
+		err = runTactic(raidName, tacticName, armory)
+	} else {
 		err = fmt.Errorf("no tactics were specified in the config for the raid '%s'", raidName)
 		logger.Error(err.Error())
-		return err
 	}
+	return
+}
 
-	// In case both 'tactics' and 'tactic' are set in the config for some ungodly reason:
-	loggerName := fmt.Sprintf("%s-%s", raidName, viper.GetString(tacticSingular))
+// runTactic sets the tactic for a given raid, configures the logger, and executes the tactic.
+// If an error occurs during execution, it is returned.
+//
+// Parameters:
+//
+//	raidName: The name of the raid.
+//	tacticName: The name of the tactic to be executed.
+//	armory: The Armory instance used to set the logger and retrieve tactics.
+//
+// Returns:
+//
+//	err: An error if the tactic execution fails, otherwise nil.
+func runTactic(raidName string, tacticName string, armory Armory) (err error) {
+	loggerName = fmt.Sprintf("%s-%s", raidName, tacticName)
 	armory.SetLogger(loggerName)
-	err = ExecuteTactic(getStrikes(raidName, armory.GetTactics()))
-	return err
-}
 
-// ExecuteTactic is used to execute a list of strikes provided by a Raid and customized by user config
-func ExecuteTactic(strikes []Strike) error {
-	closeHandler()
-
-	var attempts int
-	var successes int
-	var failures int
-
-	tactic := &Tactic{
+	tactic := Tactic{
 		TacticName: loggerName,
-		StartTime:  time.Now().String(),
+		strikes:    armory.GetTactics()[tacticName],
 	}
 
-	for _, strike := range strikes {
-		attempts += 1
-		name, strikeResult := strike()
-		if strikeResult.Message == "" {
-			strikeResult.Message = "Strike did not return a result, and may still be under development."
-		}
-		if strikeResult.Passed {
-			successes += 1
-			logger.Info(strikeResult.Message)
+	newErr := tactic.Execute()
+	if newErr != nil {
+		if err != nil {
+			err = fmt.Errorf("%s\n%s", err.Error(), newErr.Error())
 		} else {
-			failures += 1
-			logger.Error(strikeResult.Message)
+			err = newErr
 		}
-		tactic.AddStrikeResult(name, strikeResult)
 	}
-	tactic.EndTime = time.Now().String()
-	tactic.WriteStrikeResultsJSON()
-	tactic.WriteStrikeResultsYAML()
-	cleanup()
-
-	// TODO: This message gets daisy-chained with other raid results... this isn't a good output for chaining like that.
-	output := fmt.Sprintf(
-		"[%s: %v/%v strikes succeeded]", tactic.TacticName, successes, attempts)
-	logger.Info(output)
-	if failures > 0 {
-		return errors.New(output)
-	}
-	return nil
-}
-
-// SetupCloseHandler sets the cleanup function to be called when the program is interrupted
-func SetupCloseHandler(customFunction cleanupFunc) {
-	cleanup = customFunction
-}
-
-// closeHandler creates a 'listener' on a new goroutine which will notify the
-// program if it receives an interrupt from the OS. We then handle this by calling
-// our clean up procedure and exiting the program.
-// Ref: https://golangcode.com/handle-ctrl-c-exit-in-terminal/
-func closeHandler() {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-c
-		logger.Error("Execution aborted - %v", "SIGTERM")
-		if cleanup != nil {
-			if err := cleanup(); err != nil {
-				logger.Error("Cleanup returned an error, and may not be complete: %v", err.Error())
-			}
-		} else {
-			logger.Trace("No custom cleanup was provided by the terminated Raid.")
-		}
-		os.Exit(0)
-	}()
+	return
 }
