@@ -12,8 +12,8 @@ var changes = []struct {
 	{
 		testName: "Change not yet applied",
 		change: &Change{
-			ApplyFunc:  nilFunc,
-			RevertFunc: nilFunc,
+			applyFunc:  nilFunc,
+			revertFunc: nilFunc,
 			Applied:    false,
 			Reverted:   false,
 		},
@@ -21,8 +21,8 @@ var changes = []struct {
 	{
 		testName: "Change already applied and not yet reverted",
 		change: &Change{
-			ApplyFunc:  nilFunc,
-			RevertFunc: nilFunc,
+			applyFunc:  nilFunc,
+			revertFunc: nilFunc,
 			Applied:    true,
 			Reverted:   false,
 		},
@@ -30,8 +30,8 @@ var changes = []struct {
 	{
 		testName: "Change already applied and reverted",
 		change: &Change{
-			ApplyFunc:  nilFunc,
-			RevertFunc: nilFunc,
+			applyFunc:  nilFunc,
+			revertFunc: nilFunc,
 			Applied:    true,
 			Reverted:   true,
 		},
@@ -39,7 +39,7 @@ var changes = []struct {
 	{
 		testName: "No revert function specified (A)",
 		change: &Change{
-			ApplyFunc: nilFunc,
+			applyFunc: nilFunc,
 			Applied:   false,
 			Reverted:  false,
 		},
@@ -47,15 +47,15 @@ var changes = []struct {
 	{
 		testName: "No revert function specified (B)",
 		change: &Change{
-			ApplyFunc: nilFunc,
-			Applied:    false,
-			Reverted:   true,
+			applyFunc: nilFunc,
+			Applied:   false,
+			Reverted:  true,
 		},
 	},
 	{
 		testName: "No revert function specified (C)",
 		change: &Change{
-			ApplyFunc: nilFunc,
+			applyFunc: nilFunc,
 			Applied:   true,
 			Reverted:  false,
 		},
@@ -63,7 +63,7 @@ var changes = []struct {
 	{
 		testName: "No revert function specified (D)",
 		change: &Change{
-			ApplyFunc: nilFunc,
+			applyFunc: nilFunc,
 			Applied:   true,
 			Reverted:  true,
 		},
@@ -71,7 +71,7 @@ var changes = []struct {
 	{
 		testName: "No apply function specified (A)",
 		change: &Change{
-			RevertFunc: nilFunc,
+			revertFunc: nilFunc,
 			Applied:    false,
 			Reverted:   false,
 		},
@@ -79,7 +79,7 @@ var changes = []struct {
 	{
 		testName: "No apply function specified (B)",
 		change: &Change{
-			RevertFunc: nilFunc,
+			revertFunc: nilFunc,
 			Applied:    true,
 			Reverted:   false,
 		},
@@ -87,7 +87,7 @@ var changes = []struct {
 	{
 		testName: "No apply function specified (C)",
 		change: &Change{
-			RevertFunc: nilFunc,
+			revertFunc: nilFunc,
 			Applied:    true,
 			Reverted:   true,
 		},
@@ -121,13 +121,13 @@ func TestApply(t *testing.T) {
 
 			c.change.Apply()
 
-			if c.change.ApplyFunc == nil && c.change.Error == nil {
-				t.Errorf("Expected error to be set due to nil ApplyFunc, but it was not")
+			if c.change.applyFunc == nil && c.change.Error == nil {
+				t.Errorf("Expected error to be set due to nil applyFunc, but it was not")
 			}
-			if c.change.RevertFunc == nil && c.change.Error == nil {
-				t.Errorf("Expected error to be set due to nil RevertFunc, but it was not")
+			if c.change.revertFunc == nil && c.change.Error == nil {
+				t.Errorf("Expected error to be set due to nil revertFunc, but it was not")
 			}
-			if c.change.ApplyFunc != nil && c.change.RevertFunc != nil {
+			if c.change.applyFunc != nil && c.change.revertFunc != nil {
 				if !c.change.Applied {
 					t.Errorf("Expected change to be applied, but it was not")
 				}
@@ -148,13 +148,13 @@ func TestRevert(t *testing.T) {
 
 			c.change.Revert()
 
-			if c.change.ApplyFunc == nil && c.change.Error == nil {
-				t.Errorf("Expected error to be set due to nil ApplyFunc, but it was not")
+			if c.change.applyFunc == nil && c.change.Error == nil {
+				t.Errorf("Expected error to be set due to nil applyFunc, but it was not")
 			}
-			if c.change.RevertFunc == nil && c.change.Error == nil {
-				t.Errorf("Expected error to be set due to nil RevertFunc, but it was not")
+			if c.change.revertFunc == nil && c.change.Error == nil {
+				t.Errorf("Expected error to be set due to nil revertFunc, but it was not")
 			}
-			if c.change.ApplyFunc != nil && c.change.RevertFunc != nil {
+			if c.change.applyFunc != nil && c.change.revertFunc != nil {
 				if c.change.Applied && !c.change.Reverted {
 					t.Errorf("Expected change to be reverted, but it was not")
 				}

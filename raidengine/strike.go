@@ -1,6 +1,7 @@
 package raidengine
 
 import (
+	"fmt"
 	"reflect"
 	"runtime"
 	"strings"
@@ -18,6 +19,8 @@ type StrikeResult struct {
 	DocsURL     string                    // DocsURL is a link to the documentation for the test
 	ControlID   string                    // ControlID is the ID of the control that the test is validating
 	Movements   map[string]MovementResult // Movements is a list of functions that were executed during the test
+
+	BadStateAlert bool // BadStateAlert is true if any change failed to revert at the end of the strike
 }
 
 // ExecuteMovement is a helper function to run a movement function and update the result
@@ -43,6 +46,29 @@ func (s *StrikeResult) ExecuteInvasiveMovement(movementFunc func() MovementResul
 		s.ExecuteMovement(movementFunc)
 	} else {
 		logger.Trace("Invasive movements are disabled, skipping movement")
+	}
+}
+
+func (s *StrikeResult) Finalize() {
+	if s.Message == "" {
+		s.Message = "Strike did not return a result, and may still be under development."
+	}
+	for movementName, movementResult := range s.Movements {
+		for changeName, change := range movementResult.Changes {
+			if change.Applied || change.Error != nil {
+				if !change.Reverted {
+					change.Revert()
+				}
+				if change.Error != nil || !change.Reverted {
+					s.BadStateAlert = true
+					logger.Error(fmt.Sprintf("Change in movement '%s' failed to revert. Change name: %s", movementName, changeName))
+				}
+			}
+		}
+	}
+	if s.BadStateAlert {
+		s.Message = "One or more changes failed to revert, and the system may be in a bad state. See logs or movement details for more information."
+		logger.Error(fmt.Sprintf("Strike failed to revert changes, halting execution to prevent further impact"))
 	}
 }
 

@@ -9,11 +9,12 @@ import (
 
 // MovementResult is a struct that contains the results of a single step within a strike
 type MovementResult struct {
-	Passed      bool        // Passed is true if the test passed
-	Description string      // Description is a human-readable description of the test
-	Message     string      // Message is a human-readable description of the test result
-	Function    string      // Function is the name of the code that was executed
-	Value       interface{} // Value is the object that was returned during the movement
+	Passed      bool               // Passed is true if the test passed
+	Description string             // Description is a human-readable description of the test
+	Message     string             // Message is a human-readable description of the test result
+	Function    string             // Function is the name of the code that was executed
+	Value       interface{}        // Value is the object that was returned during the movement
+	Changes     map[string]*Change // Changes is a slice of changes that were made during the movement
 }
 
 type Armory interface {
@@ -48,13 +49,18 @@ func Run(raidName string, armory Armory) (err error) {
 
 	if len(tacticNames) > 0 {
 		// Multiple tactics are specified
+		var badStateAlert bool
 		for _, tacticName := range tacticNames {
-			runTactic(raidName, tacticName, armory)
+			if !badStateAlert {
+				err, badStateAlert = runTactic(raidName, tacticName, armory)
+			} else {
+				logger.Warn(fmt.Sprintf("Skipping '%s' tactic execution due to previous bad state", tacticName))
+			}
 		}
 		return err
 	} else if tacticName != "" {
 		// Single tactic is specified, and multiple are NOT specified
-		err = runTactic(raidName, tacticName, armory)
+		err, _ = runTactic(raidName, tacticName, armory)
 	} else {
 		err = fmt.Errorf("no tactics were specified in the config for the raid '%s'", raidName)
 		logger.Error(err.Error())
@@ -74,7 +80,7 @@ func Run(raidName string, armory Armory) (err error) {
 // Returns:
 //
 //	err: An error if the tactic execution fails, otherwise nil.
-func runTactic(raidName string, tacticName string, armory Armory) (err error) {
+func runTactic(raidName string, tacticName string, armory Armory) (err error, badStateAlert bool) {
 	loggerName = fmt.Sprintf("%s-%s", raidName, tacticName)
 	armory.SetLogger(loggerName)
 
@@ -83,5 +89,6 @@ func runTactic(raidName string, tacticName string, armory Armory) (err error) {
 		strikes:    armory.GetTactics()[tacticName],
 	}
 
-	return tactic.Execute()
+	err = tactic.Execute()
+	return err, tactic.BadStateAlert
 }
