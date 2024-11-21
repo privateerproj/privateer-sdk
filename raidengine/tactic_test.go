@@ -48,7 +48,6 @@ func TestTacticExecute(t *testing.T) {
 
 			loggerName = fmt.Sprintf("%s-%s", tt.raidName, tt.tacticName)
 			tt.armory.SetLogger(loggerName)
-			fmt.Println(loggerName)
 			tactic := Tactic{
 				TacticName: loggerName,
 				strikes:    tt.armory.GetTactics()[tt.tacticName],

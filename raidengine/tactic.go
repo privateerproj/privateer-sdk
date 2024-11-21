@@ -20,11 +20,12 @@ type Tactic struct {
 	attempts  int      // attempts is the number of strikes attempted
 	successes int      // successes is the number of successful strikes
 	failures  int      // failures is the number of failed strikes
+
+	BadStateAlert bool // BadState is true if any strike failed to revert at the end of the tactic
 }
 
 // cleanup is a function that is called when the program is interrupted
 var cleanup = func() error {
-	logger.Debug("no custom cleanup specified by this raid, it is likely still under construction")
 	return nil
 }
 
@@ -63,11 +64,15 @@ func (t *Tactic) Execute() error {
 	t.StartTime = time.Now().String()
 
 	for _, strike := range t.strikes {
+		if t.BadStateAlert {
+			break
+		}
 		t.attempts += 1
 		name, strikeResult := strike()
-		if strikeResult.Message == "" {
-			strikeResult.Message = "Strike did not return a result, and may still be under development."
-		}
+
+		strikeResult.Finalize()
+
+		t.BadStateAlert = strikeResult.BadStateAlert
 		if strikeResult.Passed {
 			t.successes += 1
 			logger.Info(strikeResult.Message)
@@ -86,6 +91,9 @@ func (t *Tactic) Execute() error {
 	output := fmt.Sprintf(
 		"%s: %v/%v strikes succeeded", t.TacticName, t.successes, t.attempts)
 	logger.Info(output)
+	if t.BadStateAlert {
+		return errors.New("!Bad state alert! One or more changes failed to revert. See logs for more information")
+	}
 	if t.failures > 0 {
 		return errors.New(output)
 	}
