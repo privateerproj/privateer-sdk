@@ -1,8 +1,6 @@
 package raidengine
 
-import (
-	"fmt"
-)
+import "fmt"
 
 // Change is a struct that contains the data and functions associated with a single change
 type Change struct {

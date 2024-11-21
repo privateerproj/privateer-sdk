@@ -150,7 +150,8 @@ var testData = []struct {
 	},
 
 	{
-		testName:   "A bad state alert prevents the next tactic",
+		// This isn't robustly tested right now, but it is something we want to ensure if we can
+		testName:   "A bad state alert prevents the next strike",
 		tacticName: "badStateFailTacticB",
 		badState:   true,
 		armory:     &testArmory{},
