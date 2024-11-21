@@ -2,7 +2,6 @@ package raidengine
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/spf13/viper"
@@ -91,6 +90,5 @@ func runTactic(raidName string, tacticName string, armory Armory) (err error, ba
 	}
 
 	err = tactic.Execute()
-	log.Printf("??? tactic=%s [%v]", tacticName, tactic.BadStateAlert)
 	return err, tactic.BadStateAlert
 }

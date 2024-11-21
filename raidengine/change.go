@@ -2,7 +2,6 @@ package raidengine
 
 import (
 	"fmt"
-	"log"
 )
 
 // Change is a struct that contains the data and functions associated with a single change
@@ -29,8 +28,6 @@ func NewChange(targetName string, targetObject interface{}, applyFunc, revertFun
 // Apply executes the Apply function for the change
 func (c *Change) Apply() {
 	err := c.precheck()
-	log.Printf("Precheck result: '%s'\n", err)
-	log.Printf("Applying change '%s'\n", c.TargetName)
 	if err != nil {
 		c.Error = err
 		return

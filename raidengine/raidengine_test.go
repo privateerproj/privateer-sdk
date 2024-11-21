@@ -3,7 +3,6 @@ package raidengine
 import (
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"testing"
 
@@ -29,7 +28,6 @@ var (
 	}
 
 	badStateMovement = func() MovementResult {
-		log.Printf("Running badStateMovement\n")
 		noRevertChange := NewChange(
 			"targetName",
 			"targetObject",
