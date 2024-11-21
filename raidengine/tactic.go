@@ -64,15 +64,15 @@ func (t *Tactic) Execute() error {
 	t.StartTime = time.Now().String()
 
 	for _, strike := range t.strikes {
+		if t.BadStateAlert {
+			break
+		}
 		t.attempts += 1
 		name, strikeResult := strike()
 
 		strikeResult.Finalize()
 
-		if strikeResult.BadStateAlert {
-			t.BadStateAlert = true
-			break
-		}
+		t.BadStateAlert = strikeResult.BadStateAlert
 		if strikeResult.Passed {
 			t.successes += 1
 			logger.Info(strikeResult.Message)
@@ -91,6 +91,9 @@ func (t *Tactic) Execute() error {
 	output := fmt.Sprintf(
 		"%s: %v/%v strikes succeeded", t.TacticName, t.successes, t.attempts)
 	logger.Info(output)
+	if t.BadStateAlert {
+		return errors.New("!Bad state alert! One or more changes failed to revert. See logs for more information")
+	}
 	if t.failures > 0 {
 		return errors.New(output)
 	}

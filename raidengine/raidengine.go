@@ -2,6 +2,7 @@ package raidengine
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/spf13/viper"
@@ -45,7 +46,6 @@ func Run(raidName string, armory Armory) (err error) {
 		return err
 	}
 	tacticNames := viper.GetStringSlice(fmt.Sprintf("raids.%s.tactics", raidName))
-	tacticName := viper.GetString(fmt.Sprintf("raids.%s.tactics", raidName))
 
 	if len(tacticNames) > 0 {
 		// Multiple tactics are specified
@@ -58,12 +58,9 @@ func Run(raidName string, armory Armory) (err error) {
 			}
 		}
 		return err
-	} else if tacticName != "" {
-		// Single tactic is specified, and multiple are NOT specified
-		err, _ = runTactic(raidName, tacticName, armory)
 	} else {
-		err = fmt.Errorf("no tactics were specified in the config for the raid '%s'", raidName)
-		logger.Error(err.Error())
+		tacticName := viper.GetString(fmt.Sprintf("raids.%s.tactics", raidName))
+		err, _ = runTactic(raidName, tacticName, armory)
 	}
 	return
 }
@@ -81,6 +78,10 @@ func Run(raidName string, armory Armory) (err error) {
 //
 //	err: An error if the tactic execution fails, otherwise nil.
 func runTactic(raidName string, tacticName string, armory Armory) (err error, badStateAlert bool) {
+	if tacticName == "" {
+		err = fmt.Errorf("no tactic was specified for the raid '%s'", raidName)
+		return
+	}
 	loggerName = fmt.Sprintf("%s-%s", raidName, tacticName)
 	armory.SetLogger(loggerName)
 
@@ -90,5 +91,6 @@ func runTactic(raidName string, tacticName string, armory Armory) (err error, ba
 	}
 
 	err = tactic.Execute()
+	log.Printf("??? tactic=%s [%v]", tacticName, tactic.BadStateAlert)
 	return err, tactic.BadStateAlert
 }

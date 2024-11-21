@@ -2,6 +2,7 @@ package raidengine
 
 import (
 	"fmt"
+	"log"
 	"reflect"
 	"runtime"
 	"strings"
@@ -57,6 +58,7 @@ func (s *StrikeResult) Finalize() {
 		for changeName, change := range movementResult.Changes {
 			if change.Applied || change.Error != nil {
 				if !change.Reverted {
+					log.Printf("Reverting change '%s' in movement '%s'\n", changeName, movementName)
 					change.Revert()
 				}
 				if change.Error != nil || !change.Reverted {
