@@ -3,16 +3,12 @@ package utils
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
-
-	"github.com/privateerproj/privateer-sdk/raidengine"
-	"github.com/spf13/viper"
 )
 
 func init() {
@@ -125,120 +121,4 @@ func GetExecutableName() string {
 	}
 
 	return execName
-}
-
-func GetRequiredVariable(variableName string, result *raidengine.MovementResult) (value interface{}) {
-	value = viper.Get(variableName)
-	if result != nil {
-		if value == "" || value == nil {
-			result.Passed = false
-			result.Message = fmt.Sprintf("Required variable does not have a value: %s", variableName)
-		} else {
-			result.Passed = true
-		}
-	}
-	return
-}
-
-// return a dictionary of variables which will need to be type asserted by the caller
-func GetRequiredVariables(variables []string, result *raidengine.MovementResult) (values map[string]interface{}, err error) {
-	if result == nil {
-		result = &raidengine.MovementResult{}
-	}
-	values = make(map[string]interface{})
-	finalMessage := "One or more required variables do not have a value:"
-	for _, varName := range variables {
-		values[varName] = GetRequiredVariable(varName, result)
-		finalMessage = fmt.Sprintf("%s %s", finalMessage, varName)
-	}
-	result.Message = finalMessage
-	if !result.Passed {
-		// use this err if not using the raidengine.MovementResult object
-		err = errors.New(finalMessage)
-	}
-	return
-}
-
-func GetRequiredString(variableName string, result *raidengine.MovementResult) string {
-	found := GetRequiredVariable(variableName, result)
-	if found == nil {
-		return ""
-	}
-	return found.(string)
-}
-
-func GetRequiredStrings(variableNames []string, result *raidengine.MovementResult) (values map[string]string, err error) {
-	values = make(map[string]string)
-	found, err := GetRequiredVariables(variableNames, result)
-	if err != nil {
-		return
-	}
-	for key, val := range found {
-		values[key] = val.(string)
-	}
-	return
-}
-
-func GetRequiredInt(variableName string, result *raidengine.MovementResult) (value int) {
-	found := GetRequiredVariable(variableName, result)
-	if found == nil || found == "" {
-		result.Passed = false
-		result.Message = fmt.Sprintf("Required variable does not have a value: %v", variableName)
-		return
-	}
-	value, ok := found.(int)
-	if !ok {
-		result.Passed = false
-		result.Message = fmt.Sprintf("Required variable is not an int: %v", variableName)
-	}
-	return
-}
-
-func GetRequiredInts(variableNames []string, result *raidengine.MovementResult) (values map[string]int, err error) {
-	values = make(map[string]int)
-	found, err := GetRequiredVariables(variableNames, result)
-	if err != nil {
-		return
-	}
-	for key, val := range found {
-		intValue, ok := val.(int)
-		if !ok {
-			result.Passed = false
-			result.Message = fmt.Sprintf("Variable %v is not an int", val)
-			return
-		}
-		values[key] = intValue
-	}
-	return
-}
-
-func GetRequiredBool(variableName string, result *raidengine.MovementResult) (value bool) {
-	found := GetRequiredVariable(variableName, result)
-	if found == nil {
-		return false
-	}
-	value, ok := found.(bool)
-	if !ok {
-		result.Passed = false
-		result.Message = fmt.Sprintf("Required variable is not a bool: %v", variableName)
-	}
-	return
-}
-
-func GetRequiredBools(variableNames []string, result *raidengine.MovementResult) (values map[string]bool, err error) {
-	values = make(map[string]bool)
-	found, err := GetRequiredVariables(variableNames, result)
-	if err != nil {
-		return
-	}
-	for key, val := range found {
-		boolValue, ok := val.(bool)
-		if !ok {
-			result.Passed = false
-			result.Message = fmt.Sprintf("Variable %v is not a bool", val)
-			return
-		}
-		values[key] = boolValue
-	}
-	return
 }
