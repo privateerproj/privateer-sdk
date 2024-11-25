@@ -62,8 +62,8 @@ write-directory: /tmp
 services:
   my-service-1:
     tactics:
-	  - tlp_green
-	  - tlp_clear
+      - tlp_green
+      - tlp_clear
 `}, {
 		testName:       "Good - Required Var (Single)",
 		runningService: "my-service-1",
@@ -146,11 +146,14 @@ func TestNewConfig(t *testing.T) {
 	for _, tt := range testConfigs {
 		t.Run(tt.testName, func(t *testing.T) {
 			// setup viper with the test config
-
+			viper.Reset()
+			viper.SetConfigType("yaml")
 			err := viper.ReadConfig(bytes.NewBufferString(tt.config))
 			if err != nil {
 				t.Fatalf("error reading config: %v", err)
 			}
+			viper.Set("service", tt.runningService)
+
 			// create the config object
 			config, err := NewConfig(tt.requiredVars)
 
@@ -163,19 +166,23 @@ func TestNewConfig(t *testing.T) {
 				} else {
 					t.Errorf("unexpected error: %v", err)
 				}
+			} else if len(tt.missingVars) > 0 {
+				t.Errorf("expected error for missing vars, got nil")
 			}
 
-			if config.ServiceName == "" {
-				t.Errorf("expected service name to be set")
+			if config.ServiceName != tt.runningService {
+				t.Errorf("expected service name to be '%s', got '%s'", tt.runningService, config.ServiceName)
 			}
 			if tt.logLevelSet && config.LogLevel == "" {
 				t.Errorf("expected log level to be set")
 			} else if !tt.logLevelSet && config.LogLevel != "" {
 				t.Errorf("expected log level to be empty")
 			}
-			// if tt.writeDirSet && config.WriteDirectory == defaultWritePath() {
-			// 	t.Errorf("expected write directory to be set")
-			// }
+			if tt.writeDirSet && config.WriteDirectory == "" {
+				t.Errorf("expected write directory to be set")
+			} else if !tt.writeDirSet && config.WriteDirectory != "" {
+				t.Errorf("expected write directory to be empty")
+			}
 			if len(config.Tactics) == 0 {
 				t.Errorf("expected tactics to be set")
 			}

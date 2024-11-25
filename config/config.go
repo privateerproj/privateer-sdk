@@ -15,14 +15,25 @@ type Config struct {
 	Vars           map[string]interface{}
 }
 
-// NewConfig creates a new Config struct with the provided data
+// NewConfig creates a new Config instance by reading configuration values using viper.
+// It takes a slice of required variable names and checks if they are present in the configuration.
+// If any required variables are missing, it returns an error listing the missing variables.
+//
+// Parameters:
+//
+//	[]string - A slice of strings representing the names of required variables.
+//
+// Returns:
+//
+//	*Config - A pointer to the created Config instance.
+//	error - An error if any required variables are missing, otherwise nil.
 func NewConfig(requiredVars []string) (*Config, error) {
 
 	serviceName := viper.GetString("service") // the currently running service
 	loglevel := viper.GetString("services." + serviceName + ".loglevel")
-	// if loglevel == "" {
-	// 	loglevel = viper.GetString("loglevel")
-	// }
+	if loglevel == "" {
+		loglevel = viper.GetString("loglevel")
+	}
 
 	var missingVars []string
 
@@ -40,7 +51,7 @@ func NewConfig(requiredVars []string) (*Config, error) {
 	return &Config{
 		ServiceName:    serviceName,
 		LogLevel:       loglevel,
-		WriteDirectory: viper.GetString("WriteDirectory"),
+		WriteDirectory: viper.GetString("write-directory"),
 		Tactics:        viper.GetStringSlice("services." + serviceName + ".tactics"),
 		Vars:           vars,
 	}, err
