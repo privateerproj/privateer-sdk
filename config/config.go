@@ -3,6 +3,10 @@ package config
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -33,18 +37,27 @@ func NewConfig(requiredVars []string) *Config {
 
 	serviceName := viper.GetString("service") // the currently running service
 	loglevel := viper.GetString("services." + serviceName + ".loglevel")
-	if loglevel == "" {
-		loglevel = viper.GetString("loglevel")
+	topLoglevel := viper.GetString("loglevel")
+	writeDir := viper.GetString("services." + serviceName + ".write-directory")
+	tactics := viper.GetStringSlice("services." + serviceName + ".tactics")
+	vars := viper.GetStringMap("services." + serviceName + ".vars")
+
+	if loglevel == "" && topLoglevel != "" {
+		loglevel = topLoglevel
+	} else if loglevel == "" {
+		loglevel = "Error"
+	}
+
+	if writeDir == "" {
+		viper.Set("write-directory", defaultWritePath())
 	}
 
 	var errString string
-	if len(viper.GetStringSlice("services."+serviceName+".tactics")) == 0 {
+	if len(tactics) == 0 {
 		errString = fmt.Sprintf("no tactics specified for service %s", serviceName)
 	}
 
 	var missingVars []string
-
-	vars := viper.GetStringMap("services." + serviceName + ".vars")
 	for _, v := range requiredVars {
 		if _, ok := vars[v]; !ok {
 			missingVars = append(missingVars, v)
@@ -58,6 +71,7 @@ func NewConfig(requiredVars []string) *Config {
 	if errString != "" {
 		err = errors.New(errString)
 	}
+
 	return &Config{
 		ServiceName:    serviceName,
 		LogLevel:       loglevel,
@@ -66,4 +80,14 @@ func NewConfig(requiredVars []string) *Config {
 		Vars:           vars,
 		Error:          err,
 	}
+}
+
+func defaultWritePath() string {
+	home, err := os.UserHomeDir()
+	datetime := time.Now().Local().Format(time.RFC3339)
+	dirName := strings.Replace(datetime, ":", "", -1)
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, "privateer", "logs", dirName)
 }

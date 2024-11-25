@@ -41,7 +41,19 @@ services:
       - tlp_green
       - tlp_clear
 `}, {
-		testName:       "Good - Log Level Set",
+		testName:       "Good - Log Level Set at Top Level",
+		runningService: "my-service-1",
+		requiredVars:   []string{},
+		logLevelSet:    true,
+		config: `
+loglevel: debug
+services:
+  my-service-1:
+    tactics:
+      - tlp_green
+      - tlp_clear
+`}, {
+		testName:       "Good - Log Level Set in Service",
 		runningService: "my-service-1",
 		requiredVars:   []string{},
 		logLevelSet:    true,
@@ -172,15 +184,15 @@ func TestNewConfig(t *testing.T) {
 			if config.ServiceName != tt.runningService {
 				t.Errorf("expected service name to be '%s', got '%s'", tt.runningService, config.ServiceName)
 			}
-			if tt.logLevelSet && config.LogLevel == "" {
-				t.Errorf("expected log level to be set")
-			} else if !tt.logLevelSet && config.LogLevel != "" {
-				t.Errorf("expected log level to be empty")
+			if tt.logLevelSet && config.LogLevel == "Error" {
+				t.Errorf("expected log level to be different from default, but got '%s'", config.LogLevel)
+			} else if !tt.logLevelSet && config.LogLevel != "Error" {
+				t.Errorf("expected log level to be set to default, but got '%s'", config.LogLevel)
 			}
 			if tt.writeDirSet && config.WriteDirectory == "" {
 				t.Errorf("expected write directory to be set")
-			} else if !tt.writeDirSet && config.WriteDirectory != "" {
-				t.Errorf("expected write directory to be empty")
+			} else if !tt.writeDirSet && config.WriteDirectory != defaultWritePath() {
+				t.Errorf("expected write directory to be default, but got '%s'", config.WriteDirectory)
 			}
 			if len(config.Tactics) == 0 {
 				t.Errorf("expected tactics to be set")

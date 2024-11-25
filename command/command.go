@@ -6,8 +6,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -37,8 +35,6 @@ func SetBase(cmd *cobra.Command) {
 // InitializeConfig reads in config file and ENV variables if set.
 func InitializeConfig() {
 
-	viper.SetDefault("loglevel", "Error")
-	viper.SetDefault("WriteDirectory", defaultWritePath())
 	viper.SetConfigFile(viper.GetString("config"))
 	viper.AutomaticEnv()
 
@@ -54,14 +50,4 @@ func defaultConfigPath() string {
 		return ""
 	}
 	return filepath.Join(workDir, "config.yml")
-}
-
-func defaultWritePath() string {
-	home, err := os.UserHomeDir()
-	datetime := time.Now().Local().Format(time.RFC3339)
-	dirName := strings.Replace(datetime, ":", "", -1)
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(home, "privateer", "logs", dirName)
 }
