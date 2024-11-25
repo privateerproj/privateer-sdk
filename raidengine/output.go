@@ -9,9 +9,15 @@ import (
 	"path"
 
 	hclog "github.com/hashicorp/go-hclog"
-	"github.com/spf13/viper"
+	"github.com/privateerproj/privateer-sdk/config"
 	yaml "gopkg.in/yaml.v3"
 )
+
+var globalConfig *config.Config
+
+func init() {
+	globalConfig, _ = config.NewConfig(nil) // err only comes if required vars are missing
+}
 
 // GetLogger returns an hc logger with the provided name.
 // It will creates or update the logger to use the provided level and format.
@@ -20,31 +26,33 @@ import (
 // https://github.com/hashicorp/go-hclog/blob/master/logger.go#L19
 func GetLogger(name string, jsonFormat bool) hclog.Logger {
 	// Initialize file writer for MultiWriter
-	var filepath string
+	var logFilePath string
+
+	logFile := name + ".log"
 	if name == "overview" {
 		// if this is not a raid, do not nest within a directory
-		filepath = path.Join(viper.GetString("WriteDirectory"), name+".log")
+		logFilePath = path.Join(globalConfig.WriteDirectory, logFile)
 	} else {
 		// otherwise, nest within a directory with the same name as the raid
-		filepath = path.Join(viper.GetString("WriteDirectory"), name, name+".log")
+		logFilePath = path.Join(globalConfig.WriteDirectory, name, logFile)
 	}
 
 	// Create log file and directory if it doesn't exist
-	if _, err := os.Stat(filepath); os.IsNotExist(err) {
+	if _, err := os.Stat(logFilePath); os.IsNotExist(err) {
 		// mkdir all directories from filepath
-		os.MkdirAll(path.Dir(filepath), os.ModePerm)
-		os.Create(filepath)
+		os.MkdirAll(path.Dir(logFilePath), os.ModePerm)
+		os.Create(logFilePath)
 	}
 
-	logFile, err := os.OpenFile(filepath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
+	logFileObj, err := os.OpenFile(logFilePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
 
 	if err != nil {
-		log.Panic(err) // TODO handle this error better
+		log.Panic(err) // TODO: handle this error better
 	}
-	multi := io.MultiWriter(logFile, os.Stdout)
+	multi := io.MultiWriter(logFileObj, os.Stdout)
 
 	logger := hclog.New(&hclog.LoggerOptions{
-		Level:      hclog.LevelFromString(viper.GetString("loglevel")),
+		Level:      hclog.LevelFromString(globalConfig.LogLevel),
 		JSONFormat: jsonFormat,
 		Output:     multi,
 	})
@@ -67,11 +75,11 @@ func (r *Tactic) WriteStrikeResultsJSON() error {
 	if r.TacticName == "" {
 		return errors.New("Tactic name was not provided before attempting to write results")
 	}
-	filepath := path.Join(viper.GetString("WriteDirectory"), r.TacticName, "results.json")
+	filepath := path.Join(globalConfig.WriteDirectory, r.TacticName, "results.json")
 
 	// Create log file and directory if it doesn't exist
 	if _, err := os.Stat(filepath); os.IsNotExist(err) {
-		os.MkdirAll(viper.GetString("WriteDirectory"), os.ModePerm)
+		os.MkdirAll(globalConfig.WriteDirectory, os.ModePerm)
 		os.Create(filepath)
 	}
 
@@ -103,11 +111,11 @@ func (r *Tactic) WriteStrikeResultsYAML() error {
 	if r.TacticName == "" {
 		panic("Tactic name was not provided before attempting to write results")
 	}
-	filepath := path.Join(viper.GetString("WriteDirectory"), r.TacticName, "results.yaml")
+	filepath := path.Join(globalConfig.WriteDirectory, r.TacticName, "results.yaml")
 
 	// Create log file and directory if it doesn't exist
 	if _, err := os.Stat(filepath); os.IsNotExist(err) {
-		os.MkdirAll(viper.GetString("WriteDirectory"), os.ModePerm)
+		os.MkdirAll(globalConfig.WriteDirectory, os.ModePerm)
 		os.Create(filepath)
 	}
 
