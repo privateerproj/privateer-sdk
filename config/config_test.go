@@ -98,6 +98,18 @@ services:
     tactics:
       - tlp_green
 `}, {
+		testName:       "Good - Invasive Set at Service and Top Level",
+		runningService: "my-service-1",
+		requiredVars:   []string{},
+		invasiveSet:    true,
+		config: `
+invasive: false
+services:
+  my-service-1:
+    invasive: true
+    tactics:
+      - tlp_green
+`}, {
 		testName:       "Good - Write Directory Set",
 		runningService: "my-service-1",
 		requiredVars:   []string{},
