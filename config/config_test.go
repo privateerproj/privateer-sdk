@@ -152,19 +152,18 @@ func TestNewConfig(t *testing.T) {
 			if err != nil {
 				t.Fatalf("error reading config: %v", err)
 			}
-			viper.Set("service", tt.runningService)
 
 			// create the config object
-			config, err := NewConfig(tt.requiredVars)
-
-			if err != nil {
+			viper.Set("service", tt.runningService)
+			config := NewConfig(tt.requiredVars)
+			if config.Error != nil {
 				if len(tt.missingVars) > 0 {
 					expectedError := fmt.Sprintf("missing required variables: %v", tt.missingVars)
-					if err.Error() != expectedError {
-						t.Errorf("expected error to be '%s', got %v", expectedError, err)
+					if config.Error.Error() != expectedError {
+						t.Errorf("expected error to be '%s', got %v", expectedError, config.Error)
 					}
 				} else {
-					t.Errorf("unexpected error: %v", err)
+					t.Errorf("unexpected error: %v", config.Error)
 				}
 			} else if len(tt.missingVars) > 0 {
 				t.Errorf("expected error for missing vars, got nil")

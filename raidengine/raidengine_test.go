@@ -7,11 +7,13 @@ import (
 	"testing"
 
 	hclog "github.com/hashicorp/go-hclog"
+	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/spf13/viper"
 )
 
 type testArmory struct {
 	logger      hclog.Logger
+	serviceName string
 	tactics     map[string][]Strike
 	raidName    string
 	tacticNames []string
@@ -97,8 +99,6 @@ func (a *testArmory) Initialize() error {
 
 func (a *testArmory) TestInit() {
 	viper.Set("WriteDirectory", "./tmp")
-	viper.Set(fmt.Sprintf("raids.%s.tactics", a.raidName), a.tacticNames)
-	viper.Set(fmt.Sprintf("raids.%s.tactic", a.raidName), a.tacticName)
 }
 
 var testData = []struct {
@@ -112,12 +112,7 @@ var testData = []struct {
 	{
 		testName: "No tacticNames specified",
 		armory:   &testArmory{},
-		runErr:   "no tactic was specified for the raid 'No_tacticNames_specified'",
-	},
-	{
-		testName:   "Single tacticName specified as tactic",
-		tacticName: "testTactic",
-		armory:     &testArmory{},
+		runErr:   "no tactics specified for service No_tacticNames_specified",
 	},
 	{
 		testName:    "Single tacticName specified in tactics slice",
@@ -130,51 +125,55 @@ var testData = []struct {
 		armory:      &testArmory{},
 	},
 	{
-		testName:   "A test in the tactic fails",
-		tacticName: "failTactic",
-		armory:     &testArmory{},
-		runErr:     "A_test_in_the_tactic_fails-failTactic: 1/2 strikes succeeded",
+		testName:    "A test in the tactic fails",
+		tacticNames: []string{"failTactic"},
+		armory:      &testArmory{},
+		runErr:      "A_test_in_the_tactic_fails-failTactic: 1/2 strikes succeeded",
 	}, {
-		testName:   "A test in the tactic passes and bad state alert is thrown",
-		tacticName: "badStatePassTactic",
-		badState:   true,
-		armory:     &testArmory{},
-		runErr:     "!Bad state alert! One or more changes failed to revert. See logs for more information",
+		testName:    "A test in the tactic passes and bad state alert is thrown",
+		tacticNames: []string{"badStatePassTactic"},
+		badState:    true,
+		armory:      &testArmory{},
+		runErr:      "!Bad state alert! One or more changes failed to revert. See logs for more information",
 	},
 	{
-		testName:   "The last test in the tactic throws a bad state alert",
-		tacticName: "badStateFailTacticA",
-		badState:   true,
-		armory:     &testArmory{},
-		runErr:     "!Bad state alert! One or more changes failed to revert. See logs for more information",
+		testName:    "The last test in the tactic throws a bad state alert",
+		tacticNames: []string{"badStateFailTacticA"},
+		badState:    true,
+		armory:      &testArmory{},
+		runErr:      "!Bad state alert! One or more changes failed to revert. See logs for more information",
 	},
 
 	{
 		// This isn't robustly tested right now, but it is something we want to ensure if we can
-		testName:   "A bad state alert prevents the next strike",
-		tacticName: "badStateFailTacticB",
-		badState:   true,
-		armory:     &testArmory{},
-		runErr:     "!Bad state alert! One or more changes failed to revert. See logs for more information",
+		testName:    "A bad state alert prevents the next strike",
+		tacticNames: []string{"badStateFailTacticB"},
+		badState:    true,
+		armory:      &testArmory{},
+		runErr:      "!Bad state alert! One or more changes failed to revert. See logs for more information",
 	},
 }
 
 func TestRunTactic(t *testing.T) {
-	viper.Set("WriteDirectory", t.TempDir())
 	for _, tt := range testData {
 		t.Run(tt.testName, func(t *testing.T) {
 			raidName := strings.Replace(tt.testName, " ", "_", -1)
-			if tt.tacticName != "" {
-				err, badStateAlert := runTactic(raidName, tt.tacticName, tt.armory)
+
+			globalConfig = config.NewConfig(nil) // reset
+			globalConfig.WriteDirectory = "./tmp"
+			globalConfig.Tactics = tt.tacticNames
+
+			for _, tacticName := range tt.tacticNames {
+				err, badStateAlert := runTactic(raidName, tacticName, tt.armory)
 				if tt.runErr == "" && err != nil {
 					t.Errorf("Expected no error, got %v", err)
 				} else if tt.runErr != "" && err == nil {
-					t.Errorf("Did not get error, expected '%s' (%s)", tt.runErr, tt.tacticName)
+					t.Errorf("Did not get error, expected '%s' (%s)", tt.runErr, tacticName)
 				} else if tt.runErr != "" && err.Error() != tt.runErr {
 					t.Errorf("Expected error '%s', got '%v'", tt.runErr, err)
 				}
 				if tt.badState != badStateAlert {
-					t.Errorf("Expected badStateAlert=%v, got badStateAlert=%v (tacticName=%s)", tt.badState, badStateAlert, tt.tacticName)
+					t.Errorf("Expected badStateAlert=%v, got badStateAlert=%v (tacticName=%s)", tt.badState, badStateAlert, tacticName)
 				}
 			}
 		})
@@ -182,28 +181,23 @@ func TestRunTactic(t *testing.T) {
 }
 
 func TestRun(t *testing.T) {
-	viper.Set("WriteDirectory", t.TempDir())
 
 	for _, tt := range testData {
 		t.Run(tt.testName, func(t *testing.T) {
-			raidName := strings.Replace(tt.testName, " ", "_", -1)
+			name := strings.Replace(tt.testName, " ", "_", -1)
+			viper.Set("service", name)
+			viper.Set(fmt.Sprintf("services.%s.tactics", name), tt.tacticNames)
 
-			// Haven't managed to viper.Set here without it being overwritten at the beginning of Run(),
-			// so we are currently limited on what we can test
-			if !strings.Contains(tt.runErr, "no tactic was specified") {
-				return
-			}
+			globalConfig = config.NewConfig(nil) // reset
+			globalConfig.WriteDirectory = "./tmp"
 
-			err := Run(raidName, tt.armory)
+			err := Run(name, tt.armory)
 			if tt.runErr == "" && err != nil {
 				t.Errorf("Expected no error, got %v", err)
 			} else if tt.runErr != "" && err == nil {
-				t.Errorf("Did not get error, expected '%s' (%s)", tt.runErr, tt.tacticName)
+				t.Errorf("Did not get error, expected '%s'", tt.runErr)
 			} else if tt.runErr != "" && err.Error() != tt.runErr {
 				t.Errorf("Expected error '%s', got '%v'", tt.runErr, err)
-			}
-			if tt.badState && !strings.Contains(err.Error(), "!Bad state alert!") {
-				t.Errorf("Expected bad state alert, got %v", err)
 			}
 		})
 	}

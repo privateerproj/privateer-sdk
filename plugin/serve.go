@@ -7,7 +7,7 @@ import (
 	hcplugin "github.com/hashicorp/go-plugin"
 )
 
-// RaidPluginName TODO: why did we put this here? what is this doing? Review and justify this.
+// RaidPluginName overwritten to be used by Privateer Core sally.go: rpcClient.Dispense(plugin.RaidPluginName)
 const RaidPluginName = "raid"
 
 // handshakeConfigs are used to just do a basic handshake between

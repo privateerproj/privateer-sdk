@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/spf13/viper"
@@ -13,6 +14,7 @@ type Config struct {
 	WriteDirectory string
 	Tactics        []string
 	Vars           map[string]interface{}
+	Error          error
 }
 
 // NewConfig creates a new Config instance by reading configuration values using viper.
@@ -27,12 +29,17 @@ type Config struct {
 //
 //	*Config - A pointer to the created Config instance.
 //	error - An error if any required variables are missing, otherwise nil.
-func NewConfig(requiredVars []string) (*Config, error) {
+func NewConfig(requiredVars []string) *Config {
 
 	serviceName := viper.GetString("service") // the currently running service
 	loglevel := viper.GetString("services." + serviceName + ".loglevel")
 	if loglevel == "" {
 		loglevel = viper.GetString("loglevel")
+	}
+
+	var errString string
+	if len(viper.GetStringSlice("services."+serviceName+".tactics")) == 0 {
+		errString = fmt.Sprintf("no tactics specified for service %s", serviceName)
 	}
 
 	var missingVars []string
@@ -43,16 +50,20 @@ func NewConfig(requiredVars []string) (*Config, error) {
 			missingVars = append(missingVars, v)
 		}
 	}
-	var err error
 	if len(missingVars) > 0 {
-		err = fmt.Errorf("missing required variables: %v", missingVars)
+		errString = fmt.Sprintf("missing required variables: %v", missingVars)
 	}
 
+	var err error
+	if errString != "" {
+		err = errors.New(errString)
+	}
 	return &Config{
 		ServiceName:    serviceName,
 		LogLevel:       loglevel,
 		WriteDirectory: viper.GetString("write-directory"),
 		Tactics:        viper.GetStringSlice("services." + serviceName + ".tactics"),
 		Vars:           vars,
-	}, err
+		Error:          err,
+	}
 }

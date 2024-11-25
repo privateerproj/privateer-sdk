@@ -9,15 +9,8 @@ import (
 	"path"
 
 	hclog "github.com/hashicorp/go-hclog"
-	"github.com/privateerproj/privateer-sdk/config"
 	yaml "gopkg.in/yaml.v3"
 )
-
-var globalConfig *config.Config
-
-func init() {
-	globalConfig, _ = config.NewConfig(nil) // err only comes if required vars are missing
-}
 
 // GetLogger returns an hc logger with the provided name.
 // It will creates or update the logger to use the provided level and format.

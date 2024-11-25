@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/go-hclog"
-	"github.com/spf13/viper"
+	"github.com/privateerproj/privateer-sdk/config"
 )
 
 // MovementResult is a struct that contains the results of a single step within a strike
@@ -25,6 +25,11 @@ type Armory interface {
 
 var logger hclog.Logger
 var loggerName string // This is used for setting up the CLI logger as well as initializing the output logs
+var globalConfig *config.Config
+
+func init() {
+	globalConfig = config.NewConfig(nil)
+}
 
 // Run executes the raid with the given name using the provided armory.
 // It initializes the armory and then executes the tactics specified in the configuration.
@@ -39,29 +44,27 @@ var loggerName string // This is used for setting up the CLI logger as well as i
 //   - err: An error if any occurred during initialization or execution of the raid.
 func Run(raidName string, armory Armory) (err error) {
 	logger = armory.SetLogger(raidName)
+	if globalConfig.Error != nil {
+		return globalConfig.Error
+	}
+
 	err = armory.Initialize()
 	if err != nil {
 		logger.Error("Error initializing the raid armory: %v", err.Error())
-		return err
+		return
 	}
-	tacticNames := viper.GetStringSlice(fmt.Sprintf("raids.%s.tactics", raidName))
 
-	if len(tacticNames) > 0 {
-		// Multiple tactics are specified
-		var badStateAlert bool
-		for _, tacticName := range tacticNames {
-			if !badStateAlert {
-				err, badStateAlert = runTactic(raidName, tacticName, armory)
-			} else {
-				logger.Warn(fmt.Sprintf("Skipping '%s' tactic execution due to previous bad state", tacticName))
-			}
+	// Multiple tactics are specified
+	var badStateAlert bool
+	for _, tacticName := range globalConfig.Tactics {
+		if !badStateAlert {
+			err, badStateAlert = runTactic(raidName, tacticName, armory)
+		} else {
+			logger.Warn(fmt.Sprintf("Skipping '%s' tactic execution due to previous bad state", tacticName))
 		}
-		return err
-	} else {
-		tacticName := viper.GetString(fmt.Sprintf("raids.%s.tactics", raidName))
-		err, _ = runTactic(raidName, tacticName, armory)
 	}
 	return
+
 }
 
 // runTactic sets the tactic for a given raid, configures the logger, and executes the tactic.
