@@ -83,7 +83,7 @@ services:
 		requiredVars:   []string{},
 		writeDirSet:    true,
 		config: `
-write-directory: /tmp
+write-directory: ./tmp
 services:
   my-service-1:
     tactics:

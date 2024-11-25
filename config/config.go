@@ -41,7 +41,7 @@ func NewConfig(requiredVars []string) *Config {
 	topLoglevel := viper.GetString("loglevel")
 	invasive := viper.GetBool("services." + serviceName + ".invasive")
 	topInvasive := viper.GetBool("invasive")
-	writeDir := viper.GetString("services." + serviceName + ".write-directory")
+	writeDir := viper.GetString("write-directory")
 	tactics := viper.GetStringSlice("services." + serviceName + ".tactics")
 	vars := viper.GetStringMap("services." + serviceName + ".vars")
 
@@ -56,7 +56,7 @@ func NewConfig(requiredVars []string) *Config {
 	}
 
 	if writeDir == "" {
-		viper.Set("write-directory", defaultWritePath())
+		writeDir = defaultWritePath()
 	}
 
 	var errString string
@@ -82,8 +82,7 @@ func NewConfig(requiredVars []string) *Config {
 	return &Config{
 		ServiceName:    serviceName,
 		LogLevel:       loglevel,
-		WriteDirectory: viper.GetString("write-directory"),
-		Invasive:       invasive,
+		WriteDirectory: writeDir,
 		Tactics:        viper.GetStringSlice("services." + serviceName + ".tactics"),
 		Vars:           vars,
 		Error:          err,
