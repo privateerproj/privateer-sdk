@@ -10,15 +10,15 @@ import (
 // example config yaml objects
 
 var testConfigs = []struct {
-	testName       string
-	runningService string
-	requiredVars   []string
-	missingVars    []string
-	config         string
-	logLevelSet    bool
-	invasiveSet    bool
-	writeDirSet    bool
-	expectedError  string
+	testName         string
+	runningService   string
+	requiredVars     []string
+	missingVars      []string
+	config           string
+	logLevelExpected string
+	invasiveSet      bool
+	writeDirSet      bool
+	expectedError    string
 }{
 	{
 		testName:       "Good - One Service",
@@ -42,10 +42,10 @@ services:
       - tlp_green
       - tlp_clear
 `}, {
-		testName:       "Good - Log Level Set at Top Level",
-		runningService: "my-service-1",
-		requiredVars:   []string{},
-		logLevelSet:    true,
+		testName:         "Good - Log Level Set at Top Level",
+		runningService:   "my-service-1",
+		requiredVars:     []string{},
+		logLevelExpected: "debug",
 		config: `
 loglevel: debug
 services:
@@ -53,11 +53,23 @@ services:
     tactics:
       - tlp_green
 `}, {
-		testName:       "Good - Log Level Set in Service",
-		runningService: "my-service-1",
-		requiredVars:   []string{},
-		logLevelSet:    true,
+		testName:         "Good - Log Level Set in Service",
+		runningService:   "my-service-1",
+		requiredVars:     []string{},
+		logLevelExpected: "debug",
 		config: `
+services:
+  my-service-1:
+    loglevel: debug
+    tactics:
+      - tlp_green
+`}, {
+		testName:         "Good - Log Level Set in Service and Top Level",
+		runningService:   "my-service-1",
+		requiredVars:     []string{},
+		logLevelExpected: "debug",
+		config: `
+loglevel: info
 services:
   my-service-1:
     loglevel: debug
@@ -219,19 +231,21 @@ func TestNewConfig(t *testing.T) {
 			if config.ServiceName != tt.runningService {
 				t.Errorf("expected service name to be '%s', got '%s'", tt.runningService, config.ServiceName)
 			}
-			if tt.logLevelSet && config.LogLevel == "Error" {
-				t.Errorf("expected log level to be different from default, but got '%s'", config.LogLevel)
-			} else if !tt.logLevelSet && config.LogLevel != "Error" {
-				t.Errorf("expected log level to be set to default, but got '%s'", config.LogLevel)
+
+			if tt.logLevelExpected != "" && config.LogLevel != tt.logLevelExpected {
+				t.Errorf("expected log level to be set to '%s', but got '%s'", tt.logLevelExpected, config.LogLevel)
 			}
+
 			if tt.invasiveSet != config.Invasive {
 				t.Errorf("expected invasive to be '%v', but got '%v'", tt.invasiveSet, config.Invasive)
 			}
+
 			if tt.writeDirSet && config.WriteDirectory == "" {
 				t.Errorf("expected write directory to be set")
 			} else if !tt.writeDirSet && config.WriteDirectory != defaultWritePath() {
 				t.Errorf("expected write directory to be default, but got '%s'", config.WriteDirectory)
 			}
+
 			if len(config.Tactics) == 0 {
 				t.Errorf("expected tactics to be set")
 			}
