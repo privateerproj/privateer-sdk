@@ -5,8 +5,6 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
-
-	"github.com/spf13/viper"
 )
 
 type Strike func() (strikeName string, result StrikeResult)
@@ -42,7 +40,7 @@ func (s *StrikeResult) ExecuteMovement(movementFunc func() MovementResult) {
 
 // ExecuteInvasiveMovement is a helper function to run a movement function and update the result
 func (s *StrikeResult) ExecuteInvasiveMovement(movementFunc func() MovementResult) {
-	if viper.GetBool("invasive") {
+	if globalConfig.Invasive {
 		s.ExecuteMovement(movementFunc)
 	} else {
 		logger.Trace("Invasive movements are disabled, skipping movement")

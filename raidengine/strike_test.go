@@ -150,7 +150,7 @@ func TestExecuteInvasiveMovement(t *testing.T) {
 			}
 
 			t.Run(fmt.Sprintf("%s-invasive=%v)", tt.testName, invasive), func(t *testing.T) {
-				viper.Set("invasive", invasive)
+				viper.Set("invasive", invasive) // TODO: refactor this test to check both top and service levels
 
 				// Simulate a movement function execution
 				result.ExecuteInvasiveMovement(func() MovementResult {

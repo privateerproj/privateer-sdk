@@ -17,6 +17,7 @@ var testConfigs = []struct {
 	missingVars    []string
 	config         string
 	logLevelSet    bool
+	invasiveSet    bool
 	writeDirSet    bool
 }{
 	{
@@ -61,6 +62,18 @@ services:
 services:
   my-service-1:
     loglevel: debug
+    tactics:
+      - tlp_green
+      - tlp_clear
+`}, {
+		testName:       "Good - Invasive Set at Top Level",
+		runningService: "my-service-1",
+		requiredVars:   []string{},
+		invasiveSet:    true,
+		config: `
+invasive: true
+services:
+  my-service-1:
     tactics:
       - tlp_green
       - tlp_clear

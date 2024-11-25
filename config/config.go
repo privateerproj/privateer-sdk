@@ -16,6 +16,7 @@ type Config struct {
 	ServiceName    string // Must be unique in the config file
 	LogLevel       string
 	WriteDirectory string
+	Invasive       bool
 	Tactics        []string
 	Vars           map[string]interface{}
 	Error          error
@@ -38,6 +39,8 @@ func NewConfig(requiredVars []string) *Config {
 	serviceName := viper.GetString("service") // the currently running service
 	loglevel := viper.GetString("services." + serviceName + ".loglevel")
 	topLoglevel := viper.GetString("loglevel")
+	invasive := viper.GetBool("services." + serviceName + ".invasive")
+	topInvasive := viper.GetBool("invasive")
 	writeDir := viper.GetString("services." + serviceName + ".write-directory")
 	tactics := viper.GetStringSlice("services." + serviceName + ".tactics")
 	vars := viper.GetStringMap("services." + serviceName + ".vars")
@@ -46,6 +49,10 @@ func NewConfig(requiredVars []string) *Config {
 		loglevel = topLoglevel
 	} else if loglevel == "" {
 		loglevel = "Error"
+	}
+
+	if !invasive && topInvasive {
+		invasive = topInvasive
 	}
 
 	if writeDir == "" {
@@ -76,6 +83,7 @@ func NewConfig(requiredVars []string) *Config {
 		ServiceName:    serviceName,
 		LogLevel:       loglevel,
 		WriteDirectory: viper.GetString("write-directory"),
+		Invasive:       invasive,
 		Tactics:        viper.GetStringSlice("services." + serviceName + ".tactics"),
 		Vars:           vars,
 		Error:          err,
