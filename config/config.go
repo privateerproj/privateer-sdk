@@ -83,6 +83,7 @@ func NewConfig(requiredVars []string) *Config {
 		ServiceName:    serviceName,
 		LogLevel:       loglevel,
 		WriteDirectory: writeDir,
+		Invasive:       invasive,
 		Tactics:        viper.GetStringSlice("services." + serviceName + ".tactics"),
 		Vars:           vars,
 		Error:          err,
