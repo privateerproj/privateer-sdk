@@ -3,18 +3,22 @@ package config
 import (
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/spf13/viper"
 )
 
-// Config is a struct that contains the configuration for the raidengine
 type Config struct {
-	ServiceName    string // Must be unique in the config file
+	ServiceName    string // Must be unique in the config file or logs will be overwritten
 	LogLevel       string
+	Logger         hclog.Logger
 	WriteDirectory string
 	Invasive       bool
 	Tactics        []string
@@ -22,20 +26,7 @@ type Config struct {
 	Error          error
 }
 
-// NewConfig creates a new Config instance by reading configuration values using viper.
-// It takes a slice of required variable names and checks if they are present in the configuration.
-// If any required variables are missing, it returns an error listing the missing variables.
-//
-// Parameters:
-//
-//	[]string - A slice of strings representing the names of required variables.
-//
-// Returns:
-//
-//	*Config - A pointer to the created Config instance.
-//	error - An error if any required variables are missing, otherwise nil.
-func NewConfig(requiredVars []string) *Config {
-
+func NewConfig(requiredVars []string) Config {
 	serviceName := viper.GetString("service") // the currently running service
 	loglevel := viper.GetString("services." + serviceName + ".loglevel")
 	topLoglevel := viper.GetString("loglevel")
@@ -79,7 +70,7 @@ func NewConfig(requiredVars []string) *Config {
 		err = errors.New(errString)
 	}
 
-	return &Config{
+	config := Config{
 		ServiceName:    serviceName,
 		LogLevel:       loglevel,
 		WriteDirectory: writeDir,
@@ -88,6 +79,10 @@ func NewConfig(requiredVars []string) *Config {
 		Vars:           vars,
 		Error:          err,
 	}
+	config.SetLogger(serviceName, false)
+	config.Logger.Debug(fmt.Sprintf("Creating a new config instance for service '%s'", serviceName))
+
+	return config
 }
 
 func defaultWritePath() string {
@@ -98,4 +93,38 @@ func defaultWritePath() string {
 		return ""
 	}
 	return filepath.Join(home, "privateer", "logs", dirName)
+}
+
+func (c *Config) SetLogger(name string, jsonFormat bool) {
+	var logFilePath string
+	logFile := name + ".log"
+	if name == "overview" {
+		// if this is not a raid, do not nest within a directory
+		logFilePath = path.Join(c.WriteDirectory, logFile)
+	} else {
+		// otherwise, nest within a directory with the same name as the raid
+		logFilePath = path.Join(c.WriteDirectory, name, logFile)
+	}
+
+	// Create log file and directory if it doesn't exist
+	if _, err := os.Stat(logFilePath); os.IsNotExist(err) {
+		// mkdir all directories from filepath
+		os.MkdirAll(path.Dir(logFilePath), os.ModePerm)
+		os.Create(logFilePath)
+	}
+
+	logFileObj, err := os.OpenFile(logFilePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
+
+	if err != nil {
+		log.Panic(err) // TODO: handle this error better
+	}
+	multi := io.MultiWriter(logFileObj, os.Stdout)
+
+	logger := hclog.New(&hclog.LoggerOptions{
+		Level:      hclog.LevelFromString(c.LogLevel),
+		JSONFormat: jsonFormat,
+		Output:     multi,
+	})
+	log.SetOutput(logger.StandardWriter(&hclog.StandardLoggerOptions{InferLevels: false, InferLevelsWithTimestamp: false}))
+	c.Logger = logger
 }
