@@ -81,8 +81,12 @@ func NewConfig(requiredVars []string) Config {
 		Error:          err,
 	}
 	config.SetConfig(serviceName, false)
-	config.Logger.Debug(fmt.Sprintf("Creating a new config instance for service '%s'", serviceName))
-
+	config.Logger.Trace(fmt.Sprintf("Creating a new config instance for service '%s'%v", serviceName, config))
+	config.Logger.Trace(fmt.Sprintf("loglevel: %s", loglevel))
+	config.Logger.Trace(fmt.Sprintf("write-directory: %v", invasive))
+	config.Logger.Trace(fmt.Sprintf("invasive: %v", writeDir))
+	config.Logger.Trace(fmt.Sprintf("tactics: %v", tactics))
+	config.Logger.Trace(fmt.Sprintf("vars: %v", vars))
 	return config
 }
 
