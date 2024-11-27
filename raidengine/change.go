@@ -1,6 +1,9 @@
 package raidengine
 
-import "fmt"
+import (
+	"fmt"
+	"log"
+)
 
 // Change is a struct that contains the data and functions associated with a single change
 type Change struct {
@@ -71,4 +74,21 @@ func (c *Change) precheck() error {
 		return fmt.Errorf("No revert function defined for change")
 	}
 	return nil
+}
+
+func revertMovementChanges(movements *map[string]MovementResult) (badStateAlert bool) {
+	for movementName, movementResult := range *movements {
+		for changeName, change := range movementResult.Changes {
+			if !badStateAlert && (change.Applied || change.Error != nil) {
+				if !change.Reverted {
+					change.Revert()
+				}
+				if change.Error != nil || !change.Reverted {
+					badStateAlert = true
+					log.Printf("[ERROR] Change in movement '%s' failed to revert. Change name: %s", movementName, changeName)
+				}
+			}
+		}
+	}
+	return
 }

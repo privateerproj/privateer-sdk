@@ -51,8 +51,8 @@ func NewConfig(requiredVars []string) Config {
 	}
 
 	var errString string
-	if len(tactics) == 0 {
-		errString = fmt.Sprintf("no tactics specified for service %s", serviceName)
+	if serviceName != "" && len(tactics) == 0 {
+		errString = fmt.Sprintf("no tactics requested for service")
 	}
 
 	var missingVars []string
@@ -79,7 +79,7 @@ func NewConfig(requiredVars []string) Config {
 		Vars:           vars,
 		Error:          err,
 	}
-	config.SetLogger(serviceName, false)
+	config.SetConfig(serviceName, false)
 	config.Logger.Debug(fmt.Sprintf("Creating a new config instance for service '%s'", serviceName))
 
 	return config
@@ -95,7 +95,7 @@ func defaultWritePath() string {
 	return filepath.Join(home, "privateer", "logs", dirName)
 }
 
-func (c *Config) SetLogger(name string, jsonFormat bool) {
+func (c *Config) SetConfig(name string, jsonFormat bool) {
 	var logFilePath string
 	logFile := name + ".log"
 	if name == "overview" {

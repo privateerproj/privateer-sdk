@@ -110,7 +110,7 @@ func WriteAllowed(path string) error {
 func GetExecutableName() string {
 	execAbsPath, err := os.Executable()
 	if err != nil {
-		log.Fatalf("Critical error ocurred while getting executable name")
+		log.Fatalf("[ERROR] Critical error ocurred while getting executable name")
 	}
 
 	execName := filepath.Base(execAbsPath)
@@ -121,4 +121,13 @@ func GetExecutableName() string {
 	}
 
 	return execName
+}
+
+func StringSliceContains(arr []string, val string) bool {
+	for _, a := range arr {
+		if a == val {
+			return true
+		}
+	}
+	return false
 }

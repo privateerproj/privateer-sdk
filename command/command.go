@@ -29,17 +29,16 @@ func SetBase(cmd *cobra.Command) {
 	viper.BindPFlag("silent", cmd.PersistentFlags().Lookup("silent"))
 
 	cmd.PersistentFlags().BoolP("help", "h", false, "Give me a heading! Help for the specified command")
-
 }
 
-// InitializeConfig reads in config file and ENV variables if set.
-func InitializeConfig() {
+// InitializeViper reads in config file and ENV variables if set.
+func InitializeViper() {
 
 	viper.SetConfigFile(viper.GetString("config"))
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err != nil {
-		log.Print(err.Error())
+		log.Print("[ERROR] " + err.Error())
 	}
 }
 
