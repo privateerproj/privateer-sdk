@@ -28,13 +28,14 @@ type Config struct {
 
 func NewConfig(requiredVars []string) Config {
 	serviceName := viper.GetString("service") // the currently running service
-	loglevel := viper.GetString("services." + serviceName + ".loglevel")
 	topLoglevel := viper.GetString("loglevel")
-	invasive := viper.GetBool("services." + serviceName + ".invasive")
 	topInvasive := viper.GetBool("invasive")
 	writeDir := viper.GetString("write-directory")
-	tactics := viper.GetStringSlice("services." + serviceName + ".tactics")
-	vars := viper.GetStringMap("services." + serviceName + ".vars")
+
+	loglevel := viper.GetString(fmt.Sprintf("services.%s.loglevel", serviceName))
+	invasive := viper.GetBool(fmt.Sprintf("services.%s.invasive", serviceName))
+	tactics := viper.GetStringSlice(fmt.Sprintf("services.%s.tactics", serviceName))
+	vars := viper.GetStringMap(fmt.Sprintf("services.%s.vars", serviceName))
 
 	if loglevel == "" && topLoglevel != "" {
 		loglevel = topLoglevel
@@ -52,7 +53,7 @@ func NewConfig(requiredVars []string) Config {
 
 	var errString string
 	if serviceName != "" && len(tactics) == 0 {
-		errString = fmt.Sprintf("no tactics requested for service")
+		errString = fmt.Sprintf("no tactics requested for service in config: %s", viper.GetString("config"))
 	}
 
 	var missingVars []string
@@ -75,7 +76,7 @@ func NewConfig(requiredVars []string) Config {
 		LogLevel:       loglevel,
 		WriteDirectory: writeDir,
 		Invasive:       invasive,
-		Tactics:        viper.GetStringSlice("services." + serviceName + ".tactics"),
+		Tactics:        tactics,
 		Vars:           vars,
 		Error:          err,
 	}
