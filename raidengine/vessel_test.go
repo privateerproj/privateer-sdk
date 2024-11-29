@@ -18,8 +18,8 @@ func passStrike() (string, StrikeResult) {
 				Changes: map[string]*Change{
 					"Change1": {
 						Applied:    true,
-						applyFunc:  func() error { return nil },
-						revertFunc: func() error { return nil },
+						applyFunc:  applyFunc,
+						revertFunc: revertFunc,
 					},
 				},
 			},
@@ -38,8 +38,8 @@ func failStrike() (string, StrikeResult) {
 				Changes: map[string]*Change{
 					"Change1": {
 						Applied:    true,
-						applyFunc:  func() error { return nil },
-						revertFunc: func() error { return nil },
+						applyFunc:  applyFunc,
+						revertFunc: revertFunc,
 					},
 				},
 			},
@@ -58,7 +58,7 @@ func passBadStateAlertStrike() (string, StrikeResult) {
 				Changes: map[string]*Change{
 					"Change1": {
 						Applied:    true,
-						applyFunc:  func() error { return nil },
+						applyFunc:  applyFunc,
 						revertFunc: func() error { return errors.New("revert failed") },
 					},
 				},
@@ -78,7 +78,7 @@ func failBadStateAlertStrike() (string, StrikeResult) {
 				Changes: map[string]*Change{
 					"Change1": {
 						Applied:    true,
-						applyFunc:  func() error { return nil },
+						applyFunc:  applyFunc,
 						revertFunc: func() error { return errors.New("revert failed") },
 					},
 				},
@@ -87,14 +87,16 @@ func failBadStateAlertStrike() (string, StrikeResult) {
 	}
 }
 
-var testArmory = Armory{
-	RaidName: "TestRaid",
+var goodArmory = &Armory{
 	Tactics: map[string][]Strike{
 		"PassTactic":                {passStrike},
 		"FailTactic":                {failStrike},
 		"PassedBadStateAlertTactic": {passBadStateAlertStrike},
 		"FailedBadStateAlertTactic": {failBadStateAlertStrike},
 	},
+}
+var goodVessel = Vessel{
+	RaidName: "TestRaid",
 }
 
 var tests = []struct {
@@ -108,46 +110,52 @@ var tests = []struct {
 	{
 		name:          "missing service and raid names",
 		serviceName:   "",
-		armory:        &Armory{},
+		vessel:        Vessel{},
+		armory:        goodArmory,
 		expectedError: errors.New("expected service and raid names to be set. ServiceName='' RaidName=''"),
 	},
 	{
 		name:          "missing armory",
-		serviceName:   "missingArmoryName",
+		serviceName:   "missingArmory",
+		vessel:        goodVessel,
+		armory:        nil,
 		expectedError: errors.New("armory cannot be nil"),
 	},
 	{
-		name:        "missing tactics",
-		serviceName: "missingTactics",
-		armory: &Armory{
-			RaidName: "TestRaid",
-		},
-		expectedError: errors.New("no tactics requested for service"),
+		name:          "missing tactics",
+		serviceName:   "missingTactics",
+		vessel:        goodVessel,
+		armory:        goodArmory,
+		expectedError: errors.New("no tactics requested for service in config: "),
 	},
 	{
 		name:          "successful mobilization",
 		serviceName:   "successfulMobilization",
-		armory:        &testArmory,
+		vessel:        goodVessel,
+		armory:        goodArmory,
 		tacticRequest: []string{"PassTactic"},
 	},
 	{
 		name:          "successful mobilization, failed tactic",
 		serviceName:   "failedTactic",
-		armory:        &testArmory,
+		vessel:        goodVessel,
+		armory:        goodArmory,
 		tacticRequest: []string{"FailTactic"},
-		expectedError: errors.New("failedTactic_FailTactic: 0/1 strikes succeeded"),
+		expectedError: errors.New("FailTactic: 0/1 strikes succeeded"),
 	},
 	{
 		name:          "successful mobilization, passing tactic, bad state alert",
 		serviceName:   "failedTacticBadState",
-		armory:        &testArmory,
+		vessel:        goodVessel,
+		armory:        goodArmory,
 		tacticRequest: []string{"PassedBadStateAlertTactic"},
 		expectedError: errors.New("!Bad state alert! One or more changes failed to revert. See logs for more information"),
 	},
 	{
 		name:          "successful mobilization, failed tactic, bad state alert",
 		serviceName:   "failedTacticBadState",
-		armory:        &testArmory,
+		vessel:        goodVessel,
+		armory:        goodArmory,
 		tacticRequest: []string{"FailedBadStateAlertTactic"},
 		expectedError: errors.New("!Bad state alert! One or more changes failed to revert. See logs for more information"),
 	},

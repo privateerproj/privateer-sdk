@@ -204,7 +204,7 @@ services:
 		testName:       "Bad - Missing Tactics",
 		runningService: "my-service-1",
 		requiredVars:   []string{},
-		expectedError:  "no tactics specified for service my-service-1",
+		expectedError:  "no tactics requested for service in config: ",
 		config: `
 services:
   my-service-1:
