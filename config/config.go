@@ -58,7 +58,8 @@ func NewConfig(requiredVars []string) Config {
 
 	var missingVars []string
 	for _, v := range requiredVars {
-		if _, ok := vars[v]; !ok {
+		found := viper.Get(fmt.Sprintf("services.%s.vars.%s", serviceName, v))
+		if found == nil || found == "" {
 			missingVars = append(missingVars, v)
 		}
 	}

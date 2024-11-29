@@ -20,13 +20,13 @@ type Vessel struct {
 }
 
 // StockArmory sets up the armory for the vessel to use
-func (v *Vessel) StockArmory(armory *Armory) error {
+func (v *Vessel) StockArmory(armory *Armory, requiredVars []string) error {
 	if armory == nil {
 		return fmt.Errorf("armory cannot be nil")
 	}
 	if v.logger == nil {
 		if v.config == nil {
-			config := config.NewConfig(nil)
+			config := config.NewConfig(requiredVars)
 			v.config = &config
 		}
 	}
@@ -57,7 +57,11 @@ func (v *Vessel) StockArmory(armory *Armory) error {
 }
 
 // Mobilize executes the strikes specified in the tactics
-func (v *Vessel) Mobilize() (err error) {
+func (v *Vessel) Mobilize(armory *Armory, requiredVars []string) (err error) {
+	err = v.StockArmory(armory, requiredVars)
+	if err != nil {
+		return
+	}
 	if v.config == nil {
 		err = fmt.Errorf("config cannot be nil")
 		return
@@ -69,7 +73,7 @@ func (v *Vessel) Mobilize() (err error) {
 		}
 
 		tactic := Tactic{
-			TacticName:      tacticName, // TODO: We should probably find a prettier way to name these
+			TacticName:      tacticName,
 			strikes:         v.armory.Tactics[tacticName],
 			executedStrikes: v.executedStrikes,
 			config:          v.config,
