@@ -131,18 +131,23 @@ func (t *Tactic) WriteStrikeResultsJSON() error {
 }
 
 // WriteStrikeResultsYAML unmarhals the Tactic into a YAML file in the user's WriteDirectory
-func (t *Tactic) WriteStrikeResultsYAML() error {
+func (t *Tactic) WriteStrikeResultsYAML(serviceName string) error {
 	// Log an error if RaidName was not provided
-	if t.TacticName == "" {
-		panic("Tactic name was not provided before attempting to write results")
+	if t.TacticName == "" || serviceName == "" {
+		return fmt.Errorf("tactic name and service name must be provided before attempting to write results: tactic='%s' service='%s'", t.TacticName, serviceName)
 	}
-	filepath := path.Join(t.config.WriteDirectory, t.TacticName, "results.yaml")
+	dir := path.Join(t.config.WriteDirectory, serviceName)
+	filepath := path.Join(dir, t.TacticName+".yml")
+
+	t.config.Logger.Trace(fmt.Sprintf("Writing results to %s", filepath))
 
 	// Create log file and directory if it doesn't exist
-	if _, err := os.Stat(filepath); os.IsNotExist(err) {
-		os.MkdirAll(t.config.WriteDirectory, os.ModePerm)
-		os.Create(filepath)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		os.MkdirAll(dir, os.ModePerm)
+		t.config.Logger.Error("write directory for this raid created for results, but should have been created when initializing logs:" + dir)
 	}
+
+	os.Create(filepath)
 
 	// Write results to file
 	file, err := os.OpenFile(filepath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)

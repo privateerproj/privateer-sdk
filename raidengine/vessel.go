@@ -39,7 +39,6 @@ func (v *Vessel) StockArmory(armory *Armory) error {
 	armory.Logger = v.config.Logger
 	armory.ServiceTarget = v.ServiceName
 
-	v.RaidName = armory.RaidName
 	v.logger = v.config.Logger
 	v.armory = armory
 	v.ServiceName = v.config.ServiceName
@@ -59,7 +58,10 @@ func (v *Vessel) StockArmory(armory *Armory) error {
 
 // Mobilize executes the strikes specified in the tactics
 func (v *Vessel) Mobilize() (err error) {
-
+	if v.config == nil {
+		err = fmt.Errorf("config cannot be nil")
+		return
+	}
 	for _, tacticName := range v.config.Tactics {
 		if tacticName == "" {
 			err = fmt.Errorf("tactic name cannot be an empty string")
@@ -67,7 +69,7 @@ func (v *Vessel) Mobilize() (err error) {
 		}
 
 		tactic := Tactic{
-			TacticName:      fmt.Sprintf("%s_%s", v.ServiceName, tacticName), // TODO: We should probably find a prettier way to name these
+			TacticName:      tacticName, // TODO: We should probably find a prettier way to name these
 			strikes:         v.armory.Tactics[tacticName],
 			executedStrikes: v.executedStrikes,
 			config:          v.config,
@@ -77,11 +79,16 @@ func (v *Vessel) Mobilize() (err error) {
 		if tactic.BadStateAlert {
 			break
 		}
+		v.Tactics = append(v.Tactics, tactic)
 	}
+	v.config.Logger.Trace("Mobilization complete")
 
 	// loop through the tactics and write the results
 	for _, tactic := range v.Tactics {
-		tactic.WriteStrikeResultsYAML()
+		err := tactic.WriteStrikeResultsYAML(v.ServiceName)
+		if err != nil {
+			v.config.Logger.Error(fmt.Sprintf("Failed to write results for tactic '%s': %v", tactic.TacticName, err))
+		}
 	}
 	return
 }
