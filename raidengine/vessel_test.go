@@ -105,6 +105,7 @@ var tests = []struct {
 	vessel        Vessel
 	armory        *Armory
 	tacticRequest []string
+	requiredVars  []string
 	expectedError error
 }{
 	{
@@ -129,11 +130,27 @@ var tests = []struct {
 		expectedError: errors.New("no tactics requested for service in config: "),
 	},
 	{
+		name:          "missing required vars",
+		serviceName:   "missingRequiredVars",
+		vessel:        goodVessel,
+		armory:        goodArmory,
+		requiredVars:  []string{"key", "missing1", "missing2"},
+		expectedError: errors.New("missing required variables: [missing1 missing2]"),
+	},
+	{
 		name:          "successful mobilization",
 		serviceName:   "successfulMobilization",
 		vessel:        goodVessel,
 		armory:        goodArmory,
 		tacticRequest: []string{"PassTactic"},
+	},
+	{
+		name:          "successful mobilization, with required vars",
+		serviceName:   "successfulMobilization",
+		vessel:        goodVessel,
+		armory:        goodArmory,
+		tacticRequest: []string{"PassTactic"},
+		requiredVars:  []string{"key"},
 	},
 	{
 		name:          "successful mobilization, failed tactic",
@@ -168,12 +185,9 @@ func TestVessel_Mobilize(t *testing.T) {
 			viper.Set("service", tt.serviceName)
 			viper.Set("write-directory", "./tmp")
 			viper.Set("services."+tt.serviceName+".tactics", tt.tacticRequest)
+			viper.Set("services."+tt.serviceName+".vars", map[string]interface{}{"key": "value"})
 
-			err := tt.vessel.StockArmory(tt.armory)
-
-			if err == nil {
-				err = tt.vessel.Mobilize()
-			}
+			err := tt.vessel.Mobilize(tt.armory, tt.requiredVars)
 
 			if tt.expectedError != nil {
 				if err == nil {
