@@ -1,26 +1,39 @@
 package raidengine
 
 import (
-	"fmt"
+	"log"
 	"reflect"
 	"runtime"
 	"strings"
 
-	"github.com/spf13/viper"
+	"github.com/privateerproj/privateer-sdk/utils"
 )
 
 type Strike func() (strikeName string, result StrikeResult)
 
 // StrikeResult is a struct that contains the results of a check for a single control
 type StrikeResult struct {
-	Passed      bool                      // Passed is true if the test passed
-	Description string                    // Description is a human-readable description of the test
-	Message     string                    // Message is a human-readable description of the test result
-	DocsURL     string                    // DocsURL is a link to the documentation for the test
-	ControlID   string                    // ControlID is the ID of the control that the test is validating
-	Movements   map[string]MovementResult // Movements is a list of functions that were executed during the test
+	Passed        bool                      // Passed is true if the test passed
+	Description   string                    // Description is a human-readable description of the test
+	Message       string                    // Message is a human-readable description of the test result
+	DocsURL       string                    // DocsURL is a link to the documentation for the test
+	ControlID     string                    // ControlID is the ID of the control that the test is validating
+	Movements     map[string]MovementResult // Movements is a list of functions that were executed during the test
+	BadStateAlert bool                      // BadStateAlert is true if any change failed to revert at the end of the strike
 
-	BadStateAlert bool // BadStateAlert is true if any change failed to revert at the end of the strike
+	invasiveRaid bool // invasiveRaid is true if the tactic is allowed to make changes to the target service
+}
+
+func (s *StrikeResult) followThrough() {
+	if s.Message == "" {
+		s.Message = "strike did not return a result, and may still be under development"
+	}
+	badStateAlert := revertMovementChanges(&s.Movements)
+	if badStateAlert {
+		s.BadStateAlert = true
+		s.Message = "One or more changes failed to revert, and the system may be in a bad state. See logs or movement details for more information."
+		log.Printf("[ERROR] Strike failed to revert changes, halting execution to prevent further impact")
+	}
 }
 
 // ExecuteMovement is a helper function to run a movement function and update the result
@@ -42,51 +55,9 @@ func (s *StrikeResult) ExecuteMovement(movementFunc func() MovementResult) {
 
 // ExecuteInvasiveMovement is a helper function to run a movement function and update the result
 func (s *StrikeResult) ExecuteInvasiveMovement(movementFunc func() MovementResult) {
-	if viper.GetBool("invasive") {
+	if s.invasiveRaid {
 		s.ExecuteMovement(movementFunc)
 	} else {
-		logger.Trace("Invasive movements are disabled, skipping movement")
+		log.Printf("[Trace] Invasive movements are disabled, skipping movement: %s", utils.CallerName(0))
 	}
-}
-
-func (s *StrikeResult) Finalize() {
-	if s.Message == "" {
-		s.Message = "Strike did not return a result, and may still be under development."
-	}
-	for movementName, movementResult := range s.Movements {
-		for changeName, change := range movementResult.Changes {
-			if change.Applied || change.Error != nil {
-				if !change.Reverted {
-					change.Revert()
-				}
-				if change.Error != nil || !change.Reverted {
-					s.BadStateAlert = true
-					logger.Error(fmt.Sprintf("Change in movement '%s' failed to revert. Change name: %s", movementName, changeName))
-				}
-			}
-		}
-	}
-	if s.BadStateAlert {
-		s.Message = "One or more changes failed to revert, and the system may be in a bad state. See logs or movement details for more information."
-		logger.Error(fmt.Sprintf("Strike failed to revert changes, halting execution to prevent further impact"))
-	}
-}
-
-// uniqueStrikes formats the list of unique strikes
-// TODO: Decide whether we want to use this for multiple tactic situations
-func uniqueStrikes(allStrikes []Strike) (strikes []Strike) {
-	used := make(map[string]bool)
-	for _, strike := range allStrikes {
-		name := getFunctionAddress(strike)
-		if _, ok := used[name]; !ok {
-			used[name] = true
-			strikes = append(strikes, strike)
-		}
-	}
-	return
-}
-
-// getFunctionAddress returns the address of a function as a string
-func getFunctionAddress(i Strike) string {
-	return runtime.FuncForPC(reflect.ValueOf(i).Pointer()).Name()
 }

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"testing"
 
-	hclog "github.com/hashicorp/go-hclog"
 	"github.com/spf13/viper"
 )
 
@@ -175,8 +174,4 @@ func TestExecuteInvasiveMovement(t *testing.T) {
 			})
 		}
 	}
-}
-
-func init() {
-	logger = hclog.NewNullLogger()
 }

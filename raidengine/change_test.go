@@ -2,7 +2,10 @@ package raidengine
 
 import "testing"
 
-var nilFunc = func() error {
+var applyFunc = func() (interface{}, error) {
+	return nil, nil
+}
+var revertFunc = func() error {
 	return nil
 }
 var changes = []struct {
@@ -12,8 +15,8 @@ var changes = []struct {
 	{
 		testName: "Change not yet applied",
 		change: &Change{
-			applyFunc:  nilFunc,
-			revertFunc: nilFunc,
+			applyFunc:  applyFunc,
+			revertFunc: revertFunc,
 			Applied:    false,
 			Reverted:   false,
 		},
@@ -21,8 +24,8 @@ var changes = []struct {
 	{
 		testName: "Change already applied and not yet reverted",
 		change: &Change{
-			applyFunc:  nilFunc,
-			revertFunc: nilFunc,
+			applyFunc:  applyFunc,
+			revertFunc: revertFunc,
 			Applied:    true,
 			Reverted:   false,
 		},
@@ -30,8 +33,8 @@ var changes = []struct {
 	{
 		testName: "Change already applied and reverted",
 		change: &Change{
-			applyFunc:  nilFunc,
-			revertFunc: nilFunc,
+			applyFunc:  applyFunc,
+			revertFunc: revertFunc,
 			Applied:    true,
 			Reverted:   true,
 		},
@@ -39,7 +42,7 @@ var changes = []struct {
 	{
 		testName: "No revert function specified (A)",
 		change: &Change{
-			applyFunc: nilFunc,
+			applyFunc: applyFunc,
 			Applied:   false,
 			Reverted:  false,
 		},
@@ -47,7 +50,7 @@ var changes = []struct {
 	{
 		testName: "No revert function specified (B)",
 		change: &Change{
-			applyFunc: nilFunc,
+			applyFunc: applyFunc,
 			Applied:   false,
 			Reverted:  true,
 		},
@@ -55,7 +58,7 @@ var changes = []struct {
 	{
 		testName: "No revert function specified (C)",
 		change: &Change{
-			applyFunc: nilFunc,
+			applyFunc: applyFunc,
 			Applied:   true,
 			Reverted:  false,
 		},
@@ -63,7 +66,7 @@ var changes = []struct {
 	{
 		testName: "No revert function specified (D)",
 		change: &Change{
-			applyFunc: nilFunc,
+			applyFunc: applyFunc,
 			Applied:   true,
 			Reverted:  true,
 		},
@@ -71,7 +74,7 @@ var changes = []struct {
 	{
 		testName: "No apply function specified (A)",
 		change: &Change{
-			revertFunc: nilFunc,
+			revertFunc: revertFunc,
 			Applied:    false,
 			Reverted:   false,
 		},
@@ -79,7 +82,7 @@ var changes = []struct {
 	{
 		testName: "No apply function specified (B)",
 		change: &Change{
-			revertFunc: nilFunc,
+			revertFunc: revertFunc,
 			Applied:    true,
 			Reverted:   false,
 		},
@@ -87,7 +90,7 @@ var changes = []struct {
 	{
 		testName: "No apply function specified (C)",
 		change: &Change{
-			revertFunc: nilFunc,
+			revertFunc: revertFunc,
 			Applied:    true,
 			Reverted:   true,
 		},
