@@ -98,7 +98,7 @@ func defaultWritePath() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, "privateer", "logs", dirName)
+	return filepath.Join(home, ".privateer", "logs", dirName)
 }
 
 func (c *Config) SetConfig(name string, jsonFormat bool) {
