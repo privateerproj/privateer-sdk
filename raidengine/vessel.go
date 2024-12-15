@@ -13,6 +13,7 @@ type Vessel struct {
 	ServiceName     string
 	RaidName        string
 	Tactics         []Tactic
+	Initializer     func(*config.Config) error
 	config          *config.Config
 	armory          *Armory
 	logger          hclog.Logger
@@ -65,6 +66,12 @@ func (v *Vessel) Mobilize(armory *Armory, requiredVars []string) (err error) {
 	if v.config == nil {
 		err = fmt.Errorf("config cannot be nil")
 		return
+	}
+	if v.Initializer != nil {
+		err = v.Initializer(v.config)
+		if err != nil {
+			return
+		}
 	}
 	for _, tacticName := range v.config.Tactics {
 		if tacticName == "" {
