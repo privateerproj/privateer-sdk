@@ -15,6 +15,7 @@ type Vessel struct {
 	RequiredVars    []string
 	Armory          *Armory
 	Tactics         []Tactic
+	Initializer     func(*config.Config) error
 	config          *config.Config
 	logger          hclog.Logger
 	executedStrikes *[]string
@@ -64,6 +65,12 @@ func (v *Vessel) Mobilize() (err error) {
 	if v.config == nil {
 		err = fmt.Errorf("failed to initialize config")
 		return
+	}
+	if v.Initializer != nil {
+		err = v.Initializer(v.config)
+		if err != nil {
+			return
+		}
 	}
 	for _, tacticName := range v.config.Tactics {
 		if tacticName == "" {
