@@ -28,6 +28,10 @@ type Config struct {
 
 func NewConfig(requiredVars []string) Config {
 	serviceName := viper.GetString("service") // the currently running service
+	if serviceName == "" {
+		return Config{Error: errors.New("service name not provided")}
+	}
+
 	topLoglevel := viper.GetString("loglevel")
 	topInvasive := viper.GetBool("invasive")
 	writeDir := viper.GetString("write-directory")
