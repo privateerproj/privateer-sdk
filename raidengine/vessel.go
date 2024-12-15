@@ -1,8 +1,8 @@
 package raidengine
 
 import (
+	"errors"
 	"fmt"
-	"log"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/privateerproj/privateer-sdk/config"
@@ -12,44 +12,43 @@ import (
 type Vessel struct {
 	ServiceName     string
 	RaidName        string
+	RequiredVars    []string
+	Armory          *Armory
 	Tactics         []Tactic
 	config          *config.Config
-	armory          *Armory
 	logger          hclog.Logger
 	executedStrikes *[]string
 }
 
 // StockArmory sets up the armory for the vessel to use
-func (v *Vessel) StockArmory(armory *Armory, requiredVars []string) error {
-	if armory == nil {
-		return fmt.Errorf("armory cannot be nil")
+func (v *Vessel) StockArmory() error {
+	if v.Armory == nil {
+		return errors.New("vessel's Armory field cannot be nil")
 	}
 	if v.logger == nil {
 		if v.config == nil {
-			config := config.NewConfig(requiredVars)
+			config := config.NewConfig(v.RequiredVars)
 			v.config = &config
 		}
 	}
 	if v.config.Error != nil {
-		log.Printf("[ERROR] Failed to initialize the raid vessel: %v", v.config.Error.Error())
 		return v.config.Error
 	}
 
-	armory.Config = v.config
-	armory.Logger = v.config.Logger
-	armory.ServiceTarget = v.ServiceName
+	v.Armory.Config = v.config
+	v.Armory.Logger = v.config.Logger
+	v.Armory.ServiceTarget = v.ServiceName
 
 	v.logger = v.config.Logger
-	v.armory = armory
 	v.ServiceName = v.config.ServiceName
 
 	if v.RaidName == "" || v.ServiceName == "" {
 		return fmt.Errorf("expected service and raid names to be set. ServiceName='%s' RaidName='%s'", v.ServiceName, v.RaidName)
 	}
-	if v.armory == nil {
+	if v.Armory == nil {
 		return fmt.Errorf("no armory was stocked for the raid '%s'", v.RaidName)
 	}
-	if v.armory.Tactics == nil {
+	if v.Armory.Tactics == nil {
 		return fmt.Errorf("no tactics provided for the service")
 	}
 
@@ -57,13 +56,13 @@ func (v *Vessel) StockArmory(armory *Armory, requiredVars []string) error {
 }
 
 // Mobilize executes the strikes specified in the tactics
-func (v *Vessel) Mobilize(armory *Armory, requiredVars []string) (err error) {
-	err = v.StockArmory(armory, requiredVars)
+func (v *Vessel) Mobilize() (err error) {
+	err = v.StockArmory()
 	if err != nil {
 		return
 	}
 	if v.config == nil {
-		err = fmt.Errorf("config cannot be nil")
+		err = fmt.Errorf("failed to initialize config")
 		return
 	}
 	for _, tacticName := range v.config.Tactics {
@@ -74,7 +73,7 @@ func (v *Vessel) Mobilize(armory *Armory, requiredVars []string) (err error) {
 
 		tactic := Tactic{
 			TacticName:      tacticName,
-			strikes:         v.armory.Tactics[tacticName],
+			strikes:         v.Armory.Tactics[tacticName],
 			executedStrikes: v.executedStrikes,
 			config:          v.config,
 		}

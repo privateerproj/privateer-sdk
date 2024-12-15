@@ -40,7 +40,8 @@ func TestTacticExecute(t *testing.T) {
 	viper.Set("WriteDirectory", "./tmp")
 	for _, tt := range tacticTestData {
 		viper.Set(fmt.Sprintf("raids.%s.tactics", tt.raidName), tt.tacticNames)
-		goodVessel.StockArmory(tt.armory, nil)
+		goodVessel.Armory = tt.armory
+		goodVessel.StockArmory()
 
 		t.Run(tt.testName, func(t *testing.T) {
 			tactic := Tactic{

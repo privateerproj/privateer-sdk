@@ -120,7 +120,7 @@ var tests = []struct {
 		serviceName:   "missingArmory",
 		vessel:        goodVessel,
 		armory:        nil,
-		expectedError: errors.New("armory cannot be nil"),
+		expectedError: errors.New("vessel's Armory field cannot be nil"),
 	},
 	{
 		name:          "missing tactics",
@@ -186,8 +186,9 @@ func TestVessel_Mobilize(t *testing.T) {
 			viper.Set("write-directory", "./tmp")
 			viper.Set("services."+tt.serviceName+".tactics", tt.tacticRequest)
 			viper.Set("services."+tt.serviceName+".vars", map[string]interface{}{"key": "value"})
-
-			err := tt.vessel.Mobilize(tt.armory, tt.requiredVars)
+			tt.vessel.Armory = tt.armory
+			tt.vessel.RequiredVars = tt.requiredVars
+			err := tt.vessel.Mobilize()
 
 			if tt.expectedError != nil {
 				if err == nil {
