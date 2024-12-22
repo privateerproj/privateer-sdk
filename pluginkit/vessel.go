@@ -1,4 +1,4 @@
-package raidengine
+package pluginkit
 
 import (
 	"errors"
@@ -11,7 +11,7 @@ import (
 // The vessel gets the armory in position to execute the strikes specified in the tactics
 type Vessel struct {
 	ServiceName     string
-	RaidName        string
+	PluginName      string
 	RequiredVars    []string
 	Armory          *Armory
 	Tactics         []Tactic
@@ -43,11 +43,11 @@ func (v *Vessel) StockArmory() error {
 	v.logger = v.config.Logger
 	v.ServiceName = v.config.ServiceName
 
-	if v.RaidName == "" || v.ServiceName == "" {
-		return fmt.Errorf("expected service and raid names to be set. ServiceName='%s' RaidName='%s'", v.ServiceName, v.RaidName)
+	if v.PluginName == "" || v.ServiceName == "" {
+		return fmt.Errorf("expected service and plugin names to be set. ServiceName='%s' PluginName='%s'", v.ServiceName, v.PluginName)
 	}
 	if v.Armory == nil {
-		return fmt.Errorf("no armory was stocked for the raid '%s'", v.RaidName)
+		return fmt.Errorf("no armory was stocked for the plugin '%s'", v.PluginName)
 	}
 	if v.Armory.Tactics == nil {
 		return fmt.Errorf("no tactics provided for the service")

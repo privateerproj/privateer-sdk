@@ -105,10 +105,10 @@ func (c *Config) SetConfig(name string, jsonFormat bool) {
 	var logFilePath string
 	logFile := name + ".log"
 	if name == "overview" {
-		// if this is not a raid, do not nest within a directory
+		// if this is not a plugin, do not nest within a directory
 		logFilePath = path.Join(c.WriteDirectory, logFile)
 	} else {
-		// otherwise, nest within a directory with the same name as the raid
+		// otherwise, nest within a directory with the same name as the plugin
 		logFilePath = path.Join(c.WriteDirectory, name, logFile)
 	}
 

@@ -1,4 +1,4 @@
-package raidengine
+package pluginkit
 
 import (
 	"encoding/json"
@@ -20,13 +20,13 @@ import (
 // Tactic is a struct that contains the results of all strikes, orgainzed by name
 type Tactic struct {
 	TacticName    string                  // TacticName is the name of the Tactic
-	StartTime     string                  // StartTime is the time the raid started
-	EndTime       string                  // EndTime is the time the raid ended
+	StartTime     string                  // StartTime is the time the plugin started
+	EndTime       string                  // EndTime is the time the plugin ended
 	StrikeResults map[string]StrikeResult // StrikeResults is a map of strike names to their results
 	Passed        bool                    // Passed is true if all strikes in the tactic passed
 	BadStateAlert bool                    // BadState is true if any strike failed to revert at the end of the tactic
 
-	config          *config.Config // config is the global configuration for the raid
+	config          *config.Config // config is the global configuration for the plugin
 	strikes         []Strike       // strikes is a list of strike functions for the current tactic
 	attempts        int            // attempts is the number of strikes attempted
 	successes       int            // successes is the number of successful strikes
@@ -34,7 +34,7 @@ type Tactic struct {
 	executedStrikes *[]string      // executedStrikes is a list of strikes that have been executed
 }
 
-// ExecuteTactic is used to execute a list of strikes provided by a Raid and customized by user config
+// ExecuteTactic is used to execute a list of strikes provided by a Plugin and customized by user config
 func (t *Tactic) Execute() error {
 	if t.TacticName == "" {
 		return errors.New("Tactic name was not provided before attempting to execute")
@@ -96,7 +96,7 @@ func (t *Tactic) AddStrikeResult(name string, result StrikeResult) {
 
 // WriteStrikeResultsJSON unmarhals the Tactic into a JSON file in the user's WriteDirectory
 func (t *Tactic) WriteStrikeResultsJSON() error {
-	// Log an error if RaidName was not provided
+	// Log an error if PluginName was not provided
 	if t.TacticName == "" {
 		return errors.New("Tactic name was not provided before attempting to write results")
 	}
@@ -132,7 +132,7 @@ func (t *Tactic) WriteStrikeResultsJSON() error {
 
 // WriteStrikeResultsYAML unmarhals the Tactic into a YAML file in the user's WriteDirectory
 func (t *Tactic) WriteStrikeResultsYAML(serviceName string) error {
-	// Log an error if RaidName was not provided
+	// Log an error if PluginName was not provided
 	if t.TacticName == "" || serviceName == "" {
 		return fmt.Errorf("tactic name and service name must be provided before attempting to write results: tactic='%s' service='%s'", t.TacticName, serviceName)
 	}
@@ -144,7 +144,7 @@ func (t *Tactic) WriteStrikeResultsYAML(serviceName string) error {
 	// Create log file and directory if it doesn't exist
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		os.MkdirAll(dir, os.ModePerm)
-		t.config.Logger.Error("write directory for this raid created for results, but should have been created when initializing logs:" + dir)
+		t.config.Logger.Error("write directory for this plugin created for results, but should have been created when initializing logs:" + dir)
 	}
 
 	os.Create(filepath)
@@ -189,7 +189,7 @@ func (t *Tactic) closeHandler() {
 	go func() {
 		<-c
 		t.config.Logger.Error("[ERROR] Execution aborted - %v", "SIGTERM")
-		t.config.Logger.Warn("[WARN] Attempting to revert changes made by the terminated Raid. Do not interrupt this process.")
+		t.config.Logger.Warn("[WARN] Attempting to revert changes made by the terminated Plugin. Do not interrupt this process.")
 		if t.cleanup() {
 			t.config.Logger.Info("Cleanup did not encounter an error.")
 		} else {

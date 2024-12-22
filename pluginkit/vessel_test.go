@@ -1,4 +1,4 @@
-package raidengine
+package pluginkit
 
 import (
 	"errors"
@@ -96,7 +96,7 @@ var goodArmory = &Armory{
 	},
 }
 var goodVessel = Vessel{
-	RaidName: "TestRaid",
+	PluginName: "TestPlugin",
 }
 
 var tests = []struct {
@@ -109,11 +109,11 @@ var tests = []struct {
 	expectedError error
 }{
 	{
-		name:          "missing service and raid names",
+		name:          "missing service and plugin names",
 		serviceName:   "",
 		vessel:        Vessel{},
 		armory:        goodArmory,
-		expectedError: errors.New("expected service and raid names to be set. ServiceName='' RaidName=''"),
+		expectedError: errors.New("expected service and plugin names to be set. ServiceName='' PluginName=''"),
 	},
 	{
 		name:          "missing armory",

@@ -1,4 +1,4 @@
-package raidengine
+package pluginkit
 
 type Movement func() *MovementResult
 

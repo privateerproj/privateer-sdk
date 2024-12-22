@@ -1,4 +1,4 @@
-package raidengine
+package pluginkit
 
 import (
 	"github.com/hashicorp/go-hclog"
@@ -6,7 +6,7 @@ import (
 )
 
 type Armory struct {
-	RaidName      string
+	PluginName    string
 	ServiceTarget string
 	Config        *config.Config
 	Logger        hclog.Logger
