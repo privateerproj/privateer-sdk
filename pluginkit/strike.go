@@ -1,4 +1,4 @@
-package raidengine
+package pluginkit
 
 import (
 	"log"
@@ -21,7 +21,7 @@ type StrikeResult struct {
 	Movements     map[string]MovementResult // Movements is a list of functions that were executed during the test
 	BadStateAlert bool                      // BadStateAlert is true if any change failed to revert at the end of the strike
 
-	invasiveRaid bool // invasiveRaid is true if the tactic is allowed to make changes to the target service
+	invasivePlugin bool // invasivePlugin is true if the tactic is allowed to make changes to the target service
 }
 
 func (s *StrikeResult) followThrough() {
@@ -55,7 +55,7 @@ func (s *StrikeResult) ExecuteMovement(movementFunc func() MovementResult) {
 
 // ExecuteInvasiveMovement is a helper function to run a movement function and update the result
 func (s *StrikeResult) ExecuteInvasiveMovement(movementFunc func() MovementResult) {
-	if s.invasiveRaid {
+	if s.invasivePlugin {
 		s.ExecuteMovement(movementFunc)
 	} else {
 		log.Printf("[Trace] Invasive movements are disabled, skipping movement: %s", utils.CallerName(0))

@@ -1,4 +1,4 @@
-package raidengine
+package pluginkit
 
 import (
 	"fmt"
@@ -9,26 +9,26 @@ import (
 
 var tacticTestData = []struct {
 	testName    string
-	raidName    string
+	pluginName  string
 	armory      *Armory
 	runErr      string
 	tacticNames []string
 	tacticName  string
 }{
 	{
-		testName: "No tacticNames specified",
-		raidName: "testRaid",
-		armory:   goodArmory,
+		testName:   "No tacticNames specified",
+		pluginName: "testPlugin",
+		armory:     goodArmory,
 	},
 	{
 		testName:   "Single tacticName specified as 'tactic'",
-		raidName:   "testRaid",
+		pluginName: "testPlugin",
 		tacticName: "testTactic",
 		armory:     goodArmory,
 	},
 	{
 		testName:    "Single tacticName specified in 'tactics' slice",
-		raidName:    "testRaid",
+		pluginName:  "testPlugin",
 		tacticNames: []string{"testTactic"},
 		armory:      goodArmory,
 	},
@@ -36,10 +36,10 @@ var tacticTestData = []struct {
 
 func TestTacticExecute(t *testing.T) {
 
-	// test cases using testArmory and testData from raidengine_test.go
+	// test cases using testArmory and testData from pluginkit_test.go
 	viper.Set("WriteDirectory", "./tmp")
 	for _, tt := range tacticTestData {
-		viper.Set(fmt.Sprintf("raids.%s.tactics", tt.raidName), tt.tacticNames)
+		viper.Set(fmt.Sprintf("plugins.%s.tactics", tt.pluginName), tt.tacticNames)
 		goodVessel.Armory = tt.armory
 		goodVessel.StockArmory()
 

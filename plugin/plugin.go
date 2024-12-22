@@ -6,34 +6,34 @@ import (
 	hcplugin "github.com/hashicorp/go-plugin"
 )
 
-// Raid is the interface that we're exposing as a plugin.
-type Raid interface {
+// Plugin is the interface that we're exposing as a plugin.
+type Pluginer interface {
 	Start() error
 }
 
-// RaidRPC is an implementation that talks over RPC
-type RaidRPC struct{ client *rpc.Client }
+// PluginRPC is an implementation that talks over RPC
+type PluginRPC struct{ client *rpc.Client }
 
 // Start is a wrapper for interface implementation of Start
-func (g *RaidRPC) Start() error {
+func (g *PluginRPC) Start() error {
 	var err error
 	return g.client.Call("Plugin.Start", new(interface{}), &err)
 }
 
-// RaidRPCServer is the RPC server that RaidRPC talks to, conforming to
+// PluginRPCServer is the RPC server that PluginRPC talks to, conforming to
 // the requirements of net/rpc
-type RaidRPCServer struct {
+type PluginRPCServer struct {
 	// This is the real implementation
-	Impl Raid
+	Impl Pluginer
 }
 
 // Start is a wrapper for interface implementation
-func (s *RaidRPCServer) Start(args interface{}, resp *error) error {
+func (s *PluginRPCServer) Start(args interface{}, resp *error) error {
 	*resp = s.Impl.Start()
 	return *resp
 }
 
-// RaidPlugin is the implementation of plugin.Plugin so we can serve/consume this
+// Plugin is the implementation of plugin.Plugin so we can serve/consume this
 //
 // This has two methods: Server must return an RPC server for this plugin
 // type. We construct a GreeterRPCServer for this.
@@ -43,17 +43,17 @@ func (s *RaidRPCServer) Start(args interface{}, resp *error) error {
 //
 // Ignore MuxBroker. That is used to create more multiplexed streams on our
 // plugin connection and is a more advanced use case.
-type RaidPlugin struct {
+type Plugin struct {
 	// Impl Injection
-	Impl Raid
+	Impl Pluginer
 }
 
 // Server implements RPC server
-func (p *RaidPlugin) Server(*hcplugin.MuxBroker) (interface{}, error) {
-	return &RaidRPCServer{Impl: p.Impl}, nil
+func (p *Plugin) Server(*hcplugin.MuxBroker) (interface{}, error) {
+	return &PluginRPCServer{Impl: p.Impl}, nil
 }
 
 // Client implements RPC client
-func (RaidPlugin) Client(b *hcplugin.MuxBroker, c *rpc.Client) (interface{}, error) {
-	return &RaidRPC{client: c}, nil
+func (Plugin) Client(b *hcplugin.MuxBroker, c *rpc.Client) (interface{}, error) {
+	return &PluginRPC{client: c}, nil
 }
