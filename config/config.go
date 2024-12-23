@@ -21,7 +21,7 @@ type Config struct {
 	Logger         hclog.Logger
 	WriteDirectory string
 	Invasive       bool
-	Tactics        []string
+	TestSuites        []string
 	Vars           map[string]interface{}
 	Error          error
 }
@@ -34,7 +34,7 @@ func NewConfig(requiredVars []string) Config {
 
 	loglevel := viper.GetString(fmt.Sprintf("services.%s.loglevel", serviceName))
 	invasive := viper.GetBool(fmt.Sprintf("services.%s.invasive", serviceName))
-	tactics := viper.GetStringSlice(fmt.Sprintf("services.%s.tactics", serviceName))
+	testSuites := viper.GetStringSlice(fmt.Sprintf("services.%s.test-suites", serviceName))
 	vars := viper.GetStringMap(fmt.Sprintf("services.%s.vars", serviceName))
 
 	if loglevel == "" && topLoglevel != "" {
@@ -52,8 +52,8 @@ func NewConfig(requiredVars []string) Config {
 	}
 
 	var errString string
-	if serviceName != "" && len(tactics) == 0 {
-		errString = fmt.Sprintf("no tactics requested for service in config: %s", viper.GetString("config"))
+	if serviceName != "" && len(testSuites) == 0 {
+		errString = fmt.Sprintf("no test suites requested for service in config: %s", viper.GetString("config"))
 	}
 
 	var missingVars []string
@@ -77,7 +77,7 @@ func NewConfig(requiredVars []string) Config {
 		LogLevel:       loglevel,
 		WriteDirectory: writeDir,
 		Invasive:       invasive,
-		Tactics:        tactics,
+		TestSuites:        testSuites,
 		Vars:           vars,
 		Error:          err,
 	}
@@ -86,7 +86,7 @@ func NewConfig(requiredVars []string) Config {
 	config.Logger.Trace(fmt.Sprintf("loglevel: %s", loglevel))
 	config.Logger.Trace(fmt.Sprintf("write-directory: %v", invasive))
 	config.Logger.Trace(fmt.Sprintf("invasive: %v", writeDir))
-	config.Logger.Trace(fmt.Sprintf("tactics: %v", tactics))
+	config.Logger.Trace(fmt.Sprintf("test-suites: %v", testSuites))
 	config.Logger.Trace(fmt.Sprintf("vars: %v", vars))
 	return config
 }

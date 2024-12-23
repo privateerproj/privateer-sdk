@@ -27,7 +27,7 @@ var testConfigs = []struct {
 		config: `
 services:
   my-service-1:
-    tactics:
+    test-suites:
       - tlp_green
 `}, {
 		testName:       "Good - Two Services",
@@ -35,10 +35,10 @@ services:
 		config: `
 services:
   my-service-1:
-    tactics:
+    test-suites:
       - tlp_green
   my-service-2:
-    tactics:
+    test-suites:
       - tlp_green
       - tlp_clear
 `}, {
@@ -50,7 +50,7 @@ services:
 loglevel: debug
 services:
   my-service-1:
-    tactics:
+    test-suites:
       - tlp_green
 `}, {
 		testName:         "Good - Log Level Set in Service",
@@ -61,7 +61,7 @@ services:
 services:
   my-service-1:
     loglevel: debug
-    tactics:
+    test-suites:
       - tlp_green
 `}, {
 		testName:         "Good - Log Level Set in Service and Top Level",
@@ -73,7 +73,7 @@ loglevel: info
 services:
   my-service-1:
     loglevel: debug
-    tactics:
+    test-suites:
       - tlp_green
 `}, {
 		testName:       "Good - Invasive Set at Top Level",
@@ -84,7 +84,7 @@ services:
 invasive: true
 services:
   my-service-1:
-    tactics:
+    test-suites:
       - tlp_green
 `}, {
 		testName:       "Good - Invasive Set at Service Level",
@@ -95,7 +95,7 @@ services:
 services:
   my-service-1:
     invasive: true
-    tactics:
+    test-suites:
       - tlp_green
 `}, {
 		testName:       "Good - Invasive Set at Service and Top Level",
@@ -107,7 +107,7 @@ invasive: false
 services:
   my-service-1:
     invasive: true
-    tactics:
+    test-suites:
       - tlp_green
 `}, {
 		testName:       "Good - Write Directory Set",
@@ -118,7 +118,7 @@ services:
 write-directory: ./tmp
 services:
   my-service-1:
-    tactics:
+    test-suites:
       - tlp_green
       - tlp_clear
 `}, {
@@ -128,7 +128,7 @@ services:
 		config: `
 services:
   my-service-1:
-    tactics:
+    test-suites:
       - tlp_green
     vars:
       key: value
@@ -139,7 +139,7 @@ services:
 		config: `
 services:
   my-service-1:
-    tactics:
+    test-suites:
       - tlp_green
     vars:
       key: value
@@ -153,7 +153,7 @@ services:
 		config: `
 services:
   my-service-1:
-    tactics:
+    test-suites:
       - tlp_green
       - tlp_clear
     vars:
@@ -167,7 +167,7 @@ services:
 		config: `
 services:
   my-service-1:
-    tactics:
+    test-suites:
       - tlp_green
       - tlp_clear
     vars:
@@ -181,7 +181,7 @@ services:
 		config: `
 services:
   my-service-1:
-    tactics:
+    test-suites:
       - tlp_green
       - tlp_clear
     vars:
@@ -195,16 +195,16 @@ services:
 		config: `
 services:
   my-service-1:
-    tactics:
+    test-suites:
       - tlp_green
       - tlp_clear
     vars:
       key: value
 `}, {
-		testName:       "Bad - Missing Tactics",
+		testName:       "Bad - Missing TestSuites",
 		runningService: "my-service-1",
 		requiredVars:   []string{},
-		expectedError:  "no tactics requested for service in config: ",
+		expectedError:  "no test suites requested for service in config: ",
 		config: `
 services:
   my-service-1:
@@ -258,8 +258,8 @@ func TestNewConfig(t *testing.T) {
 				t.Errorf("expected write directory to be default, but got '%s'", config.WriteDirectory)
 			}
 
-			if len(config.Tactics) == 0 {
-				t.Errorf("expected tactics to be set")
+			if len(config.TestSuites) == 0 {
+				t.Errorf("expected testSuites to be set")
 			}
 		})
 	}

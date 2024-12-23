@@ -10,7 +10,7 @@ type Armory struct {
 	ServiceTarget string
 	Config        *config.Config
 	Logger        hclog.Logger
-	Tactics       map[string][]Strike
+	TestSuites    map[string][]TestSet
 	StartupFunc   func() error
 	CleanupFunc   func() error
 }

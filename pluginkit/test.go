@@ -1,13 +1,13 @@
 package pluginkit
 
-type Movement func() *MovementResult
+type Test func() *TestResult
 
-// MovementResult is a struct that contains the results of a single step within a strike
-type MovementResult struct {
+// TestResult is a struct that contains the results of a single step within a testSet
+type TestResult struct {
 	Passed      bool               // Passed is true if the test passed
 	Description string             // Description is a human-readable description of the test
 	Message     string             // Message is a human-readable description of the test result
 	Function    string             // Function is the name of the code that was executed
-	Value       interface{}        // Value is the object that was returned during the movement
-	Changes     map[string]*Change // Changes is a slice of changes that were made during the movement
+	Value       interface{}        // Value is the object that was returned during the test
+	Changes     map[string]*Change // Changes is a slice of changes that were made during the test
 }
