@@ -7,14 +7,14 @@ import (
 	"github.com/spf13/viper"
 )
 
-func passStrike() (string, StrikeResult) {
-	return "passStrike", StrikeResult{
+func passTestSet() (string, TestSetResult) {
+	return "passTestSet", TestSetResult{
 		Passed:      true,
-		Description: "passing strike",
-		Movements: map[string]MovementResult{
-			"Movement1": {
+		Description: "passing testSet",
+		Tests: map[string]TestResult{
+			"Test1": {
 				Passed:      true,
-				Description: "passing movement",
+				Description: "passing test",
 				Changes: map[string]*Change{
 					"Change1": {
 						Applied:    true,
@@ -27,14 +27,14 @@ func passStrike() (string, StrikeResult) {
 	}
 }
 
-func failStrike() (string, StrikeResult) {
-	return "failStrike", StrikeResult{
+func failTestSet() (string, TestSetResult) {
+	return "failTestSet", TestSetResult{
 		Passed:      false,
-		Description: "failing strike",
-		Movements: map[string]MovementResult{
-			"Movement1": {
+		Description: "failing testSet",
+		Tests: map[string]TestResult{
+			"Test1": {
 				Passed:      false,
-				Description: "failing movement",
+				Description: "failing test",
 				Changes: map[string]*Change{
 					"Change1": {
 						Applied:    true,
@@ -47,14 +47,14 @@ func failStrike() (string, StrikeResult) {
 	}
 }
 
-func passBadStateAlertStrike() (string, StrikeResult) {
-	return "passBadStateAlertStrike", StrikeResult{
+func passBadStateAlertTestSet() (string, TestSetResult) {
+	return "passBadStateAlertTestSet", TestSetResult{
 		Passed:      true,
-		Description: "passing strike",
-		Movements: map[string]MovementResult{
-			"Movement1": {
+		Description: "passing testSet",
+		Tests: map[string]TestResult{
+			"Test1": {
 				Passed:      true,
-				Description: "passing movement",
+				Description: "passing test",
 				Changes: map[string]*Change{
 					"Change1": {
 						Applied:    true,
@@ -67,14 +67,14 @@ func passBadStateAlertStrike() (string, StrikeResult) {
 	}
 }
 
-func failBadStateAlertStrike() (string, StrikeResult) {
-	return "failBadStateAlertStrike", StrikeResult{
+func failBadStateAlertTestSet() (string, TestSetResult) {
+	return "failBadStateAlertTestSet", TestSetResult{
 		Passed:      false,
-		Description: "failing strike",
-		Movements: map[string]MovementResult{
-			"Movement1": {
+		Description: "failing testSet",
+		Tests: map[string]TestResult{
+			"Test1": {
 				Passed:      false,
-				Description: "failing movement",
+				Description: "failing test",
 				Changes: map[string]*Change{
 					"Change1": {
 						Applied:    true,
@@ -88,11 +88,11 @@ func failBadStateAlertStrike() (string, StrikeResult) {
 }
 
 var goodArmory = &Armory{
-	Tactics: map[string][]Strike{
-		"PassTactic":                {passStrike},
-		"FailTactic":                {failStrike},
-		"PassedBadStateAlertTactic": {passBadStateAlertStrike},
-		"FailedBadStateAlertTactic": {failBadStateAlertStrike},
+	TestSuites: map[string][]TestSet{
+		"PassTestSuite":                {passTestSet},
+		"FailTestSuite":                {failTestSet},
+		"PassedBadStateAlertTestSuite": {passBadStateAlertTestSet},
+		"FailedBadStateAlertTestSuite": {failBadStateAlertTestSet},
 	},
 }
 var goodVessel = Vessel{
@@ -104,7 +104,7 @@ var tests = []struct {
 	serviceName   string
 	vessel        Vessel
 	armory        *Armory
-	tacticRequest []string
+	testSuiteRequest []string
 	requiredVars  []string
 	expectedError error
 }{
@@ -123,11 +123,11 @@ var tests = []struct {
 		expectedError: errors.New("vessel's Armory field cannot be nil"),
 	},
 	{
-		name:          "missing tactics",
-		serviceName:   "missingTactics",
+		name:          "missing test-suites",
+		serviceName:   "missingTestSuites",
 		vessel:        goodVessel,
 		armory:        goodArmory,
-		expectedError: errors.New("no tactics requested for service in config: "),
+		expectedError: errors.New("no test suites requested for service in config: "),
 	},
 	{
 		name:          "missing required vars",
@@ -142,38 +142,38 @@ var tests = []struct {
 		serviceName:   "successfulMobilization",
 		vessel:        goodVessel,
 		armory:        goodArmory,
-		tacticRequest: []string{"PassTactic"},
+		testSuiteRequest: []string{"PassTestSuite"},
 	},
 	{
 		name:          "successful mobilization, with required vars",
 		serviceName:   "successfulMobilization",
 		vessel:        goodVessel,
 		armory:        goodArmory,
-		tacticRequest: []string{"PassTactic"},
+		testSuiteRequest: []string{"PassTestSuite"},
 		requiredVars:  []string{"key"},
 	},
 	{
-		name:          "successful mobilization, failed tactic",
-		serviceName:   "failedTactic",
+		name:          "successful mobilization, failed testSuite",
+		serviceName:   "failedTestSuite",
 		vessel:        goodVessel,
 		armory:        goodArmory,
-		tacticRequest: []string{"FailTactic"},
-		expectedError: errors.New("FailTactic: 0/1 strikes succeeded"),
+		testSuiteRequest: []string{"FailTestSuite"},
+		expectedError: errors.New("FailTestSuite: 0/1 test sets succeeded"),
 	},
 	{
-		name:          "successful mobilization, passing tactic, bad state alert",
-		serviceName:   "failedTacticBadState",
+		name:          "successful mobilization, passing testSuite, bad state alert",
+		serviceName:   "failedTestSuiteBadState",
 		vessel:        goodVessel,
 		armory:        goodArmory,
-		tacticRequest: []string{"PassedBadStateAlertTactic"},
+		testSuiteRequest: []string{"PassedBadStateAlertTestSuite"},
 		expectedError: errors.New("!Bad state alert! One or more changes failed to revert. See logs for more information"),
 	},
 	{
-		name:          "successful mobilization, failed tactic, bad state alert",
-		serviceName:   "failedTacticBadState",
+		name:          "successful mobilization, failed testSuite, bad state alert",
+		serviceName:   "failedTestSuiteBadState",
 		vessel:        goodVessel,
 		armory:        goodArmory,
-		tacticRequest: []string{"FailedBadStateAlertTactic"},
+		testSuiteRequest: []string{"FailedBadStateAlertTestSuite"},
 		expectedError: errors.New("!Bad state alert! One or more changes failed to revert. See logs for more information"),
 	},
 }
@@ -184,7 +184,7 @@ func TestVessel_Mobilize(t *testing.T) {
 			// Config reading is tested elsewhere, we care about the ingestion of it
 			viper.Set("service", tt.serviceName)
 			viper.Set("write-directory", "./tmp")
-			viper.Set("services."+tt.serviceName+".tactics", tt.tacticRequest)
+			viper.Set("services."+tt.serviceName+".test-suites", tt.testSuiteRequest)
 			viper.Set("services."+tt.serviceName+".vars", map[string]interface{}{"key": "value"})
 			tt.vessel.Armory = tt.armory
 			tt.vessel.RequiredVars = tt.requiredVars

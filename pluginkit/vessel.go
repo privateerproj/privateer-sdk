@@ -8,17 +8,17 @@ import (
 	"github.com/privateerproj/privateer-sdk/config"
 )
 
-// The vessel gets the armory in position to execute the strikes specified in the tactics
+// The vessel gets the armory in position to execute the testSets specified in the testSuites
 type Vessel struct {
 	ServiceName     string
 	PluginName      string
 	RequiredVars    []string
 	Armory          *Armory
-	Tactics         []Tactic
+	TestSuites      []TestSuite
 	Initializer     func(*config.Config) error
 	config          *config.Config
 	logger          hclog.Logger
-	executedStrikes *[]string
+	executedTestSets *[]string
 }
 
 // StockArmory sets up the armory for the vessel to use
@@ -49,14 +49,14 @@ func (v *Vessel) StockArmory() error {
 	if v.Armory == nil {
 		return fmt.Errorf("no armory was stocked for the plugin '%s'", v.PluginName)
 	}
-	if v.Armory.Tactics == nil {
-		return fmt.Errorf("no tactics provided for the service")
+	if v.Armory.TestSuites == nil {
+		return fmt.Errorf("no testSuites provided for the service")
 	}
 
 	return nil
 }
 
-// Mobilize executes the strikes specified in the tactics
+// Mobilize executes the testSets specified in the testSuites
 func (v *Vessel) Mobilize() (err error) {
 	err = v.StockArmory()
 	if err != nil {
@@ -72,32 +72,32 @@ func (v *Vessel) Mobilize() (err error) {
 			return
 		}
 	}
-	for _, tacticName := range v.config.Tactics {
-		if tacticName == "" {
-			err = fmt.Errorf("tactic name cannot be an empty string")
+	for _, testSuiteName := range v.config.TestSuites {
+		if testSuiteName == "" {
+			err = fmt.Errorf("testSuite name cannot be an empty string")
 			return
 		}
 
-		tactic := Tactic{
-			TacticName:      tacticName,
-			strikes:         v.Armory.Tactics[tacticName],
-			executedStrikes: v.executedStrikes,
+		testSuite := TestSuite{
+			TestSuiteName:      testSuiteName,
+			testSets:         v.Armory.TestSuites[testSuiteName],
+			executedTestSets: v.executedTestSets,
 			config:          v.config,
 		}
 
-		err = tactic.Execute()
-		if tactic.BadStateAlert {
+		err = testSuite.Execute()
+		if testSuite.BadStateAlert {
 			break
 		}
-		v.Tactics = append(v.Tactics, tactic)
+		v.TestSuites = append(v.TestSuites, testSuite)
 	}
 	v.config.Logger.Trace("Mobilization complete")
 
-	// loop through the tactics and write the results
-	for _, tactic := range v.Tactics {
-		err := tactic.WriteStrikeResultsYAML(v.ServiceName)
+	// loop through the testSuites and write the results
+	for _, testSuite := range v.TestSuites {
+		err := testSuite.WriteTestSetResultsYAML(v.ServiceName)
 		if err != nil {
-			v.config.Logger.Error(fmt.Sprintf("Failed to write results for tactic '%s': %v", tactic.TacticName, err))
+			v.config.Logger.Error(fmt.Sprintf("Failed to write results for testSuite '%s': %v", testSuite.TestSuiteName, err))
 		}
 	}
 	return

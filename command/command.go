@@ -22,8 +22,8 @@ func SetBase(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringP("service", "s", "", "Named service to execute from the config")
 	viper.BindPFlag("service", cmd.PersistentFlags().Lookup("service"))
 
-	cmd.PersistentFlags().StringP("tactic", "t", "default", "Named set of strikes to execute from the plugin")
-	viper.BindPFlag("tactic", cmd.PersistentFlags().Lookup("tactic"))
+	cmd.PersistentFlags().StringP("test-suites", "t", "default", "Named set of test sets to execute from the plugin")
+	viper.BindPFlag("test-suites", cmd.PersistentFlags().Lookup("test-suites"))
 
 	cmd.PersistentFlags().BoolP("silent", "", false, "Shh! Only show essential log information")
 	viper.BindPFlag("silent", cmd.PersistentFlags().Lookup("silent"))

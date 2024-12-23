@@ -79,16 +79,16 @@ func (c *Change) precheck() error {
 	return nil
 }
 
-func revertMovementChanges(movements *map[string]MovementResult) (badStateAlert bool) {
-	for movementName, movementResult := range *movements {
-		for changeName, change := range movementResult.Changes {
+func revertTestChanges(tests *map[string]TestResult) (badStateAlert bool) {
+	for testName, testResult := range *tests {
+		for changeName, change := range testResult.Changes {
 			if !badStateAlert && (change.Applied || change.Error != nil) {
 				if !change.Reverted {
 					change.Revert()
 				}
 				if change.Error != nil || !change.Reverted {
 					badStateAlert = true
-					log.Printf("[ERROR] Change in movement '%s' failed to revert. Change name: %s", movementName, changeName)
+					log.Printf("[ERROR] Change in test '%s' failed to revert. Change name: %s", testName, changeName)
 				}
 			}
 		}
