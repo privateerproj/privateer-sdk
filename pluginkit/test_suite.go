@@ -19,12 +19,12 @@ import (
 
 // TestSuite is a struct that contains the results of all testSets, orgainzed by name
 type TestSuite struct {
-	TestSuiteName   string                   // TestSuiteName is the name of the TestSuite
-	StartTime       string                   // StartTime is the time the plugin started
-	EndTime         string                   // EndTime is the time the plugin ended
-	TestSetResults  map[string]TestSetResult // TestSetResults is a map of testSet names to their results
-	Passed          bool                     // Passed is true if all testSets in the testSuite passed
-	BadStateAlert   bool                     // BadState is true if any testSet failed to revert at the end of the testSuite
+	TestSuiteName  string                   // TestSuiteName is the name of the TestSuite
+	StartTime      string                   // StartTime is the time the plugin started
+	EndTime        string                   // EndTime is the time the plugin ended
+	TestSetResults map[string]TestSetResult // TestSetResults is a map of testSet names to their results
+	Passed         bool                     // Passed is true if all testSets in the testSuite passed
+	BadStateAlert  bool                     // BadState is true if any testSet failed to revert at the end of the testSuite
 
 	config           *config.Config // config is the global configuration for the plugin
 	testSets         []TestSet      // testSets is a list of testSet functions for the current testSuite
@@ -56,12 +56,13 @@ func (t *TestSuite) Execute() error {
 		testSetResult.followThrough()
 
 		t.BadStateAlert = testSetResult.BadStateAlert
+		logMessage := fmt.Sprintf("%s: %s", testSetResult.ControlID, testSetResult.Message)
 		if testSetResult.Passed {
 			t.successes += 1
-			t.config.Logger.Info(testSetResult.Message)
+			t.config.Logger.Info(logMessage)
 		} else {
 			t.failures += 1
-			t.config.Logger.Error(testSetResult.Message)
+			t.config.Logger.Error(logMessage)
 		}
 		t.AddTestSetResult(name, testSetResult)
 	}
