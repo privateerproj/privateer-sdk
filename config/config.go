@@ -19,9 +19,10 @@ type Config struct {
 	ServiceName    string // Must be unique in the config file or logs will be overwritten
 	LogLevel       string
 	Logger         hclog.Logger
+	Write          bool
 	WriteDirectory string
 	Invasive       bool
-	TestSuites        []string
+	TestSuites     []string
 	Vars           map[string]interface{}
 	Error          error
 }
@@ -31,6 +32,7 @@ func NewConfig(requiredVars []string) Config {
 	topLoglevel := viper.GetString("loglevel")
 	topInvasive := viper.GetBool("invasive")
 	writeDir := viper.GetString("write-directory")
+	write := viper.GetBool("write")
 
 	loglevel := viper.GetString(fmt.Sprintf("services.%s.loglevel", serviceName))
 	invasive := viper.GetBool(fmt.Sprintf("services.%s.invasive", serviceName))
@@ -76,10 +78,14 @@ func NewConfig(requiredVars []string) Config {
 		ServiceName:    serviceName,
 		LogLevel:       loglevel,
 		WriteDirectory: writeDir,
+		Write:          write,
 		Invasive:       invasive,
-		TestSuites:        testSuites,
+		TestSuites:     testSuites,
 		Vars:           vars,
 		Error:          err,
+	}
+	if serviceName == "" {
+		serviceName = "overview"
 	}
 	config.SetConfig(serviceName, false)
 	config.Logger.Trace(fmt.Sprintf("Creating a new config instance for service '%s'%v", serviceName, config))
@@ -88,6 +94,7 @@ func NewConfig(requiredVars []string) Config {
 	config.Logger.Trace(fmt.Sprintf("invasive: %v", writeDir))
 	config.Logger.Trace(fmt.Sprintf("test-suites: %v", testSuites))
 	config.Logger.Trace(fmt.Sprintf("vars: %v", vars))
+	config.Logger.Trace(fmt.Sprintf("writing output to file: %v", write))
 	return config
 }
 
@@ -124,12 +131,12 @@ func (c *Config) SetConfig(name string, jsonFormat bool) {
 	if err != nil {
 		log.Panic(err) // TODO: handle this error better
 	}
-	multi := io.MultiWriter(logFileObj, os.Stdout)
+	writer := io.MultiWriter(logFileObj, os.Stdout)
 
 	logger := hclog.New(&hclog.LoggerOptions{
 		Level:      hclog.LevelFromString(c.LogLevel),
 		JSONFormat: jsonFormat,
-		Output:     multi,
+		Output:     writer,
 	})
 	log.SetOutput(logger.StandardWriter(&hclog.StandardLoggerOptions{InferLevels: false, InferLevelsWithTimestamp: false}))
 	c.Logger = logger
