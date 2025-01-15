@@ -32,8 +32,9 @@ func SetBase(cmd *cobra.Command) {
 	viper.BindPFlag("write", cmd.PersistentFlags().Lookup("write"))
 
 	cmd.PersistentFlags().BoolP("help", "h", false, "Give me a heading! Help for the specified command")
+}
 
-	// Initialize Viper
+func ReadConfig() {
 	viper.SetConfigFile(viper.GetString("config"))
 	viper.AutomaticEnv()
 
