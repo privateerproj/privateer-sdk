@@ -10,12 +10,12 @@ import (
 
 // The vessel gets the armory in position to execute the testSets specified in the testSuites
 type Vessel struct {
-	ServiceName      string
-	PluginName       string
-	RequiredVars     []string
-	Armory           *Armory
-	TestSuites       []TestSuite
-	Initializer      func(*config.Config) error
+	ServiceName      string                     `json:"serviceName"`
+	PluginName       string                     `json:"pluginName"`
+	RequiredVars     []string                   `json:"requiredVars"`
+	Armory           *Armory                    `json:"armory"`
+	TestSuites       []TestSuite                `json:"testSuites"`
+	Initializer      func(*config.Config) error `json:"initializer"`
 	config           *config.Config
 	logger           hclog.Logger
 	executedTestSets *[]string
@@ -93,12 +93,13 @@ func (v *Vessel) Mobilize() (err error) {
 	}
 	v.config.Logger.Trace("Mobilization complete")
 
-	// loop through the testSuites and write the results
 	if !v.config.Write {
 		return
 	}
+
+	// loop through the testSuites and write the results
 	for _, testSuite := range v.TestSuites {
-		err := testSuite.WriteTestSetResultsYAML(v.ServiceName)
+		err := testSuite.WriteTestSetResults(v.ServiceName, v.config.Output)
 		if err != nil {
 			v.config.Logger.Error("Failed to write results for testSuite",
 				"testSuite", testSuite.TestSuiteName,

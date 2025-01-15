@@ -16,6 +16,8 @@ var testConfigs = []struct {
 	missingVars      []string
 	config           string
 	logLevelExpected string
+	output           string
+	outputExpected   string
 	invasiveSet      bool
 	writeDirSet      bool
 	expectedError    string
@@ -210,6 +212,49 @@ services:
   my-service-1:
     vars:
       key: value
+`}, {
+		testName:       "Good - Default YAML output when missing",
+		runningService: "my-service-1",
+		requiredVars:   []string{},
+		outputExpected: "yaml",
+		config: `
+services:
+  my-service-1:
+    test-suites:
+      - tlp_green
+`}, {
+		testName:       "Good - designated output type JSON",
+		runningService: "my-service-1",
+		requiredVars:   []string{},
+		outputExpected: "json",
+		config: `
+output: json
+services:
+  my-service-1:
+    test-suites:
+      - tlp_green
+`}, {
+		testName:       "Good - designated output type YAML",
+		runningService: "my-service-1",
+		requiredVars:   []string{},
+		outputExpected: "yaml",
+		config: `
+output: yaml
+services:
+  my-service-1:
+    test-suites:
+      - tlp_green
+`}, {
+		testName:       "Bad - Bad output type",
+		runningService: "my-service-1",
+		requiredVars:   []string{},
+		expectedError:  "bad output type, allowed output types are json or yaml",
+		config: `
+output: bad
+services:
+  my-service-1:
+    test-suites:
+      - tlp_green
 `},
 }
 
@@ -260,6 +305,10 @@ func TestNewConfig(t *testing.T) {
 
 			if len(config.TestSuites) == 0 {
 				t.Errorf("expected testSuites to be set")
+			}
+
+			if tt.outputExpected != "" && config.Output != tt.outputExpected {
+				t.Errorf("expected output to be '%s', but got '%s'", tt.outputExpected, config.Output)
 			}
 		})
 	}
