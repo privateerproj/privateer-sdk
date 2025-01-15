@@ -7,13 +7,13 @@ import (
 
 // Change is a struct that contains the data and functions associated with a single change
 type Change struct {
-	TargetName   string                      // TargetName is the name of the resource or configuration that was changed
-	TargetObject interface{}                 // TargetObject is the object that was changed
+	TargetName   string                      `json:"targetName"`   // TargetName is the name of the resource or configuration that was changed
+	TargetObject interface{}                 `json:"targetObject"` // TargetObject is the object that was changed
+	Applied      bool                        `json:"applied"`      // Applied is true if the change was successfully applied at least once
+	Reverted     bool                        `json:"reverted"`     // Reverted is true if the change was successfully reverted and not applied again
+	Error        error                       `json:"error"`        // Error is used if an error occurred during the change
 	applyFunc    func() (interface{}, error) // Apply is the function that can be executed to make the change
 	revertFunc   func() error                // Revert is the function that can be executed to revert the change
-	Applied      bool                        // Applied is true if the change was successfully applied at least once
-	Reverted     bool                        // Reverted is true if the change was successfully reverted and not applied again
-	Error        error                       // Error is used if an error occurred during the change
 }
 
 // NewChange creates a new Change struct with the provided data

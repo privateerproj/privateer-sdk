@@ -9,6 +9,7 @@ import (
 	"path"
 	"reflect"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -19,12 +20,12 @@ import (
 
 // TestSuite is a struct that contains the results of all testSets, orgainzed by name
 type TestSuite struct {
-	TestSuiteName  string                   // TestSuiteName is the name of the TestSuite
-	StartTime      string                   // StartTime is the time the plugin started
-	EndTime        string                   // EndTime is the time the plugin ended
-	TestSetResults map[string]TestSetResult // TestSetResults is a map of testSet names to their results
-	Passed         bool                     // Passed is true if all testSets in the testSuite passed
-	BadStateAlert  bool                     // BadState is true if any testSet failed to revert at the end of the testSuite
+	TestSuiteName  string                   `json:"testSuiteName"`  // TestSuiteName is the name of the TestSuite
+	StartTime      string                   `json:"startTime"`      // StartTime is the time the plugin started
+	EndTime        string                   `json:"endTime"`        // EndTime is the time the plugin ended
+	TestSetResults map[string]TestSetResult `json:"testSetResults"` // TestSetResults is a map of testSet names to their results
+	Passed         bool                     `json:"passed"`         // Passed is true if all testSets in the testSuite passed
+	BadStateAlert  bool                     `json:"badStateAlert"`  // BadState is true if any testSet failed to revert at the end of the testSuite
 
 	config           *config.Config // config is the global configuration for the plugin
 	testSets         []TestSet      // testSets is a list of testSet functions for the current testSuite
@@ -95,35 +96,26 @@ func (t *TestSuite) AddTestSetResult(name string, result TestSetResult) {
 	t.TestSetResults[name] = result
 }
 
-// WriteTestSetResultsJSON unmarhals the TestSuite into a JSON file in the user's WriteDirectory
-func (t *TestSuite) WriteTestSetResultsJSON() error {
-	// Log an error if PluginName was not provided
-	if t.TestSuiteName == "" {
-		return errors.New("TestSuite name was not provided before attempting to write results")
-	}
-	filepath := path.Join(t.config.WriteDirectory, t.TestSuiteName, "results.json")
-
-	// Create log file and directory if it doesn't exist
-	if _, err := os.Stat(filepath); os.IsNotExist(err) {
-		os.MkdirAll(t.config.WriteDirectory, os.ModePerm)
-		os.Create(filepath)
+func (t *TestSuite) WriteTestSetResults(serviceName string, output string) error {
+	if t.TestSuiteName == "" || serviceName == "" {
+		return fmt.Errorf("testSuite name and service name must be provided before attempting to write results: testSuite='%s' service='%s'", t.TestSuiteName, serviceName)
 	}
 
-	// Write results to file
-	file, err := os.OpenFile(filepath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
-	if err != nil {
-		return err
+	var err error
+	var result []byte
+	switch output {
+	case "json":
+		result, err = json.Marshal(t)
+	case "yaml":
+		result, err = yaml.Marshal(t)
+	default:
+		err = fmt.Errorf("output type '%s' is not supported. Supported types are 'json' and 'yaml'", output)
 	}
-	defer file.Close()
-
-	// Marshal results to JSON
-	json, err := json.Marshal(t)
 	if err != nil {
 		return err
 	}
 
-	// Write JSON to file
-	_, err = file.Write(json)
+	err = t.writeTestSetResultsToFile(serviceName, result, output)
 	if err != nil {
 		return err
 	}
@@ -131,40 +123,40 @@ func (t *TestSuite) WriteTestSetResultsJSON() error {
 	return nil
 }
 
-// WriteTestSetResultsYAML unmarhals the TestSuite into a YAML file in the user's WriteDirectory
-func (t *TestSuite) WriteTestSetResultsYAML(serviceName string) error {
-	// Log an error if PluginName was not provided
-	if t.TestSuiteName == "" || serviceName == "" {
-		return fmt.Errorf("testSuite name and service name must be provided before attempting to write results: testSuite='%s' service='%s'", t.TestSuiteName, serviceName)
+func (t *TestSuite) writeTestSetResultsToFile(serviceName string, result []byte, extension string) error {
+	if !strings.Contains(extension, ".") {
+		extension = fmt.Sprintf(".%s", extension)
 	}
 	dir := path.Join(t.config.WriteDirectory, serviceName)
-	filepath := path.Join(dir, t.TestSuiteName+".yml")
+	filename := fmt.Sprintf("%s%s", t.TestSuiteName, extension)
+	filepath := path.Join(dir, filename)
 
-	t.config.Logger.Trace(fmt.Sprintf("Writing results to %s", filepath))
+	t.config.Logger.Trace("Writing results", "filepath", filepath)
 
 	// Create log file and directory if it doesn't exist
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		os.MkdirAll(dir, os.ModePerm)
-		t.config.Logger.Error("write directory for this plugin created for results, but should have been created when initializing logs:" + dir)
+		err = os.MkdirAll(dir, os.ModePerm)
+		if err != nil {
+			t.config.Logger.Error("Error creating directory", "directory", dir)
+			return err
+		}
+		t.config.Logger.Info("write directory for this plugin created for results, but should have been created when initializing logs", "directory", dir)
 	}
 
-	os.Create(filepath)
+	_, err := os.Create(filepath)
+	if err != nil {
+		t.config.Logger.Error("Error creating file", "filepath", filepath)
+		return err
+	}
 
-	// Write results to file
 	file, err := os.OpenFile(filepath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
 	if err != nil {
+		t.config.Logger.Error("Error opening file", "filepath", filepath)
 		return err
 	}
 	defer file.Close()
 
-	// Marshal results to YAML
-	yaml, err := yaml.Marshal(t)
-	if err != nil {
-		return err
-	}
-
-	// Write YAML to file
-	_, err = file.Write(yaml)
+	_, err = file.Write(result)
 	if err != nil {
 		return err
 	}
