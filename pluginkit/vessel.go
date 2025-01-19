@@ -100,7 +100,10 @@ func (v *Vessel) Mobilize() (err error) {
 	for _, testSuite := range v.TestSuites {
 		err := testSuite.WriteTestSetResultsYAML(v.ServiceName)
 		if err != nil {
-			v.config.Logger.Error(fmt.Sprintf("Failed to write results for testSuite '%s': %v", testSuite.TestSuiteName, err))
+			v.config.Logger.Error("Failed to write results for testSuite",
+				"testSuite", testSuite.TestSuiteName,
+				"error", err,
+			)
 		}
 	}
 	return

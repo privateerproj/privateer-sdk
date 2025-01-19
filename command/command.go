@@ -32,9 +32,6 @@ func SetBase(cmd *cobra.Command) {
 	viper.BindPFlag("write", cmd.PersistentFlags().Lookup("write"))
 
 	cmd.PersistentFlags().BoolP("help", "h", false, "Give me a heading! Help for the specified command")
-}
-
-func ReadConfig() {
 	viper.SetConfigFile(viper.GetString("config"))
 	viper.AutomaticEnv()
 
@@ -43,7 +40,6 @@ func ReadConfig() {
 	}
 }
 
-// defaultConfigPath returns the default config path
 func defaultConfigPath() string {
 	workDir, err := os.Getwd()
 	if err != nil {
