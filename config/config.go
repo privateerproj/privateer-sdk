@@ -87,14 +87,16 @@ func NewConfig(requiredVars []string) Config {
 	if serviceName == "" {
 		serviceName = "overview"
 	}
-	config.SetConfig(serviceName, false)
-	config.Logger.Trace(fmt.Sprintf("Creating a new config instance for service '%s'%v", serviceName, config))
-	config.Logger.Trace(fmt.Sprintf("loglevel: %s", loglevel))
-	config.Logger.Trace(fmt.Sprintf("write-directory: %v", invasive))
-	config.Logger.Trace(fmt.Sprintf("invasive: %v", writeDir))
-	config.Logger.Trace(fmt.Sprintf("test-suites: %v", testSuites))
-	config.Logger.Trace(fmt.Sprintf("vars: %v", vars))
-	config.Logger.Trace(fmt.Sprintf("writing output to file: %v", write))
+	config.SetupLogging(serviceName, false)
+	config.Logger.Trace("Creating a new config instance for service",
+		"serviceName", serviceName,
+		"loglevel", loglevel,
+		"write-directory", writeDir,
+		"invasive", invasive,
+		"test-suites", testSuites,
+		"vars", vars,
+		"writing output to file", write,
+	)
 	return config
 }
 
@@ -108,7 +110,7 @@ func defaultWritePath() string {
 	return filepath.Join(home, ".privateer", "logs", dirName)
 }
 
-func (c *Config) SetConfig(name string, jsonFormat bool) {
+func (c *Config) SetupLogging(name string, jsonFormat bool) {
 	var logFilePath string
 	logFile := name + ".log"
 	if name == "overview" {
@@ -122,8 +124,8 @@ func (c *Config) SetConfig(name string, jsonFormat bool) {
 	// Create log file and directory if it doesn't exist
 	if _, err := os.Stat(logFilePath); os.IsNotExist(err) {
 		// mkdir all directories from filepath
-		os.MkdirAll(path.Dir(logFilePath), os.ModePerm)
-		os.Create(logFilePath)
+		_ = os.MkdirAll(path.Dir(logFilePath), os.ModePerm)
+		_, _ = os.Create(logFilePath)
 	}
 
 	logFileObj, err := os.OpenFile(logFilePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
