@@ -13,13 +13,13 @@ type TestSet func() (testSetName string, result TestSetResult)
 
 // TestSetResult is a struct that contains the results of a check for a single control
 type TestSetResult struct {
-	Passed        bool                      // Passed is true if the test passed
-	Description   string                    // Description is a human-readable description of the test
-	Message       string                    // Message is a human-readable description of the test result
-	DocsURL       string                    // DocsURL is a link to the documentation for the test
-	ControlID     string                    // ControlID is the ID of the control that the test is validating
-	Tests         map[string]TestResult     // Tests is a list of functions that were executed during the test
-	BadStateAlert bool                      // BadStateAlert is true if any change failed to revert at the end of the testSet
+	Passed        bool                  `json:"passed"`        // Passed is true if the test passed
+	Description   string                `json:"description"`   // Description is a human-readable description of the test
+	Message       string                `json:"message"`       // Message is a human-readable description of the test result
+	DocsURL       string                `json:"docsURL"`       // DocsURL is a link to the documentation for the test
+	ControlID     string                `json:"controlID"`     // ControlID is the ID of the control that the test is validating
+	Tests         map[string]TestResult `json:"tests"`         // Tests is a list of functions that were executed during the test
+	BadStateAlert bool                  `json:"badStateAlert"` // BadStateAlert is true if any change failed to revert at the end of the testSet
 
 	invasivePlugin bool // invasivePlugin is true if the testSuite is allowed to make changes to the target service
 }
