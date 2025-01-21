@@ -140,7 +140,7 @@ func (t *TestSuite) writeTestSetResultsToFile(serviceName string, result []byte,
 			t.config.Logger.Error("Error creating directory", "directory", dir)
 			return err
 		}
-		t.config.Logger.Info("write directory for this plugin created for results, but should have been created when initializing logs", "directory", dir)
+		t.config.Logger.Warn("write directory for this plugin created for results, but should have been created when initializing logs", "directory", dir)
 	}
 
 	_, err := os.Create(filepath)
