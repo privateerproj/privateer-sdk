@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -15,11 +16,14 @@ import (
 	"github.com/spf13/viper"
 )
 
+var allowedOutputTypes = []string{"json", "yaml"}
+
 type Config struct {
 	ServiceName    string // Must be unique in the config file or logs will be overwritten
 	LogLevel       string
 	Logger         hclog.Logger
 	Write          bool
+	Output         string
 	WriteDirectory string
 	Invasive       bool
 	TestSuites     []string
@@ -33,6 +37,7 @@ func NewConfig(requiredVars []string) Config {
 	topInvasive := viper.GetBool("invasive")
 	writeDir := viper.GetString("write-directory")
 	write := viper.GetBool("write")
+	output := strings.ToLower(strings.TrimSpace(viper.GetString("output")))
 
 	loglevel := viper.GetString(fmt.Sprintf("services.%s.loglevel", serviceName))
 	invasive := viper.GetBool(fmt.Sprintf("services.%s.invasive", serviceName))
@@ -69,6 +74,12 @@ func NewConfig(requiredVars []string) Config {
 		errString = fmt.Sprintf("missing required variables: %v", missingVars)
 	}
 
+	if output == "" {
+		output = "yaml"
+	} else if ok := slices.Contains(allowedOutputTypes, output); !ok {
+		errString = "bad output type, allowed output types are json or yaml"
+	}
+
 	var err error
 	if errString != "" {
 		err = errors.New(errString)
@@ -79,6 +90,7 @@ func NewConfig(requiredVars []string) Config {
 		LogLevel:       loglevel,
 		WriteDirectory: writeDir,
 		Write:          write,
+		Output:         output,
 		Invasive:       invasive,
 		TestSuites:     testSuites,
 		Vars:           vars,
@@ -87,15 +99,16 @@ func NewConfig(requiredVars []string) Config {
 	if serviceName == "" {
 		serviceName = "overview"
 	}
-	config.SetupLogging(serviceName, false)
+	config.SetupLogging(serviceName, output == "json")
 	config.Logger.Trace("Creating a new config instance for service",
 		"serviceName", serviceName,
 		"loglevel", loglevel,
+		"write", write,
 		"write-directory", writeDir,
 		"invasive", invasive,
 		"test-suites", testSuites,
 		"vars", vars,
-		"writing output to file", write,
+		"output", output,
 	)
 	return config
 }
@@ -121,6 +134,21 @@ func (c *Config) SetupLogging(name string, jsonFormat bool) {
 		logFilePath = path.Join(c.WriteDirectory, name, logFile)
 	}
 
+	writer := io.Writer(os.Stdout)
+	if c.Write {
+		writer = c.setupLoggingFilesAndDirectories(logFilePath)
+	}
+
+	logger := hclog.New(&hclog.LoggerOptions{
+		Level:      hclog.LevelFromString(c.LogLevel),
+		JSONFormat: jsonFormat,
+		Output:     writer,
+	})
+	log.SetOutput(logger.StandardWriter(&hclog.StandardLoggerOptions{InferLevels: false, InferLevelsWithTimestamp: false}))
+	c.Logger = logger
+}
+
+func (c *Config) setupLoggingFilesAndDirectories(logFilePath string) io.Writer {
 	// Create log file and directory if it doesn't exist
 	if _, err := os.Stat(logFilePath); os.IsNotExist(err) {
 		// mkdir all directories from filepath
@@ -133,13 +161,7 @@ func (c *Config) SetupLogging(name string, jsonFormat bool) {
 	if err != nil {
 		log.Panic(err) // TODO: handle this error better
 	}
-	writer := io.MultiWriter(logFileObj, os.Stdout)
 
-	logger := hclog.New(&hclog.LoggerOptions{
-		Level:      hclog.LevelFromString(c.LogLevel),
-		JSONFormat: jsonFormat,
-		Output:     writer,
-	})
-	log.SetOutput(logger.StandardWriter(&hclog.StandardLoggerOptions{InferLevels: false, InferLevelsWithTimestamp: false}))
-	c.Logger = logger
+	writer := io.MultiWriter(logFileObj, os.Stdout)
+	return writer
 }

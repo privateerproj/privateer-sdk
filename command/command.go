@@ -14,22 +14,22 @@ import (
 // SetBase sets the base flags for all commands
 func SetBase(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringP("config", "c", defaultConfigPath(), "Configuration File, JSON or YAML")
-	viper.BindPFlag("config", cmd.PersistentFlags().Lookup("config"))
+	_ = viper.BindPFlag("config", cmd.PersistentFlags().Lookup("config"))
 
 	cmd.PersistentFlags().StringP("loglevel", "l", "error", "Log level (trace, debug, info, warn, error, off)")
-	viper.BindPFlag("loglevel", cmd.PersistentFlags().Lookup("loglevel"))
+	_ = viper.BindPFlag("loglevel", cmd.PersistentFlags().Lookup("loglevel"))
 
 	cmd.PersistentFlags().StringP("service", "s", "", "Named service to execute from the config")
-	viper.BindPFlag("service", cmd.PersistentFlags().Lookup("service"))
+	_ = viper.BindPFlag("service", cmd.PersistentFlags().Lookup("service"))
 
 	cmd.PersistentFlags().StringP("test-suites", "t", "default", "Named set of test sets to execute from the plugin")
-	viper.BindPFlag("test-suites", cmd.PersistentFlags().Lookup("test-suites"))
+	_ = viper.BindPFlag("test-suites", cmd.PersistentFlags().Lookup("test-suites"))
 
-	cmd.PersistentFlags().BoolP("silent", "", false, "Shh! Only show essential log information")
-	viper.BindPFlag("silent", cmd.PersistentFlags().Lookup("silent"))
+	cmd.PersistentFlags().BoolP("silent", "", false, "Only show essential log information")
+	_ = viper.BindPFlag("silent", cmd.PersistentFlags().Lookup("silent"))
 
 	cmd.PersistentFlags().BoolP("write", "", true, "Keep all of the detailed result outputs in a file. Disabling does not disable log files.")
-	viper.BindPFlag("write", cmd.PersistentFlags().Lookup("write"))
+	_ = viper.BindPFlag("write", cmd.PersistentFlags().Lookup("write"))
 
 	cmd.PersistentFlags().BoolP("help", "h", false, "Give me a heading! Help for the specified command")
 }

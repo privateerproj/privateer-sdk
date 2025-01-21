@@ -15,10 +15,14 @@ var testConfigs = []struct {
 	requiredVars     []string
 	missingVars      []string
 	config           string
-	logLevelExpected string
+	output           string
 	invasiveSet      bool
 	writeDirSet      bool
+	writeSet         bool
+	expectedLogLevel string
+	expectedOutput   string
 	expectedError    string
+	expectedWrite    bool
 }{
 	{
 		testName:       "Good - One Service",
@@ -45,7 +49,7 @@ services:
 		testName:         "Good - Log Level Set at Top Level",
 		runningService:   "my-service-1",
 		requiredVars:     []string{},
-		logLevelExpected: "debug",
+		expectedLogLevel: "debug",
 		config: `
 loglevel: debug
 services:
@@ -56,7 +60,7 @@ services:
 		testName:         "Good - Log Level Set in Service",
 		runningService:   "my-service-1",
 		requiredVars:     []string{},
-		logLevelExpected: "debug",
+		expectedLogLevel: "debug",
 		config: `
 services:
   my-service-1:
@@ -67,7 +71,7 @@ services:
 		testName:         "Good - Log Level Set in Service and Top Level",
 		runningService:   "my-service-1",
 		requiredVars:     []string{},
-		logLevelExpected: "debug",
+		expectedLogLevel: "debug",
 		config: `
 loglevel: info
 services:
@@ -210,6 +214,96 @@ services:
   my-service-1:
     vars:
       key: value
+`}, {
+		testName:       "Good - Default YAML output when missing",
+		runningService: "my-service-1",
+		requiredVars:   []string{},
+		expectedOutput: "yaml",
+		config: `
+services:
+  my-service-1:
+    test-suites:
+      - tlp_green
+`}, {
+		testName:       "Good - designated output type JSON",
+		runningService: "my-service-1",
+		requiredVars:   []string{},
+		expectedOutput: "json",
+		config: `
+output: json
+services:
+  my-service-1:
+    test-suites:
+      - tlp_green
+`}, {
+		testName:       "Good - designated output type YAML",
+		runningService: "my-service-1",
+		requiredVars:   []string{},
+		expectedOutput: "yaml",
+		config: `
+output: yaml
+services:
+  my-service-1:
+    test-suites:
+      - tlp_green
+`}, {
+		testName:       "Bad - Bad output type",
+		runningService: "my-service-1",
+		requiredVars:   []string{},
+		expectedError:  "bad output type, allowed output types are json or yaml",
+		config: `
+output: bad
+services:
+  my-service-1:
+    test-suites:
+      - tlp_green
+`}, /*{
+			testName:       "Good - write default to true",
+			runningService: "my-service-1",
+			requiredVars:   []string{},
+			writeSet:       true,
+			expectedWrite:  true,
+			config: `
+	services:
+	  my-service-1:
+	    test-suites:
+	      - tlp_green
+	`} ,*/{
+		testName:       "Good - explicit write true",
+		runningService: "my-service-1",
+		requiredVars:   []string{},
+		writeSet:       true,
+		expectedWrite:  true,
+		config: `
+write: true
+services:
+  my-service-1:
+    test-suites:
+      - tlp_green
+`}, {
+		testName:       "Good - explicit write false",
+		runningService: "my-service-1",
+		requiredVars:   []string{},
+		writeSet:       true,
+		expectedWrite:  false,
+		config: `
+write: false
+services:
+  my-service-1:
+    test-suites:
+      - tlp_green
+`}, {
+		testName:       "Good - write non boolean default to false false",
+		runningService: "my-service-1",
+		requiredVars:   []string{},
+		writeSet:       true,
+		expectedWrite:  false,
+		config: `
+write: blahblah
+services:
+  my-service-1:
+    test-suites:
+      - tlp_green
 `},
 }
 
@@ -244,10 +338,6 @@ func TestNewConfig(t *testing.T) {
 				t.Errorf("expected service name to be '%s', got '%s'", tt.runningService, config.ServiceName)
 			}
 
-			if tt.logLevelExpected != "" && config.LogLevel != tt.logLevelExpected {
-				t.Errorf("expected log level to be set to '%s', but got '%s'", tt.logLevelExpected, config.LogLevel)
-			}
-
 			if tt.invasiveSet != config.Invasive {
 				t.Errorf("expected invasive to be '%v', but got '%v'", tt.invasiveSet, config.Invasive)
 			}
@@ -260,6 +350,18 @@ func TestNewConfig(t *testing.T) {
 
 			if len(config.TestSuites) == 0 {
 				t.Errorf("expected testSuites to be set")
+			}
+
+			if tt.expectedLogLevel != "" && config.LogLevel != tt.expectedLogLevel {
+				t.Errorf("expected log level to be set to '%s', but got '%s'", tt.expectedLogLevel, config.LogLevel)
+			}
+
+			if tt.expectedOutput != "" && config.Output != tt.expectedOutput {
+				t.Errorf("expected output to be '%s', but got '%s'", tt.expectedOutput, config.Output)
+			}
+
+			if tt.writeSet && tt.expectedWrite != config.Write {
+				t.Errorf("expected write to be '%t', but got '%t'", tt.expectedWrite, config.Write)
 			}
 		})
 	}
