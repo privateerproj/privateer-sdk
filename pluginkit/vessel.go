@@ -21,6 +21,20 @@ type Vessel struct {
 	executedTestSets *[]string
 }
 
+func NewVessel(
+	name string,
+	armory *Armory,
+	initializer func(*config.Config) error,
+	requiredVars []string) Vessel {
+
+	return Vessel{
+		PluginName:   name,
+		Armory:       armory,
+		Initializer:  initializer,
+		RequiredVars: requiredVars,
+	}
+}
+
 // StockArmory sets up the armory for the vessel to use
 func (v *Vessel) StockArmory() error {
 	if v.Armory == nil {
