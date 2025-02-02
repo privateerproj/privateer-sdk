@@ -100,10 +100,12 @@ func (v *Vessel) Mobilize() (err error) {
 		}
 
 		err = testSuite.Execute()
+
+		v.TestSuites = append(v.TestSuites, testSuite)
+
 		if testSuite.BadStateAlert {
 			break
 		}
-		v.TestSuites = append(v.TestSuites, testSuite)
 	}
 	v.config.Logger.Trace("Mobilization complete")
 
