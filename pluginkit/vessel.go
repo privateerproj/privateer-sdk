@@ -21,6 +21,9 @@ type Vessel struct {
 	executedTestSets *[]string
 }
 
+// After we get to StockArmory, the pluginkit will have a pointer to the runtime user config
+var USER_CONFIG *config.Config
+
 func NewVessel(
 	name string,
 	armory *Armory,
@@ -37,6 +40,8 @@ func NewVessel(
 
 // StockArmory sets up the armory for the vessel to use
 func (v *Vessel) StockArmory() error {
+	USER_CONFIG = v.config
+
 	if v.Armory == nil {
 		return errors.New("vessel's Armory field cannot be nil")
 	}

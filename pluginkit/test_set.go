@@ -20,8 +20,6 @@ type TestSetResult struct {
 	ControlID     string                `json:"controlID"`     // ControlID is the ID of the control that the test is validating
 	Tests         map[string]TestResult `json:"tests"`         // Tests is a list of functions that were executed during the test
 	BadStateAlert bool                  `json:"badStateAlert"` // BadStateAlert is true if any change failed to revert at the end of the testSet
-
-	invasivePlugin bool // invasivePlugin is true if the testSuite is allowed to make changes to the target service
 }
 
 func (s *TestSetResult) followThrough() {
@@ -55,7 +53,7 @@ func (s *TestSetResult) ExecuteTest(testFunc func() TestResult) {
 
 // ExecuteInvasiveTest is a helper function to run a test function and update the result
 func (s *TestSetResult) ExecuteInvasiveTest(testFunc func() TestResult) {
-	if s.invasivePlugin {
+	if USER_CONFIG.Invasive {
 		s.ExecuteTest(testFunc)
 	} else {
 		log.Printf("[Trace] Invasive tests are disabled, skipping test: %s", utils.CallerName(0))
