@@ -3,6 +3,8 @@ package pluginkit
 import (
 	"fmt"
 	"testing"
+
+	"github.com/privateerproj/privateer-sdk/config"
 )
 
 var executeTestTests = []struct {
@@ -134,6 +136,9 @@ func TestExecuteTest(t *testing.T) {
 }
 
 func TestExecuteInvasiveTest(t *testing.T) {
+	c := config.NewConfig([]string{})
+	USER_CONFIG = &c
+
 	for _, tt := range executeTestTests {
 		for _, invasive := range []bool{false, true} {
 			// Clone the testSetResult to avoid side effects
