@@ -4,23 +4,23 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/spf13/viper"
+	"github.com/privateerproj/privateer-sdk/config"
 )
 
 var executeTestTests = []struct {
 	testName        string
 	expectedPass    bool
 	expectedMessage string
-	testSetResult    *TestSetResult
-	testResult  TestResult
+	testSetResult   *TestSetResult
+	testResult      TestResult
 }{
 	{
 		testName:        "First test passed",
 		expectedPass:    true,
 		expectedMessage: "Test successful",
 		testSetResult: &TestSetResult{
-			Message:   "No previous tests",
-			Tests: make(map[string]TestResult),
+			Message: "No previous tests",
+			Tests:   make(map[string]TestResult),
 		},
 		testResult: TestResult{
 			Passed:  true,
@@ -32,8 +32,8 @@ var executeTestTests = []struct {
 		expectedPass:    false,
 		expectedMessage: "Test failed",
 		testSetResult: &TestSetResult{
-			Message:   "No previous tests",
-			Tests: make(map[string]TestResult),
+			Message: "No previous tests",
+			Tests:   make(map[string]TestResult),
 		},
 		testResult: TestResult{
 			Passed:  false,
@@ -136,20 +136,23 @@ func TestExecuteTest(t *testing.T) {
 }
 
 func TestExecuteInvasiveTest(t *testing.T) {
+	c := config.NewConfig([]string{})
+	USER_CONFIG = &c
+
 	for _, tt := range executeTestTests {
 		for _, invasive := range []bool{false, true} {
 			// Clone the testSetResult to avoid side effects
 			result := &TestSetResult{
-				Passed:    tt.testSetResult.Passed,
-				Message:   tt.testSetResult.Message,
-				Tests: make(map[string]TestResult),
+				Passed:  tt.testSetResult.Passed,
+				Message: tt.testSetResult.Message,
+				Tests:   make(map[string]TestResult),
 			}
 			for k, v := range tt.testSetResult.Tests {
 				result.Tests[k] = v
 			}
 
 			t.Run(fmt.Sprintf("%s-invasive=%v)", tt.testName, invasive), func(t *testing.T) {
-				viper.Set("invasive", invasive)
+				USER_CONFIG.Invasive = invasive
 
 				// Simulate a test function execution
 				result.ExecuteInvasiveTest(func() TestResult {
