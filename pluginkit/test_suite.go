@@ -19,7 +19,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type TestSet func() (testSetName string, result layer4.ControlEvaluation)
+type TestSet func() (result layer4.ControlEvaluation)
 
 // TestSuite is a struct that contains the results of all testSets, orgainzed by name
 type TestSuite struct {
@@ -56,7 +56,7 @@ func (t *TestSuite) Execute() error {
 			break
 		}
 		t.attempts += 1
-		name, testSetResult := testSet()
+		testSetResult := testSet()
 
 		testSetResult.Cleanup()
 
@@ -69,7 +69,7 @@ func (t *TestSuite) Execute() error {
 			t.failures += 1
 			t.config.Logger.Error(logMessage)
 		}
-		t.AddControlEvaluation(name, testSetResult)
+		t.AddControlEvaluation(testSetName, testSetResult)
 	}
 
 	t.cleanup()
