@@ -8,6 +8,7 @@ require (
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.19.0
 	gopkg.in/yaml.v3 v3.0.1
+	github.com/revanite-io/sci/pkg v0.0.4
 )
 
 require (
@@ -42,3 +43,5 @@ require (
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 )
+
+replace github.com/revanite-io/sci/pkg => ../sci/pkg

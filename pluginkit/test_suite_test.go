@@ -8,10 +8,10 @@ import (
 )
 
 var testSuiteTestData = []struct {
-	testName    string
-	pluginName  string
-	armory      *Armory
-	runErr      string
+	testName       string
+	pluginName     string
+	armory         *Armory
+	runErr         string
 	testSuiteNames []string
 	testSuiteName  string
 }{
@@ -21,16 +21,16 @@ var testSuiteTestData = []struct {
 		armory:     goodArmory,
 	},
 	{
-		testName:   "Single testSuiteName specified as 'test-suite'",
-		pluginName: "testPlugin",
+		testName:      "Single testSuiteName specified as 'test-suite'",
+		pluginName:    "testPlugin",
 		testSuiteName: "testTestSuite",
-		armory:     goodArmory,
+		armory:        goodArmory,
 	},
 	{
-		testName:    "Single testSuiteName specified in 'test-suites' slice",
-		pluginName:  "testPlugin",
+		testName:       "Single testSuiteName specified in 'test-suites' slice",
+		pluginName:     "testPlugin",
 		testSuiteNames: []string{"testTestSuite"},
-		armory:      goodArmory,
+		armory:         goodArmory,
 	},
 }
 
@@ -46,8 +46,8 @@ func TestTestSuiteExecute(t *testing.T) {
 		t.Run(tt.testName, func(t *testing.T) {
 			testSuite := TestSuite{
 				TestSuiteName: tt.testSuiteName,
-				testSets:    tt.armory.TestSuites[tt.testSuiteName],
-				config:     tt.armory.Config,
+				testSets:      tt.armory.TestSuites[tt.testSuiteName],
+				config:        tt.armory.Config,
 			}
 			err := testSuite.Execute()
 
