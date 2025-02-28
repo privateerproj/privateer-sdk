@@ -62,7 +62,7 @@ func (t *TestSuite) Execute() error {
 
 		t.BadStateAlert = testSetResult.Corrupted_State
 		logMessage := fmt.Sprintf("%s: %s", testSetResult.Control_Id, testSetResult.Name)
-		if testSetResult.Passed {
+		if testSetResult.Result == layer4.Passed {
 			t.successes += 1
 			t.config.Logger.Info(logMessage)
 		} else {

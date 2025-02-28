@@ -7,6 +7,19 @@ import (
 	"github.com/spf13/viper"
 )
 
+var testArmory = &Armory{
+	TestSuites: map[string][]TestSet{
+		"PassTestSuite":                {passingTestSet},
+		"FailTestSuite":                {failingTestSet},
+		"PassedBadStateAlertTestSuite": {passingBadStateAlertTestSet},
+		"FailedBadStateAlertTestSuite": {failingBadStateAlertTestSet},
+	},
+}
+
+var testVessel = Vessel{
+	PluginName: "TestPlugin",
+}
+
 var testSuiteTestData = []struct {
 	testName       string
 	pluginName     string
@@ -40,8 +53,8 @@ func TestTestSuiteExecute(t *testing.T) {
 	viper.Set("WriteDirectory", "./tmp")
 	for _, tt := range testSuiteTestData {
 		viper.Set(fmt.Sprintf("plugins.%s.testSuites", tt.pluginName), tt.testSuiteNames)
-		goodVessel.Armory = tt.armory
-		goodVessel.StockArmory()
+		testVessel.Armory = tt.armory
+		testVessel.StockArmory()
 
 		t.Run(tt.testName, func(t *testing.T) {
 			testSuite := TestSuite{
