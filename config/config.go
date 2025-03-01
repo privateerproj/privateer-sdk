@@ -26,7 +26,7 @@ type Config struct {
 	Output         string
 	WriteDirectory string
 	Invasive       bool
-	TestSuites     []string
+	Applicability  []string
 	Vars           map[string]interface{}
 	Error          error
 }
@@ -41,7 +41,7 @@ func NewConfig(requiredVars []string) Config {
 
 	loglevel := viper.GetString(fmt.Sprintf("services.%s.loglevel", serviceName))
 	invasive := viper.GetBool(fmt.Sprintf("services.%s.invasive", serviceName))
-	testSuites := viper.GetStringSlice(fmt.Sprintf("services.%s.test-suites", serviceName))
+	applicability := viper.GetStringSlice(fmt.Sprintf("services.%s.applicability", serviceName))
 	vars := viper.GetStringMap(fmt.Sprintf("services.%s.vars", serviceName))
 
 	if loglevel == "" && topLoglevel != "" {
@@ -59,7 +59,7 @@ func NewConfig(requiredVars []string) Config {
 	}
 
 	var errString string
-	if serviceName != "" && len(testSuites) == 0 {
+	if serviceName != "" && len(applicability) == 0 {
 		errString = fmt.Sprintf("no test suites requested for service in config: %s", viper.GetString("config"))
 	}
 
@@ -92,7 +92,7 @@ func NewConfig(requiredVars []string) Config {
 		Write:          write,
 		Output:         output,
 		Invasive:       invasive,
-		TestSuites:     testSuites,
+		Applicability:  applicability,
 		Vars:           vars,
 		Error:          err,
 	}
@@ -106,7 +106,7 @@ func NewConfig(requiredVars []string) Config {
 		"write", write,
 		"write-directory", writeDir,
 		"invasive", invasive,
-		"test-suites", testSuites,
+		"applicability", applicability,
 		"vars", vars,
 		"output", output,
 	)

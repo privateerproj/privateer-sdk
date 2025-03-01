@@ -57,25 +57,18 @@ func TestTestSuiteExecute(t *testing.T) {
 		testVessel.StockArmory()
 
 		t.Run(tt.testName, func(t *testing.T) {
-			testSuite := TestSuite{
-				TestSuiteName: tt.testSuiteName,
-				testSets:      tt.armory.TestSuites[tt.testSuiteName],
-				config:        tt.armory.Config,
+			err := testVessel.Evaluate(tt.testSuiteName, nil)
+			if err != nil && err.Error() != tt.runErr {
+				t.Errorf("Expected '%s', got '%s'", tt.runErr, err.Error())
 			}
-			err := testSuite.Execute()
-
-			if tt.runErr != "" && (err == nil || err.Error() != tt.runErr) {
-				t.Errorf("Expected %v, got %v", tt.runErr, err)
-			}
-
 		})
 	}
 	t.Run("No testSuiteName specified", func(t *testing.T) {
-		testSuite := TestSuite{}
+		e := EvaluationSuite{}
 
-		err := testSuite.Execute()
-		if err == nil || err.Error() != "TestSuite name was not provided before attempting to execute" {
-			t.Errorf("Expected 'TestSuite name was not provided before attempting to execute', got nil")
+		err := e.Evaluate(nil)
+		if err == nil || err.Error() != "EvaluationSuite name was not provided before attempting to execute" {
+			t.Errorf("Expected 'EvaluationSuite name was not provided before attempting to execute', got nil")
 		}
 	})
 }

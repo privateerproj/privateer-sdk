@@ -6,19 +6,20 @@ import (
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/privateerproj/privateer-sdk/config"
+	"github.com/revanite-io/sci/pkg/layer4"
 )
 
 // The vessel gets the armory in position to execute the testSets specified in the testSuites
 type Vessel struct {
-	ServiceName      string
-	PluginName       string
-	RequiredVars     []string
-	Armory           *Armory
-	TestSuites       []TestSuite
-	Initializer      func(*config.Config) error
-	config           *config.Config
-	logger           hclog.Logger
-	executedTestSets *[]string
+	ServiceName        string
+	PluginName         string
+	RequiredVars       []string
+	Armory             *Armory
+	ControlEvaluations []layer4.ControlEvaluation
+	Initializer        func(*config.Config) error
+	config             *config.Config
+	logger             hclog.Logger
+	executedTestSets   *[]string
 }
 
 func NewVessel(
@@ -63,7 +64,7 @@ func (v *Vessel) StockArmory() error {
 	if v.Armory == nil {
 		return fmt.Errorf("no armory was stocked for the plugin '%s'", v.PluginName)
 	}
-	if v.Armory.TestSuites == nil {
+	if v.Armory.EvaluationSuites == nil {
 		return fmt.Errorf("no testSuites provided for the service")
 	}
 
@@ -86,22 +87,30 @@ func (v *Vessel) Mobilize() (err error) {
 			return
 		}
 	}
-	for _, testSuiteName := range v.config.TestSuites {
-		if testSuiteName == "" {
+	for _, applicability := range v.config.Applicability {
+		if applicability == "" {
 			err = fmt.Errorf("testSuite name cannot be an empty string")
 			return
 		}
 
-		testSuite := TestSuite{
-			testSets:         v.Armory.TestSuites[testSuiteName],
+		// NOTES
+		// We need to be able to specify the policies — what catalogs are being run, and which applicability is applied
+		// Applicability is currently a list, but it should be a string
+		// Catalog should be a list
+		// Policy is catalog + applicability
+		// This will require changes all across the SDK and the plugin generator templates, but not to SCI yet.
+		// We may move the Policy object type to SCI later if it seems useful.
+
+		testSuite := layer4.EvaluationSuite{
+			testSets:         v.Armory.EvaluationSuites[testSuiteName],
 			executedTestSets: v.executedTestSets,
 			config:           v.config,
 		}
-		testSuite.TestSuiteName = testSuiteName // Inherited, can't be set above
+		testSuite.EvaluationSuite = testSuiteName // Inherited, can't be set above
 
 		err = testSuite.Execute()
 
-		v.TestSuites = append(v.TestSuites, testSuite)
+		v.EvaluationSuites = append(v.EvaluationSuites, testSuite)
 
 		if testSuite.BadStateAlert {
 			break
@@ -114,11 +123,11 @@ func (v *Vessel) Mobilize() (err error) {
 	}
 
 	// loop through the testSuites and write the results
-	for _, testSuite := range v.TestSuites {
+	for _, testSuite := range v.EvaluationSuites {
 		err := testSuite.WriteControlEvaluations(v.ServiceName, v.config.Output)
 		if err != nil {
 			v.config.Logger.Error("Failed to write results for testSuite",
-				"testSuite", testSuite.TestSuiteName,
+				"testSuite", testSuite.EvaluationSuite,
 				"error", err,
 			)
 		}
