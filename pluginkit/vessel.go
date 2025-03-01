@@ -10,19 +10,16 @@ import (
 
 // The vessel gets the armory in position to execute the testSets specified in the testSuites
 type Vessel struct {
-	ServiceName      string                     `json:"serviceName"`
-	PluginName       string                     `json:"pluginName"`
-	RequiredVars     []string                   `json:"requiredVars"`
-	Armory           *Armory                    `json:"armory"`
-	TestSuites       []TestSuite                `json:"testSuites"`
-	Initializer      func(*config.Config) error `json:"initializer"`
+	ServiceName      string
+	PluginName       string
+	RequiredVars     []string
+	Armory           *Armory
+	TestSuites       []TestSuite
+	Initializer      func(*config.Config) error
 	config           *config.Config
 	logger           hclog.Logger
 	executedTestSets *[]string
 }
-
-// After we get to StockArmory, the pluginkit will have a pointer to the runtime user config
-var USER_CONFIG *config.Config
 
 func NewVessel(
 	name string,
@@ -40,8 +37,6 @@ func NewVessel(
 
 // StockArmory sets up the armory for the vessel to use
 func (v *Vessel) StockArmory() error {
-	USER_CONFIG = v.config
-
 	if v.Armory == nil {
 		return errors.New("vessel's Armory field cannot be nil")
 	}
@@ -98,11 +93,11 @@ func (v *Vessel) Mobilize() (err error) {
 		}
 
 		testSuite := TestSuite{
-			TestSuiteName:    testSuiteName,
 			testSets:         v.Armory.TestSuites[testSuiteName],
 			executedTestSets: v.executedTestSets,
 			config:           v.config,
 		}
+		testSuite.TestSuiteName = testSuiteName // Inherited, can't be set above
 
 		err = testSuite.Execute()
 
@@ -120,7 +115,7 @@ func (v *Vessel) Mobilize() (err error) {
 
 	// loop through the testSuites and write the results
 	for _, testSuite := range v.TestSuites {
-		err := testSuite.WriteTestSetResults(v.ServiceName, v.config.Output)
+		err := testSuite.WriteControlEvaluations(v.ServiceName, v.config.Output)
 		if err != nil {
 			v.config.Logger.Error("Failed to write results for testSuite",
 				"testSuite", testSuite.TestSuiteName,

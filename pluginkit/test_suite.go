@@ -15,17 +15,21 @@ import (
 
 	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/privateerproj/privateer-sdk/utils"
+	"github.com/revanite-io/sci/pkg/layer4"
 	"gopkg.in/yaml.v3"
 )
 
+type TestSet func() (result layer4.ControlEvaluation)
+
 // TestSuite is a struct that contains the results of all testSets, orgainzed by name
 type TestSuite struct {
-	TestSuiteName  string                   `json:"testSuiteName"`  // TestSuiteName is the name of the TestSuite
-	StartTime      string                   `json:"startTime"`      // StartTime is the time the plugin started
-	EndTime        string                   `json:"endTime"`        // EndTime is the time the plugin ended
-	TestSetResults map[string]TestSetResult `json:"testSetResults"` // TestSetResults is a map of testSet names to their results
-	Passed         bool                     `json:"passed"`         // Passed is true if all testSets in the testSuite passed
-	BadStateAlert  bool                     `json:"badStateAlert"`  // BadState is true if any testSet failed to revert at the end of the testSuite
+	TestSuiteName string // TestSuiteName is the name of the TestSuite
+	Start_Time    string // Start_Time is the time the plugin started
+	End_Time      string // End_Time is the time the plugin ended
+	Passed        bool   // Passed is true if all testSets in the testSuite passed
+	BadStateAlert bool   // BadState is true if any testSet failed to revert at the end of the testSuite
+
+	Control_Evaluations map[string]layer4.ControlEvaluation // Control_Evaluations is a map of testSet names to their results
 
 	config           *config.Config // config is the global configuration for the plugin
 	testSets         []TestSet      // testSets is a list of testSet functions for the current testSuite
@@ -35,7 +39,7 @@ type TestSuite struct {
 	executedTestSets *[]string      // executedTestSets is a list of testSets that have been executed
 }
 
-// ExecuteTestSuite is used to execute a list of testSets provided by a Plugin and customized by user config
+// Execute is used to execute a list of testSets provided by a Plugin and customized by user config
 func (t *TestSuite) Execute() error {
 	if t.TestSuiteName == "" {
 		return errors.New("TestSuite name was not provided before attempting to execute")
@@ -44,7 +48,7 @@ func (t *TestSuite) Execute() error {
 		t.executedTestSets = &[]string{}
 	}
 	t.closeHandler()
-	t.StartTime = time.Now().String()
+	t.Start_Time = time.Now().String()
 
 	for _, testSet := range t.testSets {
 		testSetName := getFunctionName(testSet)
@@ -52,24 +56,24 @@ func (t *TestSuite) Execute() error {
 			break
 		}
 		t.attempts += 1
-		name, testSetResult := testSet()
+		testSetResult := testSet()
 
-		testSetResult.followThrough()
+		testSetResult.Cleanup()
 
-		t.BadStateAlert = testSetResult.BadStateAlert
-		logMessage := fmt.Sprintf("%s: %s", testSetResult.ControlID, testSetResult.Message)
-		if testSetResult.Passed {
+		t.BadStateAlert = testSetResult.Corrupted_State
+		logMessage := fmt.Sprintf("%s: %s", testSetResult.Control_Id, testSetResult.Name)
+		if testSetResult.Result == layer4.Passed {
 			t.successes += 1
 			t.config.Logger.Info(logMessage)
 		} else {
 			t.failures += 1
 			t.config.Logger.Error(logMessage)
 		}
-		t.AddTestSetResult(name, testSetResult)
+		t.AddControlEvaluation(testSetName, testSetResult)
 	}
 
 	t.cleanup()
-	t.EndTime = time.Now().String()
+	t.End_Time = time.Now().String()
 
 	output := fmt.Sprintf("%s: %v/%v test sets succeeded", t.TestSuiteName, t.successes, t.attempts)
 	if t.BadStateAlert {
@@ -83,20 +87,20 @@ func (t *TestSuite) Execute() error {
 	return errors.New(output)
 }
 
-// AddTestSetResult adds a TestSetResult to the TestSuite
-func (t *TestSuite) AddTestSetResult(name string, result TestSetResult) {
+// AddControlEvaluation adds a layer4.ControlEvaluation to the TestSuite
+func (t *TestSuite) AddControlEvaluation(name string, result layer4.ControlEvaluation) {
 	if utils.StringSliceContains(*t.executedTestSets, name) {
 		s := append(*t.executedTestSets, name)
 		t.executedTestSets = &s
 	}
 
-	if t.TestSetResults == nil {
-		t.TestSetResults = make(map[string]TestSetResult)
+	if t.Control_Evaluations == nil {
+		t.Control_Evaluations = make(map[string]layer4.ControlEvaluation)
 	}
-	t.TestSetResults[name] = result
+	t.Control_Evaluations[name] = result
 }
 
-func (t *TestSuite) WriteTestSetResults(serviceName string, output string) error {
+func (t *TestSuite) WriteControlEvaluations(serviceName string, output string) error {
 	if t.TestSuiteName == "" || serviceName == "" {
 		return fmt.Errorf("testSuite name and service name must be provided before attempting to write results: testSuite='%s' service='%s'", t.TestSuiteName, serviceName)
 	}
@@ -115,7 +119,7 @@ func (t *TestSuite) WriteTestSetResults(serviceName string, output string) error
 		return err
 	}
 
-	err = t.writeTestSetResultsToFile(serviceName, result, output)
+	err = t.writeControlEvaluationsToFile(serviceName, result, output)
 	if err != nil {
 		return err
 	}
@@ -123,7 +127,7 @@ func (t *TestSuite) WriteTestSetResults(serviceName string, output string) error
 	return nil
 }
 
-func (t *TestSuite) writeTestSetResultsToFile(serviceName string, result []byte, extension string) error {
+func (t *TestSuite) writeControlEvaluationsToFile(serviceName string, result []byte, extension string) error {
 	if !strings.Contains(extension, ".") {
 		extension = fmt.Sprintf(".%s", extension)
 	}
@@ -165,9 +169,9 @@ func (t *TestSuite) writeTestSetResultsToFile(serviceName string, result []byte,
 }
 
 func (t *TestSuite) cleanup() (passed bool) {
-	for _, result := range t.TestSetResults {
-		result.BadStateAlert = revertTestChanges(&result.Tests)
-		t.BadStateAlert = result.BadStateAlert
+	for _, result := range t.Control_Evaluations {
+		result.Cleanup()
+		t.BadStateAlert = result.Corrupted_State
 	}
 	return !t.BadStateAlert
 }

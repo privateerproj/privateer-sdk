@@ -4,95 +4,90 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/revanite-io/sci/pkg/layer4"
 	"github.com/spf13/viper"
 )
 
-func passTestSet() (string, TestSetResult) {
-	return "passTestSet", TestSetResult{
-		Passed:      true,
-		Description: "passing testSet",
-		Tests: map[string]TestResult{
-			"Test1": {
-				Passed:      true,
-				Description: "passing test",
-				Changes: map[string]*Change{
-					"Change1": {
-						Applied:    true,
-						applyFunc:  applyFunc,
-						revertFunc: revertFunc,
-					},
-				},
-			},
-		},
+var (
+	goodApplyFunc = func() (*interface{}, error) {
+		return nil, nil
+	}
+	goodRevertFunc = func() error {
+		return nil
+	}
+	badApplyFunc = func() (*interface{}, error) {
+		return nil, errors.New("error")
+	}
+	badRevertFunc = func() error {
+		return errors.New("error")
+	}
+)
+
+func passingTestSet() layer4.ControlEvaluation {
+	assessment := layer4.Assessment{
+		Result:      layer4.Passed,
+		Description: "passing test",
+	}
+	change := assessment.NewChange("Change1", "Target1", nil, goodApplyFunc, goodRevertFunc)
+	change.Apply()
+	return layer4.ControlEvaluation{
+		Result:      layer4.Passed,
+		Message:     "passing testSet",
+		Assessments: []layer4.Assessment{assessment},
 	}
 }
 
-func failTestSet() (string, TestSetResult) {
-	return "failTestSet", TestSetResult{
-		Passed:      false,
-		Description: "failing testSet",
-		Tests: map[string]TestResult{
-			"Test1": {
-				Passed:      false,
-				Description: "failing test",
-				Changes: map[string]*Change{
-					"Change1": {
-						Applied:    true,
-						applyFunc:  applyFunc,
-						revertFunc: revertFunc,
-					},
-				},
-			},
-		},
+func failingTestSet() layer4.ControlEvaluation {
+	assessment := layer4.Assessment{
+		Result:      layer4.Failed,
+		Description: "failing test",
+	}
+	change := assessment.NewChange("Change1", "Target1", nil, goodApplyFunc, goodRevertFunc)
+	change.Apply()
+
+	return layer4.ControlEvaluation{
+		Result:      layer4.Failed,
+		Message:     "passing testSet",
+		Assessments: []layer4.Assessment{assessment},
 	}
 }
 
-func passBadStateAlertTestSet() (string, TestSetResult) {
-	return "passBadStateAlertTestSet", TestSetResult{
-		Passed:      true,
-		Description: "passing testSet",
-		Tests: map[string]TestResult{
-			"Test1": {
-				Passed:      true,
-				Description: "passing test",
-				Changes: map[string]*Change{
-					"Change1": {
-						Applied:    true,
-						applyFunc:  applyFunc,
-						revertFunc: func() error { return errors.New("revert failed") },
-					},
-				},
-			},
-		},
+func passingBadStateAlertTestSet() layer4.ControlEvaluation {
+	assessment := layer4.Assessment{
+		Result:      layer4.Passed,
+		Description: "passing test",
+	}
+	change := assessment.NewChange("Change1", "Target1", nil, badApplyFunc, badRevertFunc)
+	change.Apply()
+
+	return layer4.ControlEvaluation{
+		Result:      layer4.Passed,
+		Message:     "passing testSet",
+		Assessments: []layer4.Assessment{assessment},
 	}
 }
 
-func failBadStateAlertTestSet() (string, TestSetResult) {
-	return "failBadStateAlertTestSet", TestSetResult{
-		Passed:      false,
-		Description: "failing testSet",
-		Tests: map[string]TestResult{
-			"Test1": {
-				Passed:      false,
-				Description: "failing test",
-				Changes: map[string]*Change{
-					"Change1": {
-						Applied:    true,
-						applyFunc:  applyFunc,
-						revertFunc: func() error { return errors.New("revert failed") },
-					},
-				},
-			},
-		},
+func failingBadStateAlertTestSet() layer4.ControlEvaluation {
+	assessment := layer4.Assessment{
+		Result:      layer4.Failed,
+		Description: "passing test",
+	}
+	change := assessment.NewChange("Change1", "Target1", nil, badApplyFunc, badRevertFunc)
+	change.Apply()
+
+	return layer4.ControlEvaluation{
+		Result:      layer4.Failed,
+		Message:     "passing testSet",
+		Assessments: []layer4.Assessment{assessment},
 	}
 }
 
 var goodArmory = &Armory{
 	TestSuites: map[string][]TestSet{
-		"PassTestSuite":                {passTestSet},
-		"FailTestSuite":                {failTestSet},
-		"PassedBadStateAlertTestSuite": {passBadStateAlertTestSet},
-		"FailedBadStateAlertTestSuite": {failBadStateAlertTestSet},
+		"PassTestSuite":                {passingTestSet},
+		"FailTestSuite":                {failingTestSet},
+		"PassedBadStateAlertTestSuite": {passingBadStateAlertTestSet},
+		"FailedBadStateAlertTestSuite": {failingBadStateAlertTestSet},
 	},
 }
 var goodVessel = Vessel{
@@ -100,13 +95,13 @@ var goodVessel = Vessel{
 }
 
 var tests = []struct {
-	name          string
-	serviceName   string
-	vessel        Vessel
-	armory        *Armory
+	name             string
+	serviceName      string
+	vessel           Vessel
+	armory           *Armory
 	testSuiteRequest []string
-	requiredVars  []string
-	expectedError error
+	requiredVars     []string
+	expectedError    error
 }{
 	{
 		name:          "missing service and plugin names",
@@ -138,43 +133,43 @@ var tests = []struct {
 		expectedError: errors.New("missing required variables: [missing1 missing2]"),
 	},
 	{
-		name:          "successful mobilization",
-		serviceName:   "successfulMobilization",
-		vessel:        goodVessel,
-		armory:        goodArmory,
+		name:             "successful mobilization",
+		serviceName:      "successfulMobilization",
+		vessel:           goodVessel,
+		armory:           goodArmory,
 		testSuiteRequest: []string{"PassTestSuite"},
 	},
 	{
-		name:          "successful mobilization, with required vars",
-		serviceName:   "successfulMobilization",
-		vessel:        goodVessel,
-		armory:        goodArmory,
+		name:             "successful mobilization, with required vars",
+		serviceName:      "successfulMobilization",
+		vessel:           goodVessel,
+		armory:           goodArmory,
 		testSuiteRequest: []string{"PassTestSuite"},
-		requiredVars:  []string{"key"},
+		requiredVars:     []string{"key"},
 	},
 	{
-		name:          "successful mobilization, failed testSuite",
-		serviceName:   "failedTestSuite",
-		vessel:        goodVessel,
-		armory:        goodArmory,
+		name:             "successful mobilization, failed testSuite",
+		serviceName:      "failedTestSuite",
+		vessel:           goodVessel,
+		armory:           goodArmory,
 		testSuiteRequest: []string{"FailTestSuite"},
-		expectedError: errors.New("FailTestSuite: 0/1 test sets succeeded"),
+		expectedError:    errors.New("FailTestSuite: 0/1 test sets succeeded"),
 	},
 	{
-		name:          "successful mobilization, passing testSuite, bad state alert",
-		serviceName:   "failedTestSuiteBadState",
-		vessel:        goodVessel,
-		armory:        goodArmory,
+		name:             "successful mobilization, passing testSuite, bad state alert",
+		serviceName:      "failedTestSuiteBadState",
+		vessel:           goodVessel,
+		armory:           goodArmory,
 		testSuiteRequest: []string{"PassedBadStateAlertTestSuite"},
-		expectedError: errors.New("!Bad state alert! One or more changes failed to revert. See logs for more information"),
+		expectedError:    errors.New("!Bad state alert! One or more changes failed to revert. See logs for more information"),
 	},
 	{
-		name:          "successful mobilization, failed testSuite, bad state alert",
-		serviceName:   "failedTestSuiteBadState",
-		vessel:        goodVessel,
-		armory:        goodArmory,
+		name:             "successful mobilization, failed testSuite, bad state alert",
+		serviceName:      "failedTestSuiteBadState",
+		vessel:           goodVessel,
+		armory:           goodArmory,
 		testSuiteRequest: []string{"FailedBadStateAlertTestSuite"},
-		expectedError: errors.New("!Bad state alert! One or more changes failed to revert. See logs for more information"),
+		expectedError:    errors.New("!Bad state alert! One or more changes failed to revert. See logs for more information"),
 	},
 }
 
