@@ -39,7 +39,7 @@ type TestSuite struct {
 	executedTestSets *[]string      // executedTestSets is a list of testSets that have been executed
 }
 
-// ExecuteTestSuite is used to execute a list of testSets provided by a Plugin and customized by user config
+// Execute is used to execute a list of testSets provided by a Plugin and customized by user config
 func (t *TestSuite) Execute() error {
 	if t.TestSuiteName == "" {
 		return errors.New("TestSuite name was not provided before attempting to execute")
