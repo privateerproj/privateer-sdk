@@ -75,14 +75,14 @@ func TestAddEvaluationSuite(t *testing.T) {
 					v := NewVessel("test", nil, []string{})
 					v.config = testingConfig
 					v.AddEvaluationSuite("test", nil, data.Control_Evaluations)
-					if v.CatalogEvaluations["test"].Name != "test" {
-						t.Errorf("Expected evaluation suite name to be test, but got %s", v.CatalogEvaluations["test"].Name)
+					if v.Evaluation_Suites["test"].Name != "test" {
+						t.Errorf("Expected evaluation suite name to be test, but got %s", v.Evaluation_Suites["test"].Name)
 					}
-					if len(v.CatalogEvaluations["test"].Control_Evaluations) != len(data.Control_Evaluations) {
-						t.Errorf("Expected control evaluations to match test data, but got %v", v.CatalogEvaluations["test"].Control_Evaluations)
+					if len(v.Evaluation_Suites["test"].Control_Evaluations) != len(data.Control_Evaluations) {
+						t.Errorf("Expected control evaluations to match test data, but got %v", v.Evaluation_Suites["test"].Control_Evaluations)
 					}
-					if v.CatalogEvaluations["test"].config != testingConfig {
-						t.Errorf("Expected config to match testingConfig but got %v", v.CatalogEvaluations["test"].config)
+					if v.Evaluation_Suites["test"].config != testingConfig {
+						t.Errorf("Expected config to match testingConfig but got %v", v.Evaluation_Suites["test"].config)
 					}
 				})
 			}
@@ -104,22 +104,22 @@ func TestMobilize(t *testing.T) {
 			if err != nil {
 				t.Errorf("Expected no error, but got %v", err)
 			}
-			if v.CatalogEvaluations == nil {
+			if v.Evaluation_Suites == nil {
 				t.Error("Expected catalog evaluations to be set")
 			}
-			if len(v.CatalogEvaluations) != len(test.data) {
-				t.Errorf("Expected %v control evaluations, but got %v", len(test.data), len(v.CatalogEvaluations))
+			if len(v.Evaluation_Suites) != len(test.data) {
+				t.Errorf("Expected %v control evaluations, but got %v", len(test.data), len(v.Evaluation_Suites))
 			}
 
 			for name, data := range test.data {
-				if v.CatalogEvaluations[name].Name != name {
-					t.Errorf("Expected evaluation suite name to be %s, but got %s", name, v.CatalogEvaluations[name].Name)
+				if v.Evaluation_Suites[name].Name != name {
+					t.Errorf("Expected evaluation suite name to be %s, but got %s", name, v.Evaluation_Suites[name].Name)
 				}
-				if len(v.CatalogEvaluations[name].Control_Evaluations) != len(data.Control_Evaluations) {
-					t.Errorf("Expected control evaluations to match test data, but got %v", v.CatalogEvaluations[name].Control_Evaluations)
+				if len(v.Evaluation_Suites[name].Control_Evaluations) != len(data.Control_Evaluations) {
+					t.Errorf("Expected control evaluations to match test data, but got %v", v.Evaluation_Suites[name].Control_Evaluations)
 				}
-				if v.CatalogEvaluations[name].config != testingConfig {
-					t.Errorf("Expected config to match testingConfig but got %v", v.CatalogEvaluations[name].config)
+				if v.Evaluation_Suites[name].config != testingConfig {
+					t.Errorf("Expected config to match testingConfig but got %v", v.Evaluation_Suites[name].config)
 				}
 			}
 		}

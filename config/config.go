@@ -122,6 +122,7 @@ func NewConfig(requiredVars []string) Config {
 		"write-directory", writeDir,
 		"invasive", invasive,
 		"applicability", applicability,
+		"control-catalogs", controlCatalogs,
 		"vars", vars,
 		"output", output,
 	)

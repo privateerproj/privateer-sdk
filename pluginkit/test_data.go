@@ -20,12 +20,12 @@ var (
 	testingCatalogEvaluations = map[string]EvaluationSuite{
 		"catalog1": {
 			Name: "corrupted-failed",
-			Control_Evaluations: []layer4.ControlEvaluation{
+			Control_Evaluations: []*layer4.ControlEvaluation{
 				{
 					Message:         "test",
 					Result:          layer4.Failed,
 					Corrupted_State: true,
-					Assessments: []layer4.Assessment{
+					Assessments: []*layer4.Assessment{
 						{
 							Result:      layer4.Failed,
 							Description: "test",

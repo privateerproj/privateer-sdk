@@ -20,13 +20,13 @@ type TestSet func() (result layer4.ControlEvaluation)
 
 // TestSuite is a struct that contains the results of all testSets, orgainzed by name
 type EvaluationSuite struct {
-	Name            string // Name is the name of the suite
-	Start_Time      string // Start_Time is the time the plugin started
-	End_Time        string // End_Time is the time the plugin ended
-	Result          bool   // Result is Passed if all evaluations in the suite passed
-	Corrupted_State bool   // BadState is true if any testSet failed to revert at the end of the evaluation
+	Name            string        // Name is the name of the suite
+	Start_Time      string        // Start_Time is the time the plugin started
+	End_Time        string        // End_Time is the time the plugin ended
+	Result          layer4.Result // Result is Passed if all evaluations in the suite passed
+	Corrupted_State bool          // BadState is true if any testSet failed to revert at the end of the evaluation
 
-	Control_Evaluations []layer4.ControlEvaluation // Control_Evaluations is a map of evaluations to their names
+	Control_Evaluations []*layer4.ControlEvaluation // Control_Evaluations is a slice of evaluations to be executed
 
 	payload   *interface{}   // payload is the data to be evaluated
 	config    *config.Config // config is the global configuration for the plugin
@@ -41,20 +41,19 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 	}
 	e.Name = name
 	e.Start_Time = time.Now().String()
-
+	e.config.Logger.Trace("Starting evaluation", "name", e.Name, "time", e.Start_Time)
 	for _, evaluation := range e.Control_Evaluations {
-		e.config.Logger.Trace("Evaluating", "evaluation", evaluation.Message)
 		evaluation.Evaluate(e.payload, e.config.Policy.Applicability)
 		evaluation.Cleanup()
 
 		e.Corrupted_State = evaluation.Corrupted_State
-		logOutput := fmt.Sprintf("%s: %s", e.Name, evaluation.Message)
+		e.Result = layer4.UpdateAggregateResult(e.Result, evaluation.Result)
 		if evaluation.Result == layer4.Passed {
 			e.successes += 1
-			e.config.Logger.Info(logOutput)
+			e.config.Logger.Info(evaluation.Result.String(), "name", e.Name, "message", evaluation.Message)
 		} else {
 			e.failures += 1
-			e.config.Logger.Error(fmt.Sprintf("%s: %s", e.Name, evaluation.Result))
+			e.config.Logger.Error(evaluation.Result.String(), "name", e.Name, "message", evaluation.Message)
 		}
 	}
 
@@ -65,8 +64,7 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 	if e.Corrupted_State {
 		return CORRUPTION_FOUND()
 	}
-	if e.failures == 0 {
-		e.Result = true
+	if e.Result == 0 {
 		e.config.Logger.Info(output)
 		return nil
 	}

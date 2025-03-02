@@ -1,19 +1,27 @@
 package pluginkit
 
 import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path"
+	"strings"
+
 	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/revanite-io/sci/pkg/layer4"
+	"gopkg.in/yaml.v3"
 )
 
 // The vessel gets the armory in position to execute the testSets specified in the testSuites
 type Vessel struct {
-	ServiceName        string
-	PluginName         string
-	CatalogEvaluations map[string]EvaluationSuite // EvaluationSuite is a map of evaluations to their catalog names
-	Payload            Payload
+	Service_Name      string
+	Plugin_Name       string
+	Payload           Payload
+	Evaluation_Suites []*EvaluationSuite // EvaluationSuite is a map of evaluations to their catalog names
 
-	requiredVars []string
-	config       *config.Config
+	possibleSuites []*EvaluationSuite
+	requiredVars   []string
+	config         *config.Config
 }
 
 type Payload struct {
@@ -26,7 +34,7 @@ func NewVessel(pluginName string, payload interface{}, requiredVars []string) *V
 		payload = new(interface{})
 	}
 	v := &Vessel{
-		PluginName:   pluginName,
+		Plugin_Name:  pluginName,
 		requiredVars: requiredVars,
 	}
 	v.SetPayload(&payload)
@@ -51,10 +59,7 @@ func (v *Vessel) SetupConfig() {
 	}
 }
 
-func (v *Vessel) AddEvaluationSuite(name string, payload *interface{}, evaluations []layer4.ControlEvaluation) {
-	if v.CatalogEvaluations == nil {
-		v.CatalogEvaluations = make(map[string]EvaluationSuite)
-	}
+func (v *Vessel) AddEvaluationSuite(name string, payload *interface{}, evaluations []*layer4.ControlEvaluation) {
 	suite := EvaluationSuite{
 		Name:                name,
 		Control_Evaluations: evaluations,
@@ -62,33 +67,41 @@ func (v *Vessel) AddEvaluationSuite(name string, payload *interface{}, evaluatio
 	if payload == nil {
 		suite.payload = &v.Payload.Data
 	}
-	v.CatalogEvaluations[name] = suite
+	v.possibleSuites = append(v.Evaluation_Suites, &suite)
 }
 
 func (v *Vessel) Mobilize() error {
 	v.SetupConfig()
+	if v.config.Error != nil {
+		return v.config.Error
+	}
+
 	v.config.Logger.Trace("Setting up vessel")
 
-	if v.CatalogEvaluations == nil || len(v.CatalogEvaluations) == 0 {
+	if len(v.possibleSuites) == 0 {
 		return NO_EVALUATION_SUITES()
 	}
 
-	v.ServiceName = v.config.ServiceName
+	v.Service_Name = v.config.ServiceName
 
-	if v.PluginName == "" || v.ServiceName == "" {
-		return VESSEL_NAMES_NOT_SET(v.ServiceName, v.PluginName)
+	if v.Plugin_Name == "" || v.Service_Name == "" {
+		return VESSEL_NAMES_NOT_SET(v.Service_Name, v.Plugin_Name)
 	}
 
 	v.config.Logger.Trace("Mobilization beginning")
 
 	for _, catalog := range v.config.Policy.ControlCatalogs {
-		v.config.Logger.Trace("Running evaluations for catalog:", catalog)
-		suite := v.CatalogEvaluations[catalog]
-		suite.config = v.config
-		evalName := v.ServiceName + "-" + catalog
-		suite.Evaluate(evalName)
-		if suite.Corrupted_State {
-			v.config.Logger.Error(CORRUPTION_FOUND().Error())
+		for _, suite := range v.possibleSuites {
+			if suite.Name == catalog {
+				v.config.Logger.Trace(fmt.Sprintf("Running evaluations for catalog: %s", catalog))
+				suite.config = v.config
+				evalName := v.Service_Name + "_" + catalog
+				suite.Evaluate(evalName)
+				if suite.Corrupted_State {
+					v.config.Logger.Error(CORRUPTION_FOUND().Error())
+				}
+				v.Evaluation_Suites = append(v.Evaluation_Suites, suite)
+			}
 		}
 	}
 	v.config.Logger.Trace("Mobilization complete")
@@ -98,12 +111,79 @@ func (v *Vessel) Mobilize() error {
 	}
 
 	// loop through the testSuites and write the results
-	for _, suite := range v.CatalogEvaluations {
-		suite.config = v.config
-		err := suite.WriteControlEvaluations(v.ServiceName, v.config.Output)
-		if err != nil {
-			v.config.Logger.Error(WRITE_FAILED(suite.Name, err.Error()).Error())
-		}
+	// for _, suite := range v.Evaluation_Suites {
+	// 	suite.config = v.config
+	// 	err := suite.WriteControlEvaluations(v.Service_Name, v.config.Output)
+	// 	if err != nil {
+	// 		v.config.Logger.Error(WRITE_FAILED(suite.Name, err.Error()).Error())
+	// 	}
+	// }
+
+	// instead of writing the results one at a time, write everything to a single file
+	return v.WriteResults()
+}
+
+func (v *Vessel) WriteResults() error {
+
+	var err error
+	var result []byte
+	switch v.config.Output {
+	case "json":
+		result, err = json.Marshal(v)
+	case "yaml":
+		result, err = yaml.Marshal(v)
+	default:
+		err = fmt.Errorf("output type '%s' is not supported. Supported types are 'json' and 'yaml'", v.config.Output)
 	}
+	if err != nil {
+		return err
+	}
+
+	err = v.writeResultsToFile(v.Service_Name, result, v.config.Output)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (v *Vessel) writeResultsToFile(serviceName string, result []byte, extension string) error {
+	if !strings.Contains(extension, ".") {
+		extension = fmt.Sprintf(".%s", extension)
+	}
+	dir := path.Join(v.config.WriteDirectory, serviceName)
+	filename := fmt.Sprintf("%s%s", v.Service_Name, extension)
+	filepath := path.Join(dir, filename)
+
+	v.config.Logger.Trace("Writing results", "filepath", filepath)
+
+	// Create log file and directory if it doesn't exist
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		err = os.MkdirAll(dir, os.ModePerm)
+		if err != nil {
+			v.config.Logger.Error("Error creating directory", "directory", dir)
+			return err
+		}
+		v.config.Logger.Warn("write directory for this plugin created for results, but should have been created when initializing logs", "directory", dir)
+	}
+
+	_, err := os.Create(filepath)
+	if err != nil {
+		v.config.Logger.Error("Error creating file", "filepath", filepath)
+		return err
+	}
+
+	file, err := os.OpenFile(filepath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
+	if err != nil {
+		v.config.Logger.Error("Error opening file", "filepath", filepath)
+		return err
+	}
+	defer file.Close()
+
+	_, err = file.Write(result)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }

@@ -16,9 +16,8 @@ type Plugin struct{}
 var ActiveVessel *pluginkit.Vessel
 
 // Start will be called by Privateer via gRPC
-func (p *Plugin) Start() (err error) {
-	err = ActiveVessel.Mobilize()
-	return
+func (p *Plugin) Start() error {
+	return ActiveVessel.Mobilize()
 }
 
 func NewPluginCommands(pluginName, buildVersion, buildGitCommitHash, buildTime string, vessel *pluginkit.Vessel) *cobra.Command {
