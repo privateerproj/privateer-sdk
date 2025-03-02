@@ -47,8 +47,7 @@ func (v *Vessel) SetPayload(payload *interface{}) {
 		payload = new(interface{})
 	}
 	v.Payload = Payload{
-		Data:   payload,
-		config: v.config,
+		Data: payload,
 	}
 }
 

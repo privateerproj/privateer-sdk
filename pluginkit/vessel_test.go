@@ -38,19 +38,10 @@ func TestSetPayload(t *testing.T) {
 			payload := &test.payload
 			v.SetPayload(payload)
 			if test.payload != nil && v.Payload.Data != payload {
-				t.Errorf("Expected payload data to be set to %v, but got %v", payload, v.Payload.Data)
+				t.Errorf("expected payload data to be set to %v, but got %v", payload, v.Payload.Data)
 			}
-
-			if v.config == nil {
-				t.Error("Expected config to be set")
-			}
-
-			if v.Payload.config == nil {
-				t.Error("Expected payload config to be set")
-			}
-
-			if v.Payload.config != v.config {
-				t.Error("Expected payload config to be the same as vessel config")
+			if v.Payload.Data == nil {
+				t.Error("expected v.Payload.Data to never be nil")
 			}
 		})
 	}
@@ -106,7 +97,7 @@ func TestMobilize(t *testing.T) {
 				t.Errorf("Expected no error, but got %v", err)
 			}
 			if v.Evaluation_Suites == nil {
-				t.Error("Expected catalog evaluations to be set")
+				t.Error("Expected catalog evaluations to not be nil")
 			}
 			if len(v.Evaluation_Suites) != len(test.data) {
 				t.Errorf("Expected %v control evaluations, but got %v", len(test.data), len(v.Evaluation_Suites))
@@ -116,9 +107,9 @@ func TestMobilize(t *testing.T) {
 				continue
 			}
 
-			for name, data := range test.data {
-				if v.Evaluation_Suites[0].Name != name {
-					t.Errorf("Expected evaluation suite name to be %s, but got %s", name, v.Evaluation_Suites[0].Name)
+			for _, data := range test.data {
+				if v.Evaluation_Suites[0].Name != testingEvaluationName {
+					t.Errorf("Expected evaluation suite name to be %s, but got %s", testingEvaluationName, v.Evaluation_Suites[0].Name)
 				}
 				if len(v.Evaluation_Suites[0].Control_Evaluations) != len(data.Control_Evaluations) {
 					t.Errorf("Expected control evaluations to match test data, but got %v", v.Evaluation_Suites[0].Control_Evaluations)
