@@ -2,6 +2,8 @@ package command
 
 import (
 	"testing"
+
+	"github.com/privateerproj/privateer-sdk/pluginkit"
 )
 
 var (
@@ -14,8 +16,9 @@ var (
 func TestNewPluginCommands(t *testing.T) {
 	payload := interface{}(nil)
 	requiredVars := []string{}
+	vessel := pluginkit.NewVessel(pluginName, payload, requiredVars)
 
-	cmd := NewPluginCommands(pluginName, buildVersion, buildGitCommitHash, buildTime, &payload, requiredVars)
+	cmd := NewPluginCommands(pluginName, buildVersion, buildGitCommitHash, buildTime, vessel)
 	if cmd.Use != pluginName {
 		t.Errorf("Expected cmd.Use to be %s, but got %s", pluginName, cmd.Use)
 	}

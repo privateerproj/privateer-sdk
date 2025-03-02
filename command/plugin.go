@@ -22,11 +22,9 @@ func (p *Plugin) Start() (err error) {
 	return
 }
 
-func NewPluginCommands(
-	pluginName, buildVersion, buildGitCommitHash, buildTime string,
-	payload *interface{}, requiredVars []string) *cobra.Command {
+func NewPluginCommands(pluginName, buildVersion, buildGitCommitHash, buildTime string, vessel *pluginkit.Vessel) *cobra.Command {
 
-	ActiveVessel = pluginkit.NewVessel(pluginName, payload, requiredVars)
+	ActiveVessel = vessel
 
 	runCmd := runCommand(pluginName)
 

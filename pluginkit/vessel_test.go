@@ -35,11 +35,10 @@ func TestSetPayload(t *testing.T) {
 
 	for _, test := range payloadTestData {
 		t.Run(test.name, func(t *testing.T) {
-			v.SetPayload(&test.payload)
-			if test.payload == nil && v.Payload.Data != interface{}(nil) {
-				t.Errorf("Did not expect payload data to be set, but got %s", v.Payload.Data)
-			} else if test.payload != nil && v.Payload.Data != test.payload {
-				t.Errorf("Expected payload data to be set to %s, but got %s", test.payload, v.Payload.Data)
+			payload := &test.payload
+			v.SetPayload(payload)
+			if test.payload != nil && v.Payload.Data != payload {
+				t.Errorf("Expected payload data to be set to %v, but got %v", payload, v.Payload.Data)
 			}
 
 			if v.config == nil {
@@ -75,7 +74,7 @@ func TestAddEvaluationSuite(t *testing.T) {
 				t.Run("subtest_"+data.Name, func(t *testing.T) {
 					v := NewVessel("test", nil, []string{})
 					v.config = testingConfig
-					v.AddEvaluationSuite("test", data.Control_Evaluations)
+					v.AddEvaluationSuite("test", nil, data.Control_Evaluations)
 					if v.CatalogEvaluations["test"].Name != "test" {
 						t.Errorf("Expected evaluation suite name to be test, but got %s", v.CatalogEvaluations["test"].Name)
 					}
@@ -99,7 +98,7 @@ func TestMobilize(t *testing.T) {
 			v.config = testingConfig
 
 			for name, data := range test.data {
-				v.AddEvaluationSuite(name, data.Control_Evaluations)
+				v.AddEvaluationSuite(name, nil, data.Control_Evaluations)
 			}
 			err := v.Mobilize()
 			if err != nil {

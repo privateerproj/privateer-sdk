@@ -41,6 +41,7 @@ func NewConfig(requiredVars []string) Config {
 	serviceName := viper.GetString("service") // the currently running service
 	topLoglevel := viper.GetString("loglevel")
 	topInvasive := viper.GetBool("invasive")
+	topControlCatalogs := viper.GetStringSlice("control-catalogs")
 	writeDir := viper.GetString("write-directory")
 	write := viper.GetBool("write")
 	output := strings.ToLower(strings.TrimSpace(viper.GetString("output")))
@@ -48,7 +49,7 @@ func NewConfig(requiredVars []string) Config {
 	loglevel := viper.GetString(fmt.Sprintf("services.%s.loglevel", serviceName))
 	invasive := viper.GetBool(fmt.Sprintf("services.%s.invasive", serviceName))
 	applicability := viper.GetString(fmt.Sprintf("services.%s.policy.applicability", serviceName))
-	controlCatalog := viper.GetString(fmt.Sprintf("services.%s.policy.control-catalog", serviceName))
+	controlCatalogs := viper.GetStringSlice(fmt.Sprintf("services.%s.policy.catalogs", serviceName))
 	vars := viper.GetStringMap(fmt.Sprintf("services.%s.vars", serviceName))
 
 	if loglevel == "" && topLoglevel != "" {
@@ -61,12 +62,16 @@ func NewConfig(requiredVars []string) Config {
 		invasive = topInvasive
 	}
 
+	if len(controlCatalogs) == 0 {
+		controlCatalogs = topControlCatalogs
+	}
+
 	if writeDir == "" {
 		writeDir = defaultWritePath()
 	}
 
 	var errString string
-	if serviceName != "" && (applicability == "" || len(controlCatalog) == 0) {
+	if serviceName != "" && (applicability == "" || len(controlCatalogs) == 0) {
 		errString = fmt.Sprintf("invalid policy for service %s: %s", serviceName, viper.GetString("config"))
 	}
 
@@ -100,7 +105,8 @@ func NewConfig(requiredVars []string) Config {
 		Output:         output,
 		Invasive:       invasive,
 		Policy: Policy{
-			Applicability: applicability,
+			ControlCatalogs: controlCatalogs,
+			Applicability:   applicability,
 		},
 		Vars:  vars,
 		Error: err,

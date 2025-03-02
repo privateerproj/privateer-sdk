@@ -31,20 +31,25 @@ var testConfigs = []struct {
 		config: `
 services:
   my-service-1:
-    test-suites:
-      - tlp_green
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: tlp_green
 `}, {
 		testName:       "Good - Two Services",
 		runningService: "my-service-2",
 		config: `
 services:
   my-service-1:
-    test-suites:
-      - tlp_green
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: tlp_green
   my-service-2:
-    test-suites:
-      - tlp_green
-      - tlp_clear
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: tlp_green
 `}, {
 		testName:         "Good - Log Level Set at Top Level",
 		runningService:   "my-service-1",
@@ -54,8 +59,10 @@ services:
 loglevel: debug
 services:
   my-service-1:
-    test-suites:
-      - tlp_green
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: tlp_green
 `}, {
 		testName:         "Good - Log Level Set in Service",
 		runningService:   "my-service-1",
@@ -65,8 +72,10 @@ services:
 services:
   my-service-1:
     loglevel: debug
-    test-suites:
-      - tlp_green
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: tlp_green
 `}, {
 		testName:         "Good - Log Level Set in Service and Top Level",
 		runningService:   "my-service-1",
@@ -77,8 +86,10 @@ loglevel: info
 services:
   my-service-1:
     loglevel: debug
-    test-suites:
-      - tlp_green
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: tlp_green
 `}, {
 		testName:       "Good - Invasive Set at Top Level",
 		runningService: "my-service-1",
@@ -88,8 +99,10 @@ services:
 invasive: true
 services:
   my-service-1:
-    test-suites:
-      - tlp_green
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: tlp_green
 `}, {
 		testName:       "Good - Invasive Set at Service Level",
 		runningService: "my-service-1",
@@ -99,8 +112,10 @@ services:
 services:
   my-service-1:
     invasive: true
-    test-suites:
-      - tlp_green
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: tlp_green
 `}, {
 		testName:       "Good - Invasive Set at Service and Top Level",
 		runningService: "my-service-1",
@@ -111,8 +126,10 @@ invasive: false
 services:
   my-service-1:
     invasive: true
-    test-suites:
-      - tlp_green
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: tlp_green
 `}, {
 		testName:       "Good - Write Directory Set",
 		runningService: "my-service-1",
@@ -122,9 +139,10 @@ services:
 write-directory: ./tmp
 services:
   my-service-1:
-    test-suites:
-      - tlp_green
-      - tlp_clear
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: tlp_green
 `}, {
 		testName:       "Good - Required Var (Single)",
 		runningService: "my-service-1",
@@ -132,8 +150,10 @@ services:
 		config: `
 services:
   my-service-1:
-    test-suites:
-      - tlp_green
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: tlp_green
     vars:
       key: value
 `}, {
@@ -143,8 +163,10 @@ services:
 		config: `
 services:
   my-service-1:
-    test-suites:
-      - tlp_green
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: tlp_green
     vars:
       key: value
       key2: value2
@@ -157,9 +179,10 @@ services:
 		config: `
 services:
   my-service-1:
-    test-suites:
-      - tlp_green
-      - tlp_clear
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: tlp_green
     vars:
       key: value
 `}, {
@@ -171,9 +194,10 @@ services:
 		config: `
 services:
   my-service-1:
-    test-suites:
-      - tlp_green
-      - tlp_clear
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: tlp_green
     vars:
       key: value
 `}, {
@@ -185,9 +209,10 @@ services:
 		config: `
 services:
   my-service-1:
-    test-suites:
-      - tlp_green
-      - tlp_clear
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: tlp_green
     vars:
       key: value
 `}, {
@@ -199,21 +224,31 @@ services:
 		config: `
 services:
   my-service-1:
-    test-suites:
-      - tlp_green
-      - tlp_clear
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: tlp_green
     vars:
       key: value
 `}, {
-		testName:       "Bad - Missing TestSuites",
+		testName:       "Bad - Missing Policy",
 		runningService: "my-service-1",
 		requiredVars:   []string{},
-		expectedError:  "no test suites requested for service in config: ",
+		expectedError:  "invalid policy for service my-service-1: ",
 		config: `
 services:
   my-service-1:
-    vars:
-      key: value
+`}, {
+		testName:       "Bad - Missing Applicability",
+		runningService: "my-service-1",
+		requiredVars:   []string{},
+		expectedError:  "invalid policy for service my-service-1: ",
+		config: `
+services:
+  my-service-1:
+    policy:
+      catalogs:
+        - FINOS-CCC
 `}, {
 		testName:       "Good - Default YAML output when missing",
 		runningService: "my-service-1",
@@ -222,8 +257,10 @@ services:
 		config: `
 services:
   my-service-1:
-    test-suites:
-      - tlp_green
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: tlp_green
 `}, {
 		testName:       "Good - designated output type JSON",
 		runningService: "my-service-1",
@@ -233,8 +270,10 @@ services:
 output: json
 services:
   my-service-1:
-    test-suites:
-      - tlp_green
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: tlp_green
 `}, {
 		testName:       "Good - designated output type YAML",
 		runningService: "my-service-1",
@@ -244,8 +283,10 @@ services:
 output: yaml
 services:
   my-service-1:
-    test-suites:
-      - tlp_green
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: tlp_green
 `}, {
 		testName:       "Bad - Bad output type",
 		runningService: "my-service-1",
@@ -255,20 +296,11 @@ services:
 output: bad
 services:
   my-service-1:
-    test-suites:
-      - tlp_green
-`}, /*{
-			testName:       "Good - write default to true",
-			runningService: "my-service-1",
-			requiredVars:   []string{},
-			writeSet:       true,
-			expectedWrite:  true,
-			config: `
-	services:
-	  my-service-1:
-	    test-suites:
-	      - tlp_green
-	`} ,*/{
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: tlp_green
+`}, {
 		testName:       "Good - explicit write true",
 		runningService: "my-service-1",
 		requiredVars:   []string{},
@@ -278,8 +310,10 @@ services:
 write: true
 services:
   my-service-1:
-    test-suites:
-      - tlp_green
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: tlp_green
 `}, {
 		testName:       "Good - explicit write false",
 		runningService: "my-service-1",
@@ -290,8 +324,10 @@ services:
 write: false
 services:
   my-service-1:
-    test-suites:
-      - tlp_green
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: tlp_green
 `}, {
 		testName:       "Good - write non boolean default to false false",
 		runningService: "my-service-1",
@@ -302,8 +338,9 @@ services:
 write: blahblah
 services:
   my-service-1:
-    test-suites:
-      - tlp_green
+    policy:
+      catalogs: ["FINOS-CCC"]
+      applicability: tlp_green
 `},
 }
 
@@ -349,7 +386,7 @@ func TestNewConfig(t *testing.T) {
 			}
 
 			if config.Policy.ControlCatalogs == nil || len(config.Policy.ControlCatalogs) == 0 {
-				t.Errorf("expected policy to be set")
+				t.Errorf("expected policy to be set, but got %v", config.Policy)
 			}
 
 			if tt.expectedLogLevel != "" && config.LogLevel != tt.expectedLogLevel {

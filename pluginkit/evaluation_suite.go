@@ -162,9 +162,10 @@ func (e *EvaluationSuite) closeHandler() {
 		e.config.Logger.Warn("[WARN] Attempting to revert changes made by the terminated Plugin. Do not interrupt this process.")
 		if e.cleanup() {
 			e.config.Logger.Info("Cleanup did not encounter an error.")
+			os.Exit(0)
 		} else {
 			e.config.Logger.Error("[ERROR] Cleanup returned an error, and may not be complete.")
+			os.Exit(2)
 		}
-		os.Exit(0)
 	}()
 }
