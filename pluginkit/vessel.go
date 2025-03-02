@@ -64,10 +64,11 @@ func (v *Vessel) AddEvaluationSuite(name string, payload *interface{}, evaluatio
 		Name:                name,
 		Control_Evaluations: evaluations,
 	}
+	suite.config = v.config
 	if payload == nil {
 		suite.payload = &v.Payload.Data
 	}
-	v.possibleSuites = append(v.Evaluation_Suites, &suite)
+	v.possibleSuites = append(v.possibleSuites, &suite)
 }
 
 func (v *Vessel) Mobilize() error {
