@@ -1,9 +1,6 @@
 package pluginkit
 
 import (
-	"errors"
-	"fmt"
-
 	"github.com/hashicorp/go-hclog"
 	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/revanite-io/sci/pkg/layer4"
@@ -13,124 +10,99 @@ import (
 type Vessel struct {
 	ServiceName        string
 	PluginName         string
-	RequiredVars       []string
-	Armory             *Armory
-	ControlEvaluations []layer4.ControlEvaluation
-	Initializer        func(*config.Config) error
-	config             *config.Config
-	logger             hclog.Logger
-	executedTestSets   *[]string
+	CatalogEvaluations map[string]EvaluationSuite // EvaluationSuite is a map of evaluations to their catalog names
+	Payload            Payload
+
+	requiredVars []string
+	config       *config.Config
 }
 
-func NewVessel(
-	name string,
-	armory *Armory,
-	initializer func(*config.Config) error,
-	requiredVars []string) Vessel {
+type Payload struct {
+	Data   interface{}
+	logger hclog.Logger
+	config *config.Config
+}
 
-	return Vessel{
-		PluginName:   name,
-		Armory:       armory,
-		Initializer:  initializer,
-		RequiredVars: requiredVars,
+func NewVessel(pluginName string, payload *interface{}, requiredVars []string) *Vessel {
+	if payload == nil {
+		payload = new(interface{})
+	}
+	config := config.NewConfig(requiredVars)
+	v := &Vessel{
+		PluginName: pluginName,
+		config:     &config,
+	}
+	v.SetPayload(payload)
+	return v
+}
+
+// SetPayload allows the user to pass data to be referenced in assessments
+func (v *Vessel) SetPayload(payload *interface{}) {
+	if payload == nil {
+		payload = new(interface{})
+	}
+	v.Payload = Payload{
+		Data:   *payload,
+		logger: v.config.Logger,
+		config: v.config,
 	}
 }
 
-// StockArmory sets up the armory for the vessel to use
-func (v *Vessel) StockArmory() error {
-	if v.Armory == nil {
-		return errors.New("vessel's Armory field cannot be nil")
+func (v *Vessel) Config() *config.Config {
+	return v.config
+}
+
+func (v *Vessel) AddEvaluationSuite(name string, evaluations []layer4.ControlEvaluation) {
+	if v.CatalogEvaluations == nil {
+		v.CatalogEvaluations = make(map[string]EvaluationSuite)
 	}
-	if v.logger == nil {
-		if v.config == nil {
-			config := config.NewConfig(v.RequiredVars)
-			v.config = &config
-		}
+	suite := EvaluationSuite{
+		Name:                name,
+		Control_Evaluations: evaluations,
 	}
-	if v.config.Error != nil {
-		return v.config.Error
+	suite.config = v.config
+	v.CatalogEvaluations[name] = suite
+}
+
+func (v *Vessel) Mobilize() error {
+	v.Config()
+
+	v.config.Logger.Trace("Setting up vessel")
+
+	if v.CatalogEvaluations == nil || len(v.CatalogEvaluations) == 0 {
+		return NO_EVALUATION_SUITES()
 	}
 
-	v.Armory.Config = v.config
-	v.Armory.Logger = v.config.Logger
-	v.Armory.ServiceTarget = v.ServiceName
-
-	v.logger = v.config.Logger
 	v.ServiceName = v.config.ServiceName
 
 	if v.PluginName == "" || v.ServiceName == "" {
-		return fmt.Errorf("expected service and plugin names to be set. ServiceName='%s' PluginName='%s'", v.ServiceName, v.PluginName)
-	}
-	if v.Armory == nil {
-		return fmt.Errorf("no armory was stocked for the plugin '%s'", v.PluginName)
-	}
-	if v.Armory.EvaluationSuites == nil {
-		return fmt.Errorf("no testSuites provided for the service")
+		return VESSEL_NAMES_NOT_SET(v.ServiceName, v.PluginName)
 	}
 
-	return nil
-}
+	v.config.Logger.Trace("Mobilization beginning")
 
-// Mobilize executes the testSets specified in the testSuites
-func (v *Vessel) Mobilize() (err error) {
-	err = v.StockArmory()
-	if err != nil {
-		return
-	}
-	if v.config == nil {
-		err = fmt.Errorf("failed to initialize config")
-		return
-	}
-	if v.Initializer != nil {
-		err = v.Initializer(v.config)
-		if err != nil {
-			return
-		}
-	}
-	for _, applicability := range v.config.Applicability {
-		if applicability == "" {
-			err = fmt.Errorf("testSuite name cannot be an empty string")
-			return
-		}
-
-		// NOTES
-		// We need to be able to specify the policies — what catalogs are being run, and which applicability is applied
-		// Applicability is currently a list, but it should be a string
-		// Catalog should be a list
-		// Policy is catalog + applicability
-		// This will require changes all across the SDK and the plugin generator templates, but not to SCI yet.
-		// We may move the Policy object type to SCI later if it seems useful.
-
-		testSuite := layer4.EvaluationSuite{
-			testSets:         v.Armory.EvaluationSuites[testSuiteName],
-			executedTestSets: v.executedTestSets,
-			config:           v.config,
-		}
-		testSuite.EvaluationSuite = testSuiteName // Inherited, can't be set above
-
-		err = testSuite.Execute()
-
-		v.EvaluationSuites = append(v.EvaluationSuites, testSuite)
-
-		if testSuite.BadStateAlert {
-			break
+	for _, catalog := range v.config.Policy.ControlCatalogs {
+		v.config.Logger.Trace("Running evaluations for catalog:", catalog)
+		suite := v.CatalogEvaluations[catalog]
+		suite.config = v.config
+		evalName := v.ServiceName + "-" + catalog
+		suite.Evaluate(evalName, v.config.Policy.Applicability)
+		if suite.Corrupted_State {
+			v.config.Logger.Error(CORRUPTION_FOUND().Error())
 		}
 	}
 	v.config.Logger.Trace("Mobilization complete")
 
 	if !v.config.Write {
-		return
+		return nil // Do not write results if the user has blocked it
 	}
 
 	// loop through the testSuites and write the results
-	for _, testSuite := range v.EvaluationSuites {
-		err := testSuite.WriteControlEvaluations(v.ServiceName, v.config.Output)
+	for _, suite := range v.CatalogEvaluations {
+		err := suite.WriteControlEvaluations(v.ServiceName, v.config.Output)
 		if err != nil {
-			v.config.Logger.Error("Failed to write results for testSuite",
-				"testSuite", testSuite.EvaluationSuite,
-				"error", err,
-			)
+			v.config.Logger.Error(WRITE_FAILED(suite.Name, err.Error()).Error())
 		}
 	}
-	return
+	return nil
 }

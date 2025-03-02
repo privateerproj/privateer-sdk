@@ -20,13 +20,13 @@ type TestSet func() (result layer4.ControlEvaluation)
 
 // TestSuite is a struct that contains the results of all testSets, orgainzed by name
 type EvaluationSuite struct {
-	Name          string // Name is the name of the TestSuite
-	Start_Time    string // Start_Time is the time the plugin started
-	End_Time      string // End_Time is the time the plugin ended
-	Result        bool   // Result is Passed if all evaluations in the suite passed
-	BadStateAlert bool   // BadState is true if any testSet failed to revert at the end of the testSuite
+	Name            string // Name is the name of the suite
+	Start_Time      string // Start_Time is the time the plugin started
+	End_Time        string // End_Time is the time the plugin ended
+	Result          bool   // Result is Passed if all evaluations in the suite passed
+	Corrupted_State bool   // BadState is true if any testSet failed to revert at the end of the evaluation
 
-	Control_Evaluations map[string]layer4.ControlEvaluation // Control_Evaluations is a map of testSet names to their results
+	Control_Evaluations []layer4.ControlEvaluation // Control_Evaluations is a map of evaluations to their names
 
 	config    *config.Config // config is the global configuration for the plugin
 	successes int            // successes is the number of successful evaluations
@@ -34,19 +34,19 @@ type EvaluationSuite struct {
 }
 
 // Execute is used to execute a list of testSets provided by a Plugin and customized by user config
-func (e *EvaluationSuite) Evaluate(targetData interface{}) error {
-	if e.Name == "" {
-		return errors.New("EvaluationSuite name was not provided before attempting to execute")
+func (e *EvaluationSuite) Evaluate(name string, targetData interface{}) error {
+	if name == "" {
+		return EVAL_NAME_MISSING()
 	}
+	e.Name = name
 	e.Start_Time = time.Now().String()
 
 	for _, evaluation := range e.Control_Evaluations {
 
-		evaluation.CloseHandler()
-		evaluation.Evaluate(targetData, e.config.Applicability)
+		evaluation.Evaluate(targetData, e.config.Policy.Applicability)
 		evaluation.Cleanup()
 
-		e.BadStateAlert = evaluation.Corrupted_State
+		e.Corrupted_State = evaluation.Corrupted_State
 		logOutput := fmt.Sprintf("%s: %s", e.Name, evaluation.Message)
 		if evaluation.Result == layer4.Passed {
 			e.successes += 1
@@ -61,8 +61,8 @@ func (e *EvaluationSuite) Evaluate(targetData interface{}) error {
 	e.End_Time = time.Now().String()
 
 	output := fmt.Sprintf("%s: %v/%v control evaluations passed", e.Name, e.successes, len(e.Control_Evaluations))
-	if e.BadStateAlert {
-		return errors.New("!Bad state alert! One or more changes failed to revert. See logs for more information")
+	if e.Corrupted_State {
+		return CORRUPTION_FOUND()
 	}
 	if e.failures == 0 {
 		e.Result = true
@@ -143,9 +143,9 @@ func (e *EvaluationSuite) writeControlEvaluationsToFile(serviceName string, resu
 func (e *EvaluationSuite) cleanup() (passed bool) {
 	for _, result := range e.Control_Evaluations {
 		result.Cleanup()
-		e.BadStateAlert = result.Corrupted_State
+		e.Corrupted_State = result.Corrupted_State
 	}
-	return !e.BadStateAlert
+	return !e.Corrupted_State
 }
 
 // closeHandler creates a 'listener' on a new goroutine which will notify the

@@ -26,9 +26,15 @@ type Config struct {
 	Output         string
 	WriteDirectory string
 	Invasive       bool
-	Applicability  []string
+	Policy         Policy
 	Vars           map[string]interface{}
 	Error          error
+}
+
+type Policy struct {
+	// TODO: We will want to replace this with an SCI layer3 object when that is ready
+	ControlCatalogs []string
+	Applicability   string
 }
 
 func NewConfig(requiredVars []string) Config {
@@ -41,7 +47,8 @@ func NewConfig(requiredVars []string) Config {
 
 	loglevel := viper.GetString(fmt.Sprintf("services.%s.loglevel", serviceName))
 	invasive := viper.GetBool(fmt.Sprintf("services.%s.invasive", serviceName))
-	applicability := viper.GetStringSlice(fmt.Sprintf("services.%s.applicability", serviceName))
+	applicability := viper.GetString(fmt.Sprintf("services.%s.policy.applicability", serviceName))
+	controlCatalog := viper.GetString(fmt.Sprintf("services.%s.policy.control-catalog", serviceName))
 	vars := viper.GetStringMap(fmt.Sprintf("services.%s.vars", serviceName))
 
 	if loglevel == "" && topLoglevel != "" {
@@ -59,8 +66,8 @@ func NewConfig(requiredVars []string) Config {
 	}
 
 	var errString string
-	if serviceName != "" && len(applicability) == 0 {
-		errString = fmt.Sprintf("no test suites requested for service in config: %s", viper.GetString("config"))
+	if serviceName != "" && (applicability == "" || len(controlCatalog) == 0) {
+		errString = fmt.Sprintf("invalid policy for service %s: %s", serviceName, viper.GetString("config"))
 	}
 
 	var missingVars []string
@@ -92,9 +99,11 @@ func NewConfig(requiredVars []string) Config {
 		Write:          write,
 		Output:         output,
 		Invasive:       invasive,
-		Applicability:  applicability,
-		Vars:           vars,
-		Error:          err,
+		Policy: Policy{
+			Applicability: applicability,
+		},
+		Vars:  vars,
+		Error: err,
 	}
 	if serviceName == "" {
 		serviceName = "overview"

@@ -348,8 +348,8 @@ func TestNewConfig(t *testing.T) {
 				t.Errorf("expected write directory to be default, but got '%s'", config.WriteDirectory)
 			}
 
-			if len(config.TestSuites) == 0 {
-				t.Errorf("expected testSuites to be set")
+			if config.Policy.ControlCatalogs == nil || len(config.Policy.ControlCatalogs) == 0 {
+				t.Errorf("expected policy to be set")
 			}
 
 			if tt.expectedLogLevel != "" && config.LogLevel != tt.expectedLogLevel {

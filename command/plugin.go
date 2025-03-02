@@ -6,7 +6,6 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/privateerproj/privateer-sdk/pluginkit"
 	"github.com/privateerproj/privateer-sdk/shared"
 	"github.com/spf13/cobra"
@@ -15,7 +14,7 @@ import (
 
 type Plugin struct{}
 
-var ActiveVessel pluginkit.Vessel
+var ActiveVessel *pluginkit.Vessel
 
 // Start will be called by Privateer via gRPC
 func (p *Plugin) Start() (err error) {
@@ -25,16 +24,9 @@ func (p *Plugin) Start() (err error) {
 
 func NewPluginCommands(
 	pluginName, buildVersion, buildGitCommitHash, buildTime string,
-	armory *pluginkit.Armory,
-	initializer func(*config.Config) error,
-	requiredVars []string) *cobra.Command {
+	payload *interface{}, requiredVars []string) *cobra.Command {
 
-	ActiveVessel = pluginkit.NewVessel(
-		pluginName,
-		armory,
-		initializer,
-		requiredVars,
-	)
+	ActiveVessel = pluginkit.NewVessel(pluginName, payload, requiredVars)
 
 	runCmd := runCommand(pluginName)
 
