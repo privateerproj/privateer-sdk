@@ -356,49 +356,49 @@ func TestNewConfig(t *testing.T) {
 			}
 
 			viper.Set("service", tt.runningService)
-			config := NewConfig(tt.requiredVars)
+			c := NewConfig(tt.requiredVars)
 
-			if config.Error == nil && tt.expectedError != "" {
+			if c.Error == nil && tt.expectedError != "" {
 				t.Errorf("expected error '%s', got nil", tt.expectedError)
 				return
-			} else if config.Error != nil && tt.expectedError == "" {
-				t.Errorf("expected no error, got %v", config.Error)
+			} else if c.Error != nil && tt.expectedError == "" {
+				t.Errorf("expected no error, got %v", c.Error)
 				return
-			} else if config.Error != nil && tt.expectedError != config.Error.Error() {
-				t.Errorf("expected error '%s', got '%s'", tt.expectedError, config.Error.Error())
+			} else if c.Error != nil && tt.expectedError != c.Error.Error() {
+				t.Errorf("expected error '%s', got '%s'", tt.expectedError, c.Error.Error())
 				return
-			} else if config.Error != nil && tt.expectedError == config.Error.Error() {
+			} else if c.Error != nil && tt.expectedError == c.Error.Error() {
 				return
 			}
 
-			if config.ServiceName != tt.runningService {
-				t.Errorf("expected service name to be '%s', got '%s'", tt.runningService, config.ServiceName)
+			if c.ServiceName != tt.runningService {
+				t.Errorf("expected service name to be '%s', got '%s'", tt.runningService, c.ServiceName)
 			}
 
-			if tt.invasiveSet != config.Invasive {
-				t.Errorf("expected invasive to be '%v', but got '%v'", tt.invasiveSet, config.Invasive)
+			if tt.invasiveSet != c.Invasive {
+				t.Errorf("expected invasive to be '%v', but got '%v'", tt.invasiveSet, c.Invasive)
 			}
 
-			if tt.writeDirSet && config.WriteDirectory == "" {
+			if tt.writeDirSet && c.WriteDirectory == "" {
 				t.Errorf("expected write directory to be set")
-			} else if !tt.writeDirSet && config.WriteDirectory != defaultWritePath() {
-				t.Errorf("expected write directory to be default, but got '%s'", config.WriteDirectory)
+			} else if !tt.writeDirSet && c.WriteDirectory != defaultWritePath() {
+				t.Errorf("expected write directory to be default, but got '%s'", c.WriteDirectory)
 			}
 
-			if config.Policy.ControlCatalogs == nil || len(config.Policy.ControlCatalogs) == 0 {
-				t.Errorf("expected policy to be set, but got %v", config.Policy)
+			if c.Policy.ControlCatalogs == nil || len(c.Policy.ControlCatalogs) == 0 {
+				t.Errorf("expected policy to be set, but got %v", c.Policy)
 			}
 
-			if tt.expectedLogLevel != "" && config.LogLevel != tt.expectedLogLevel {
-				t.Errorf("expected log level to be set to '%s', but got '%s'", tt.expectedLogLevel, config.LogLevel)
+			if tt.expectedLogLevel != "" && c.LogLevel != tt.expectedLogLevel {
+				t.Errorf("expected log level to be set to '%s', but got '%s'", tt.expectedLogLevel, c.LogLevel)
 			}
 
-			if tt.expectedOutput != "" && config.Output != tt.expectedOutput {
-				t.Errorf("expected output to be '%s', but got '%s'", tt.expectedOutput, config.Output)
+			if tt.expectedOutput != "" && c.Output != tt.expectedOutput {
+				t.Errorf("expected output to be '%s', but got '%s'", tt.expectedOutput, c.Output)
 			}
 
-			if tt.writeSet && tt.expectedWrite != config.Write {
-				t.Errorf("expected write to be '%t', but got '%t'", tt.expectedWrite, config.Write)
+			if tt.writeSet && tt.expectedWrite != c.Write {
+				t.Errorf("expected write to be '%t', but got '%t'", tt.expectedWrite, c.Write)
 			}
 		})
 	}

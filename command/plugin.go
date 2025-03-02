@@ -2,7 +2,6 @@ package command
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"text/tabwriter"
 
@@ -61,9 +60,10 @@ func debugCommand() *cobra.Command {
 		Use:   "debug",
 		Short: "Run the Plugin in debug mode",
 		Run: func(cmd *cobra.Command, args []string) {
+			cmd.Print("Running in debug mode\n")
 			err := ActiveVessel.Mobilize()
 			if err != nil {
-				log.Fatal(err)
+				cmd.Println(err)
 			}
 		},
 	}

@@ -1,9 +1,6 @@
 package pluginkit
 
 import (
-	"log"
-
-	"github.com/hashicorp/go-hclog"
 	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/revanite-io/sci/pkg/layer4"
 )
@@ -21,7 +18,6 @@ type Vessel struct {
 
 type Payload struct {
 	Data   interface{}
-	logger hclog.Logger
 	config *config.Config
 }
 
@@ -29,10 +25,9 @@ func NewVessel(pluginName string, payload interface{}, requiredVars []string) *V
 	if payload == nil {
 		payload = new(interface{})
 	}
-	config := config.NewConfig(requiredVars)
 	v := &Vessel{
-		PluginName: pluginName,
-		config:     &config,
+		PluginName:   pluginName,
+		requiredVars: requiredVars,
 	}
 	v.SetPayload(&payload)
 	return v
@@ -45,13 +40,15 @@ func (v *Vessel) SetPayload(payload *interface{}) {
 	}
 	v.Payload = Payload{
 		Data:   payload,
-		logger: v.config.Logger,
 		config: v.config,
 	}
 }
 
-func (v *Vessel) Config() *config.Config {
-	return v.config
+func (v *Vessel) SetupConfig() {
+	if v.config == nil {
+		c := config.NewConfig(v.requiredVars)
+		v.config = &c
+	}
 }
 
 func (v *Vessel) AddEvaluationSuite(name string, payload *interface{}, evaluations []layer4.ControlEvaluation) {
@@ -65,13 +62,11 @@ func (v *Vessel) AddEvaluationSuite(name string, payload *interface{}, evaluatio
 	if payload == nil {
 		suite.payload = &v.Payload.Data
 	}
-	suite.config = v.config
 	v.CatalogEvaluations[name] = suite
 }
 
 func (v *Vessel) Mobilize() error {
-	log.Printf("Mobilizing vessel for %s", v.ServiceName)
-	v.Config()
+	v.SetupConfig()
 	v.config.Logger.Trace("Setting up vessel")
 
 	if v.CatalogEvaluations == nil || len(v.CatalogEvaluations) == 0 {
@@ -104,6 +99,7 @@ func (v *Vessel) Mobilize() error {
 
 	// loop through the testSuites and write the results
 	for _, suite := range v.CatalogEvaluations {
+		suite.config = v.config
 		err := suite.WriteControlEvaluations(v.ServiceName, v.config.Output)
 		if err != nil {
 			v.config.Logger.Error(WRITE_FAILED(suite.Name, err.Error()).Error())
