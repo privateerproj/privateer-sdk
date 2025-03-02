@@ -40,12 +40,12 @@ func TestEvaluate(t *testing.T) {
 			for name, data := range test.data {
 
 				data.config = testingConfig
-				err := data.Evaluate("", nil)
+				err := data.Evaluate("")
 				if err.Error() != EVAL_NAME_MISSING().Error() {
 					t.Errorf("Expected '%s', but got '%s'", EVAL_NAME_MISSING(), err)
 				}
 
-				err = data.Evaluate(test.testName+name, nil)
+				err = data.Evaluate(test.testName + name)
 				if err.Error() != test.expectedEvaluationSuiteError.Error() {
 					t.Errorf("Expected %s, but got %s", test.expectedEvaluationSuiteError, err)
 				}

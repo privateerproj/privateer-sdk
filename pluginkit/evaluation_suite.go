@@ -28,13 +28,14 @@ type EvaluationSuite struct {
 
 	Control_Evaluations []layer4.ControlEvaluation // Control_Evaluations is a map of evaluations to their names
 
+	payload   *interface{}   // payload is the data to be evaluated
 	config    *config.Config // config is the global configuration for the plugin
 	successes int            // successes is the number of successful evaluations
 	failures  int            // failures is the number of failed evaluations
 }
 
 // Execute is used to execute a list of testSets provided by a Plugin and customized by user config
-func (e *EvaluationSuite) Evaluate(name string, targetData interface{}) error {
+func (e *EvaluationSuite) Evaluate(name string) error {
 	if name == "" {
 		return EVAL_NAME_MISSING()
 	}
@@ -42,8 +43,8 @@ func (e *EvaluationSuite) Evaluate(name string, targetData interface{}) error {
 	e.Start_Time = time.Now().String()
 
 	for _, evaluation := range e.Control_Evaluations {
-
-		evaluation.Evaluate(targetData, e.config.Policy.Applicability)
+		e.config.Logger.Trace("Evaluating", "evaluation", evaluation.Message)
+		evaluation.Evaluate(e.payload, e.config.Policy.Applicability)
 		evaluation.Cleanup()
 
 		e.Corrupted_State = evaluation.Corrupted_State

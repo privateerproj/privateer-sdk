@@ -61,6 +61,7 @@ func (v *Vessel) AddEvaluationSuite(name string, evaluations []layer4.ControlEva
 		Control_Evaluations: evaluations,
 	}
 	suite.config = v.config
+	suite.payload = &v.Payload.Data
 	v.CatalogEvaluations[name] = suite
 }
 
@@ -86,7 +87,7 @@ func (v *Vessel) Mobilize() error {
 		suite := v.CatalogEvaluations[catalog]
 		suite.config = v.config
 		evalName := v.ServiceName + "-" + catalog
-		suite.Evaluate(evalName, v.config.Policy.Applicability)
+		suite.Evaluate(evalName)
 		if suite.Corrupted_State {
 			v.config.Logger.Error(CORRUPTION_FOUND().Error())
 		}
