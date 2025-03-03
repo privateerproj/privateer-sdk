@@ -17,7 +17,7 @@ import (
 
 type TestSet func() (result layer4.ControlEvaluation)
 
-// TestSuite is a struct that contains the results of all testSets, orgainzed by name
+// TestSuite is a struct that contains the results of all ControlEvaluations, orgainzed by name
 type EvaluationSuite struct {
 	Name            string        // Name is the name of the suite
 	Catalog_Id      string        // Catalog_Id associates this suite with an catalog
@@ -34,7 +34,8 @@ type EvaluationSuite struct {
 	failures  int            // failures is the number of failed evaluations
 }
 
-// Execute is used to execute a list of testSets provided by a Plugin and customized by user config
+// Execute is used to execute a list of ControlEvaluations provided by a Plugin and customized by user config
+// Name is an arbitrary string that will be used to identify the EvaluationSuite
 func (e *EvaluationSuite) Evaluate(name string) error {
 	if name == "" {
 		return EVAL_NAME_MISSING()
@@ -55,6 +56,9 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 		} else {
 			e.failures += 1
 			e.config.Logger.Error(evaluation.Result.String(), "name", e.Name, "message", evaluation.Message)
+		}
+		if e.Corrupted_State {
+			break
 		}
 	}
 
@@ -77,7 +81,7 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 
 func (e *EvaluationSuite) WriteControlEvaluations(serviceName string, output string) error {
 	if e.Name == "" || serviceName == "" {
-		return fmt.Errorf("testSuite name and service name must be provided before attempting to write results: testSuite='%s' service='%s'", e.Name, serviceName)
+		return fmt.Errorf("EvaluationSuite name and service name must be provided before attempting to write results: EvaluationSuite='%s' service='%s'", e.Name, serviceName)
 	}
 
 	var err error
@@ -146,7 +150,9 @@ func (e *EvaluationSuite) writeControlEvaluationsToFile(serviceName string, resu
 func (e *EvaluationSuite) cleanup() (passed bool) {
 	for _, result := range e.Control_Evaluations {
 		result.Cleanup()
-		e.Corrupted_State = result.Corrupted_State
+		if result.Corrupted_State {
+			e.Corrupted_State = result.Corrupted_State
+		}
 	}
 	return !e.Corrupted_State
 }

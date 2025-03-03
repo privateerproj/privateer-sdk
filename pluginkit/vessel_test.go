@@ -8,6 +8,8 @@ package pluginkit
 // func (v *Vessel) Mobilize(requiredVars []string, suites map[string]EvaluationSuite) error {
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/revanite-io/sci/pkg/layer4"
@@ -60,12 +62,8 @@ func TestConfig(t *testing.T) {
 func TestAddEvaluationSuite(t *testing.T) {
 	testData := []testingData{
 		{
-			testName:             "Good Evaluation",
-			catalogName:          "catalog1",
-			evaluationSuiteName:  "test-service_catalog1",
-			applicability:        []string{"valid-applicability-1"},
-			expectedSuitesLength: 1,
-			expectedResult:       layer4.Passed,
+			testName:       "Good Evaluation",
+			expectedResult: layer4.Passed,
 			evals: []*layer4.ControlEvaluation{
 				passingEvaluation(),
 			},
@@ -102,89 +100,206 @@ func TestAddEvaluationSuite(t *testing.T) {
 func TestMobilize(t *testing.T) {
 	testData := []testingData{
 		{
-			testName:             "Good Evaluation",
-			catalogName:          "catalog1",
-			evaluationSuiteName:  "test-service_catalog1",
-			applicability:        []string{"valid-applicability-1"},
-			expectedSuitesLength: 1,
-			expectedResult:       layer4.Passed,
+			testName:       "Pass Evaluation",
+			expectedResult: layer4.Passed,
 			evals: []*layer4.ControlEvaluation{
 				passingEvaluation(),
 			},
 		},
 		{
-			testName:               "Corrupted Evaluation First",
-			catalogName:            "catalog1",
-			evaluationSuiteName:    "test-service_catalog1",
-			applicability:          []string{"valid-applicability-1"},
-			expectedSuitesLength:   1,
-			expectedResult:         layer4.Unknown,
-			expectedCorruptedState: true,
+			testName:       "Fail Evaluation",
+			expectedResult: layer4.Failed,
 			evals: []*layer4.ControlEvaluation{
+				failingEvaluation(),
+			},
+		},
+		{
+			testName:       "Needs Review Evaluation",
+			expectedResult: layer4.NeedsReview,
+			evals: []*layer4.ControlEvaluation{
+				needsReviewEvaluation(),
+			},
+		},
+		{
+			testName:           "Corrupted Evaluation",
+			expectedResult:     layer4.Unknown,
+			expectedCorruption: true,
+			evals: []*layer4.ControlEvaluation{
+				corruptedEvaluation(),
+			},
+		},
+		{
+			testName:       "Pass, Pass, Pass",
+			expectedResult: layer4.Passed,
+			evals: []*layer4.ControlEvaluation{
+				passingEvaluation(),
+				passingEvaluation(),
+				passingEvaluation(),
+			},
+		},
+		{
+			testName:       "Pass Then Fail",
+			expectedResult: layer4.Failed,
+			evals: []*layer4.ControlEvaluation{
+				passingEvaluation(),
+				failingEvaluation(),
+			},
+		},
+		{
+			testName:       "Pass Then Needs Review",
+			expectedResult: layer4.NeedsReview,
+			evals: []*layer4.ControlEvaluation{
+				passingEvaluation(),
+				needsReviewEvaluation(),
+			},
+		},
+		{
+			testName:           "Pass Then Corrupted",
+			expectedResult:     layer4.Unknown,
+			expectedCorruption: true,
+			evals: []*layer4.ControlEvaluation{
+				passingEvaluation(),
+				corruptedEvaluation(),
+			},
+		},
+		{
+			testName:       "Needs Review Then Pass",
+			expectedResult: layer4.NeedsReview,
+			evals: []*layer4.ControlEvaluation{
+				needsReviewEvaluation(),
+				passingEvaluation(),
+			},
+		},
+		{
+			testName:       "Needs Review Then Fail",
+			expectedResult: layer4.Failed,
+			evals: []*layer4.ControlEvaluation{
+				needsReviewEvaluation(),
+				failingEvaluation(),
+			},
+		},
+		{
+			testName:           "Corrupt, Pass, Pass",
+			expectedResult:     layer4.Unknown,
+			expectedCorruption: true,
+			evals: []*layer4.ControlEvaluation{
+				corruptedEvaluation(),
+				passingEvaluation(),
+				passingEvaluation(),
+			},
+		},
+		{
+			testName:           "Pass, Corrupt, Pass",
+			expectedResult:     layer4.Unknown,
+			expectedCorruption: true,
+			evals: []*layer4.ControlEvaluation{
+				passingEvaluation(),
 				corruptedEvaluation(),
 				passingEvaluation(),
 			},
 		},
 		{
-			testName:               "Corrupted Evaluation Second",
-			catalogName:            "catalog1",
-			evaluationSuiteName:    "test-service_catalog1",
-			applicability:          []string{"valid-applicability-1"},
-			expectedSuitesLength:   2,
-			expectedResult:         layer4.Unknown,
-			expectedCorruptedState: true,
+			testName:           "Pass, Pass, Corrupt",
+			expectedResult:     layer4.Unknown,
+			expectedCorruption: true,
 			evals: []*layer4.ControlEvaluation{
 				passingEvaluation(),
+				passingEvaluation(),
 				corruptedEvaluation(),
+			},
+		},
+		{
+			testName:           "Corrupt, Corrupt, Pass",
+			expectedResult:     layer4.Unknown,
+			expectedCorruption: true,
+			evals: []*layer4.ControlEvaluation{
+				corruptedEvaluation(),
+				corruptedEvaluation(),
+				passingEvaluation(),
+			},
+		},
+		{
+			testName:           "Corrupt, Corrupt, Corrupt",
+			expectedResult:     layer4.Unknown,
+			expectedCorruption: true,
+			evals: []*layer4.ControlEvaluation{
+				corruptedEvaluation(),
+				corruptedEvaluation(),
+				corruptedEvaluation(),
+			},
+		},
+		{
+			testName:           "Corrupt then Needs Review",
+			expectedResult:     layer4.Unknown,
+			expectedCorruption: true,
+			evals: []*layer4.ControlEvaluation{
+				corruptedEvaluation(),
+				needsReviewEvaluation(),
 			},
 		},
 	}
 
-	t.Run("mobilize all testData eval suites", func(t *testing.T) {
-		for _, test := range testData {
+	for _, test := range testData {
+		t.Run(test.testName, func(tt *testing.T) {
 
 			v := NewVessel("test", nil, []string{})
 			v.config = setSimpleConfig()
 
 			examplePayload := &PayloadTypeExample{CustomPayloadField: true}
 
-			v.AddEvaluationSuite(test.catalogName, examplePayload, test.evals)
+			catalogName := strings.Replace(test.testName, " ", "-", -1)
+			v.AddEvaluationSuite(catalogName, examplePayload, test.evals)
 
+			// Nothing from our test data should be applicable right now, but they should be possible
 			err := v.Mobilize()
 			if err != nil {
-				t.Errorf("Expected no error, but got %v", err)
+				tt.Errorf("Expected no error, but got %v", err)
+			}
+			if v.possibleSuites == nil || len(v.possibleSuites) == 0 {
+				tt.Errorf("Expected evaluation suites to be set, but got %v", v.possibleSuites)
+				return
+			}
+			if len(v.Evaluation_Suites) > 0 {
+				tt.Errorf("Expected no Evaluation Suites to be set, but got %v", len(v.possibleSuites))
+				return
 			}
 
-			if test.expectedSuitesLength != len(v.Evaluation_Suites) {
-				t.Errorf("Expected %v control evaluations, but got %v", len(test.evals), len(v.Evaluation_Suites))
-			}
-
+			// Now we set the catalog to be applicable, then run Mobilize again to find results
+			v.config.Policy.ControlCatalogs = []string{catalogName}
+			v.Mobilize()
 			if v.Evaluation_Suites == nil || len(v.Evaluation_Suites) == 0 {
-				continue
+				tt.Errorf("Expected evaluation suites to be set, but got %v", v.Evaluation_Suites)
+				return
 			}
 
 			for _, suite := range v.Evaluation_Suites {
-				if test.expectedResult != suite.Result {
-					t.Errorf("Expected result to be %v, but got %v", test.expectedResult, suite.Result)
-				}
-				if suite.Corrupted_State != test.expectedCorruptedState {
-					t.Errorf("Expected corrupted state to be %v, but got %v", test.expectedCorruptedState, suite.Corrupted_State)
-				}
-				if suite.Name != test.evaluationSuiteName {
-					t.Errorf("Expected evaluation suite name to be %s, but got %s", test.evaluationSuiteName, suite.Name)
-				}
-				for _, evaluatedSuite := range v.Evaluation_Suites {
-					if len(suite.Control_Evaluations) != len(evaluatedSuite.Control_Evaluations) {
-						t.Errorf("Expected control evaluations to match test data, but got %v", evaluatedSuite.Control_Evaluations)
+				tt.Run("suite", func(ttt *testing.T) {
+					if len(test.evals) != len(suite.Control_Evaluations) {
+						ttt.Errorf("Expected %v control evaluations, but got %v", len(test.evals), len(v.Evaluation_Suites))
 					}
-					if examplePayload != evaluatedSuite.payload {
-						t.Errorf("Expected payload to match test data, but got %v", evaluatedSuite.payload)
+					if test.expectedResult != suite.Result {
+						ttt.Errorf("Expected result to be %v, but got %v", test.expectedResult, suite.Result)
 					}
-					if evaluatedSuite.config != v.config {
-						t.Errorf("Expected config to match simpleConfig but got %v", evaluatedSuite.config)
+					if suite.Corrupted_State != test.expectedCorruption {
+						ttt.Errorf("Expected corrupted state to be %v, but got %v", test.expectedCorruption, suite.Corrupted_State)
 					}
-				}
+					evaluationSuiteName := fmt.Sprintf("%s_%s", v.Service_Name, catalogName)
+					if suite.Name != evaluationSuiteName {
+						ttt.Errorf("Expected evaluation suite name to be %s, but got %s", evaluationSuiteName, suite.Name)
+					}
+					for _, evaluatedSuite := range v.Evaluation_Suites {
+						if len(suite.Control_Evaluations) != len(evaluatedSuite.Control_Evaluations) {
+							ttt.Errorf("Expected control evaluations to match test data, but got %v", evaluatedSuite.Control_Evaluations)
+						}
+						if examplePayload != evaluatedSuite.payload {
+							ttt.Errorf("Expected payload to match test data, but got %v", evaluatedSuite.payload)
+						}
+						if evaluatedSuite.config != v.config {
+							ttt.Errorf("Expected config to match simpleConfig but got %v", evaluatedSuite.config)
+						}
+					}
+				})
 			}
-		}
-	})
+		})
+	}
 }

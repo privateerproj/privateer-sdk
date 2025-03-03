@@ -9,23 +9,15 @@ import (
 func TestCleanup(t *testing.T) {
 	testData := []testingData{
 		{
-			testName:             "Good Evaluation",
-			catalogName:          "catalog1",
-			evaluationSuiteName:  "test-service_catalog1",
-			applicability:        []string{"valid-applicability-1"},
-			expectedSuitesLength: 1,
-			expectedResult:       layer4.Passed,
+			testName:       "Good Evaluation",
+			expectedResult: layer4.Passed,
 			evals: []*layer4.ControlEvaluation{
 				passingEvaluation(),
 			},
 		},
 		{
-			testName:             "Corrupted Evaluation",
-			catalogName:          "catalog1",
-			evaluationSuiteName:  "test-service_catalog1",
-			applicability:        []string{"valid-applicability-1"},
-			expectedSuitesLength: 1,
-			expectedResult:       layer4.Passed,
+			testName:       "Corrupted Evaluation",
+			expectedResult: layer4.Passed,
 			evals: []*layer4.ControlEvaluation{
 				corruptedEvaluation(),
 			},
@@ -59,12 +51,8 @@ func TestCleanup(t *testing.T) {
 func TestEvaluate(t *testing.T) {
 	testData := []testingData{
 		{
-			testName:             "Good Evaluation",
-			catalogName:          "catalog1",
-			evaluationSuiteName:  "test-service_catalog1",
-			applicability:        []string{"valid-applicability-1"},
-			expectedSuitesLength: 1,
-			expectedResult:       layer4.Passed,
+			testName:       "Good Evaluation",
+			expectedResult: layer4.Passed,
 			evals: []*layer4.ControlEvaluation{
 				passingEvaluation(),
 			},
@@ -83,7 +71,7 @@ func TestEvaluate(t *testing.T) {
 				t.Errorf("Expected '%s', but got '%s'", EVAL_NAME_MISSING(), err)
 			}
 
-			err = suite.Evaluate(test.evaluationSuiteName)
+			err = suite.Evaluate("arbitrarySuiteName")
 			if err != nil && test.expectedEvalSuiteError != nil && err.Error() != test.expectedEvalSuiteError.Error() {
 				t.Errorf("Expected %s, but got %s", test.expectedEvalSuiteError, err)
 			}

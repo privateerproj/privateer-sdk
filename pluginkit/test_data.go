@@ -12,13 +12,9 @@ import (
 type testingData struct {
 	testName               string
 	serviceName            string
-	evaluationSuiteName    string
-	catalogName            string
-	applicability          []string
 	evals                  []*layer4.ControlEvaluation
 	expectedEvalSuiteError error
-	expectedCorruptedState bool
-	expectedSuitesLength   int
+	expectedCorruption     bool
 	expectedResult         layer4.Result
 }
 
@@ -157,5 +153,5 @@ func step_Unknown(_ interface{}, _ map[string]*layer4.Change) (result layer4.Res
 
 func step_Corrupted(_ interface{}, changes map[string]*layer4.Change) (result layer4.Result, message string) {
 	changes["corrupted-change"].Apply()
-	return layer4.Unknown, "This step always returns unknown"
+	return layer4.Unknown, "This step always returns unknown and applies a corrupted change"
 }

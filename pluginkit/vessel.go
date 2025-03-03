@@ -12,7 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// The vessel gets the armory in position to execute the testSets specified in the testSuites
+// The vessel gets the armory in position to execute the ControlEvaluations specified in the testSuites
 type Vessel struct {
 	Service_Name      string
 	Plugin_Name       string
