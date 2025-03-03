@@ -37,7 +37,7 @@ func NewVessel(pluginName string, payload interface{}, requiredVars []string) *V
 		Plugin_Name:  pluginName,
 		requiredVars: requiredVars,
 	}
-	v.SetPayload(&payload)
+	v.SetPayload(payload)
 	return v
 }
 
@@ -95,7 +95,6 @@ func (v *Vessel) Mobilize() error {
 	for _, catalog := range v.config.Policy.ControlCatalogs {
 		for _, suite := range v.possibleSuites {
 			if suite.Catalog_Id == catalog {
-				v.config.Logger.Trace(fmt.Sprintf("Running evaluations for catalog: %s", catalog))
 				suite.config = v.config
 				evalName := v.Service_Name + "_" + catalog
 				err := suite.Evaluate(evalName)

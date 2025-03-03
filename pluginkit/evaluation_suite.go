@@ -49,13 +49,26 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 		if !e.Corrupted_State {
 			e.Corrupted_State = evaluation.Corrupted_State
 		}
+
+		// Make sure the evaluation result is updated based on the complete assessment results
 		e.Result = layer4.UpdateAggregateResult(e.Result, evaluation.Result)
+
+		// Log each assessment result as a separate line
+		for _, assessment := range evaluation.Assessments {
+			message := fmt.Sprintf("%s: %s", assessment.Requirement_Id, assessment.Message)
+			if assessment.Result == layer4.Passed {
+				e.config.Logger.Info(message)
+			} else if assessment.Result == layer4.NeedsReview {
+				e.config.Logger.Warn(message)
+			} else if assessment.Result == layer4.Failed || assessment.Result == layer4.Unknown {
+				e.config.Logger.Error(message)
+			}
+		}
+
 		if evaluation.Result == layer4.Passed {
 			e.successes += 1
-			e.config.Logger.Info(evaluation.Result.String(), "name", e.Name, "message", evaluation.Message)
 		} else {
 			e.failures += 1
-			e.config.Logger.Error(evaluation.Result.String(), "name", e.Name, "message", evaluation.Message)
 		}
 		if e.Corrupted_State {
 			break
