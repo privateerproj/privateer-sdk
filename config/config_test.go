@@ -34,7 +34,7 @@ services:
     policy:
       catalogs:
         - FINOS-CCC
-      applicability: tlp_green
+      applicability: ["tlp_green"]
 `}, {
 		testName:       "Good - Two Services",
 		runningService: "my-service-2",
@@ -44,12 +44,12 @@ services:
     policy:
       catalogs:
         - FINOS-CCC
-      applicability: tlp_green
+      applicability: ["tlp_green"]
   my-service-2:
     policy:
       catalogs:
         - FINOS-CCC
-      applicability: tlp_green
+      applicability: ["tlp_green"]
 `}, {
 		testName:         "Good - Log Level Set at Top Level",
 		runningService:   "my-service-1",
@@ -62,7 +62,7 @@ services:
     policy:
       catalogs:
         - FINOS-CCC
-      applicability: tlp_green
+      applicability: ["tlp_green"]
 `}, {
 		testName:         "Good - Log Level Set in Service",
 		runningService:   "my-service-1",
@@ -75,7 +75,7 @@ services:
     policy:
       catalogs:
         - FINOS-CCC
-      applicability: tlp_green
+      applicability: ["tlp_green"]
 `}, {
 		testName:         "Good - Log Level Set in Service and Top Level",
 		runningService:   "my-service-1",
@@ -89,7 +89,7 @@ services:
     policy:
       catalogs:
         - FINOS-CCC
-      applicability: tlp_green
+      applicability: ["tlp_green"]
 `}, {
 		testName:       "Good - Invasive Set at Top Level",
 		runningService: "my-service-1",
@@ -102,7 +102,7 @@ services:
     policy:
       catalogs:
         - FINOS-CCC
-      applicability: tlp_green
+      applicability: ["tlp_green"]
 `}, {
 		testName:       "Good - Invasive Set at Service Level",
 		runningService: "my-service-1",
@@ -115,7 +115,7 @@ services:
     policy:
       catalogs:
         - FINOS-CCC
-      applicability: tlp_green
+      applicability: ["tlp_green"]
 `}, {
 		testName:       "Good - Invasive Set at Service and Top Level",
 		runningService: "my-service-1",
@@ -129,7 +129,7 @@ services:
     policy:
       catalogs:
         - FINOS-CCC
-      applicability: tlp_green
+      applicability: ["tlp_green"]
 `}, {
 		testName:       "Good - Write Directory Set",
 		runningService: "my-service-1",
@@ -142,7 +142,7 @@ services:
     policy:
       catalogs:
         - FINOS-CCC
-      applicability: tlp_green
+      applicability: ["tlp_green"]
 `}, {
 		testName:       "Good - Required Var (Single)",
 		runningService: "my-service-1",
@@ -153,7 +153,7 @@ services:
     policy:
       catalogs:
         - FINOS-CCC
-      applicability: tlp_green
+      applicability: ["tlp_green"]
     vars:
       key: value
 `}, {
@@ -166,7 +166,7 @@ services:
     policy:
       catalogs:
         - FINOS-CCC
-      applicability: tlp_green
+      applicability: ["tlp_green"]
     vars:
       key: value
       key2: value2
@@ -182,7 +182,7 @@ services:
     policy:
       catalogs:
         - FINOS-CCC
-      applicability: tlp_green
+      applicability: ["tlp_green"]
     vars:
       key: value
 `}, {
@@ -197,7 +197,7 @@ services:
     policy:
       catalogs:
         - FINOS-CCC
-      applicability: tlp_green
+      applicability: ["tlp_green"]
     vars:
       key: value
 `}, {
@@ -212,7 +212,7 @@ services:
     policy:
       catalogs:
         - FINOS-CCC
-      applicability: tlp_green
+      applicability: ["tlp_green"]
     vars:
       key: value
 `}, {
@@ -227,14 +227,14 @@ services:
     policy:
       catalogs:
         - FINOS-CCC
-      applicability: tlp_green
+      applicability: ["tlp_green"]
     vars:
       key: value
 `}, {
 		testName:       "Bad - Missing Policy",
 		runningService: "my-service-1",
 		requiredVars:   []string{},
-		expectedError:  "invalid policy for service my-service-1: ",
+		expectedError:  "invalid policy for service my-service-1. applicability=0 catalogs=0",
 		config: `
 services:
   my-service-1:
@@ -242,7 +242,7 @@ services:
 		testName:       "Bad - Missing Applicability",
 		runningService: "my-service-1",
 		requiredVars:   []string{},
-		expectedError:  "invalid policy for service my-service-1: ",
+		expectedError:  "invalid policy for service my-service-1. applicability=0 catalogs=1",
 		config: `
 services:
   my-service-1:
@@ -260,7 +260,7 @@ services:
     policy:
       catalogs:
         - FINOS-CCC
-      applicability: tlp_green
+      applicability: ["tlp_green"]
 `}, {
 		testName:       "Good - designated output type JSON",
 		runningService: "my-service-1",
@@ -273,7 +273,7 @@ services:
     policy:
       catalogs:
         - FINOS-CCC
-      applicability: tlp_green
+      applicability: ["tlp_green"]
 `}, {
 		testName:       "Good - designated output type YAML",
 		runningService: "my-service-1",
@@ -286,7 +286,7 @@ services:
     policy:
       catalogs:
         - FINOS-CCC
-      applicability: tlp_green
+      applicability: ["tlp_green"]
 `}, {
 		testName:       "Bad - Bad output type",
 		runningService: "my-service-1",
@@ -299,7 +299,7 @@ services:
     policy:
       catalogs:
         - FINOS-CCC
-      applicability: tlp_green
+      applicability: ["tlp_green"]
 `}, {
 		testName:       "Good - explicit write true",
 		runningService: "my-service-1",
@@ -313,7 +313,7 @@ services:
     policy:
       catalogs:
         - FINOS-CCC
-      applicability: tlp_green
+      applicability: ["tlp_green"]
 `}, {
 		testName:       "Good - explicit write false",
 		runningService: "my-service-1",
@@ -327,7 +327,7 @@ services:
     policy:
       catalogs:
         - FINOS-CCC
-      applicability: tlp_green
+      applicability: ["tlp_green"]
 `}, {
 		testName:       "Good - write non boolean default to false false",
 		runningService: "my-service-1",
@@ -340,7 +340,7 @@ services:
   my-service-1:
     policy:
       catalogs: ["FINOS-CCC"]
-      applicability: tlp_green
+      applicability: ["tlp_green"]
 `},
 }
 

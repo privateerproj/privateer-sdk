@@ -42,7 +42,7 @@ func NewVessel(pluginName string, payload interface{}, requiredVars []string) *V
 }
 
 // SetPayload allows the user to pass data to be referenced in assessments
-func (v *Vessel) SetPayload(payload *interface{}) {
+func (v *Vessel) SetPayload(payload interface{}) {
 	if payload == nil {
 		payload = new(interface{})
 	}
@@ -58,14 +58,16 @@ func (v *Vessel) SetupConfig() {
 	}
 }
 
-func (v *Vessel) AddEvaluationSuite(name string, payload *interface{}, evaluations []*layer4.ControlEvaluation) {
+func (v *Vessel) AddEvaluationSuite(catalogId string, payload interface{}, evaluations []*layer4.ControlEvaluation) {
 	suite := EvaluationSuite{
-		Name:                name,
+		Catalog_Id:          catalogId,
 		Control_Evaluations: evaluations,
 	}
 	suite.config = v.config
-	if payload == nil {
-		suite.payload = &v.Payload.Data
+	if payload != nil {
+		suite.payload = payload
+	} else {
+		suite.payload = v.Payload.Data
 	}
 	v.possibleSuites = append(v.possibleSuites, &suite)
 }
@@ -92,13 +94,13 @@ func (v *Vessel) Mobilize() error {
 
 	for _, catalog := range v.config.Policy.ControlCatalogs {
 		for _, suite := range v.possibleSuites {
-			if suite.Name == catalog {
+			if suite.Catalog_Id == catalog {
 				v.config.Logger.Trace(fmt.Sprintf("Running evaluations for catalog: %s", catalog))
 				suite.config = v.config
 				evalName := v.Service_Name + "_" + catalog
-				suite.Evaluate(evalName)
-				if suite.Corrupted_State {
-					v.config.Logger.Error(CORRUPTION_FOUND().Error())
+				err := suite.Evaluate(evalName)
+				if err != nil {
+					v.config.Logger.Error(err.Error())
 				}
 				v.Evaluation_Suites = append(v.Evaluation_Suites, suite)
 			}

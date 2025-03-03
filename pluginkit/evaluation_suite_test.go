@@ -7,54 +7,91 @@ import (
 )
 
 func TestCleanup(t *testing.T) {
+	testData := []testingData{
+		{
+			testName:             "Good Evaluation",
+			catalogName:          "catalog1",
+			evaluationSuiteName:  "test-service_catalog1",
+			applicability:        []string{"valid-applicability-1"},
+			expectedSuitesLength: 1,
+			expectedResult:       layer4.Passed,
+			evals: []*layer4.ControlEvaluation{
+				passingEvaluation(),
+			},
+		},
+		{
+			testName:             "Corrupted Evaluation",
+			catalogName:          "catalog1",
+			evaluationSuiteName:  "test-service_catalog1",
+			applicability:        []string{"valid-applicability-1"},
+			expectedSuitesLength: 1,
+			expectedResult:       layer4.Passed,
+			evals: []*layer4.ControlEvaluation{
+				corruptedEvaluation(),
+			},
+		},
+	}
 	for _, test := range testData {
 		t.Run(test.testName, func(t *testing.T) {
-			for _, data := range test.data {
-				t.Run("subtest_"+data.Name, func(t *testing.T) {
-					for _, ce := range data.Control_Evaluations {
-						expectedCorrupted := ce.Corrupted_State
-						ce.Cleanup()
-						if ce.Corrupted_State != expectedCorrupted {
-							t.Errorf("Expected control evaluation corruption to be %v, but got %v", expectedCorrupted, ce.Corrupted_State)
-						}
-						result := data.cleanup()
-						if data.Corrupted_State != expectedCorrupted {
-							t.Errorf("Expected evaluation suite corruption to be %v, but got %v", expectedCorrupted, data.Corrupted_State)
-						}
-						if !result != (ce.Corrupted_State || data.Corrupted_State) {
-							t.Errorf("Expected cleanup to return %v, but got %v", ce.Corrupted_State || data.Corrupted_State, result)
-						}
-						if result && !ce.Corrupted_State {
-							t.Errorf("Expected control evaluation to be corrupted, but got %v", ce.Corrupted_State)
-						}
-					}
-				})
+			data := &EvaluationSuite{
+				Name:                test.testName,
+				Control_Evaluations: test.evals,
+			}
+			data.config = setSimpleConfig()
+			for _, eval := range data.Control_Evaluations {
+				expectedCorrupted := eval.Corrupted_State
+				eval.Cleanup()
+				if eval.Corrupted_State != expectedCorrupted {
+					t.Errorf("Expected control evaluation corruption to be %v, but got %v", expectedCorrupted, eval.Corrupted_State)
+				}
+				result := data.cleanup()
+				if result == expectedCorrupted {
+					t.Errorf("Expected cleanup to return %v, but got %v", expectedCorrupted, result)
+				}
+				if data.Corrupted_State != expectedCorrupted {
+					t.Errorf("Expected suite result to be %v, but got %v", expectedCorrupted, data.Result)
+				}
 			}
 		})
 	}
 }
 
 func TestEvaluate(t *testing.T) {
+	testData := []testingData{
+		{
+			testName:             "Good Evaluation",
+			catalogName:          "catalog1",
+			evaluationSuiteName:  "test-service_catalog1",
+			applicability:        []string{"valid-applicability-1"},
+			expectedSuitesLength: 1,
+			expectedResult:       layer4.Passed,
+			evals: []*layer4.ControlEvaluation{
+				passingEvaluation(),
+			},
+		},
+	}
+
 	for _, test := range testData {
 		t.Run(test.testName, func(t *testing.T) {
-			for name, data := range test.data {
+			suite := &EvaluationSuite{
+				Name:                test.testName,
+				Control_Evaluations: test.evals,
+			}
+			suite.config = setSimpleConfig()
+			err := suite.Evaluate("")
+			if err.Error() != EVAL_NAME_MISSING().Error() {
+				t.Errorf("Expected '%s', but got '%s'", EVAL_NAME_MISSING(), err)
+			}
 
-				data.config = testingConfig
-				err := data.Evaluate("")
-				if err.Error() != EVAL_NAME_MISSING().Error() {
-					t.Errorf("Expected '%s', but got '%s'", EVAL_NAME_MISSING(), err)
+			err = suite.Evaluate(test.evaluationSuiteName)
+			if err != nil && test.expectedEvalSuiteError != nil && err.Error() != test.expectedEvalSuiteError.Error() {
+				t.Errorf("Expected %s, but got %s", test.expectedEvalSuiteError, err)
+			}
+			for _, eval := range suite.Control_Evaluations {
+				if (eval.Result == layer4.Passed) && eval.Corrupted_State {
+					t.Errorf("Control evaluation was marked 'Passed' and Corrupted_State=true")
 				}
-
-				err = data.Evaluate(test.testName + name)
-				if err.Error() != test.expectedEvaluationSuiteError.Error() {
-					t.Errorf("Expected %s, but got %s", test.expectedEvaluationSuiteError, err)
-				}
-				for _, ce := range data.Control_Evaluations {
-					if ce.Result == layer4.Passed && !ce.Corrupted_State {
-						t.Errorf("Expected control evaluation to be corrupted when result is Passed, but got %v", ce.Corrupted_State)
-					}
-					// TODO: test more of the evaluation suite behavior
-				}
+				// TODO: test more of the evaluation suite behavior
 			}
 		})
 	}

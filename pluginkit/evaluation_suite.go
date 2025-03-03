@@ -2,7 +2,6 @@ package pluginkit
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -21,6 +20,7 @@ type TestSet func() (result layer4.ControlEvaluation)
 // TestSuite is a struct that contains the results of all testSets, orgainzed by name
 type EvaluationSuite struct {
 	Name            string        // Name is the name of the suite
+	Catalog_Id      string        // Catalog_Id associates this suite with an catalog
 	Start_Time      string        // Start_Time is the time the plugin started
 	End_Time        string        // End_Time is the time the plugin ended
 	Result          layer4.Result // Result is Passed if all evaluations in the suite passed
@@ -28,7 +28,7 @@ type EvaluationSuite struct {
 
 	Control_Evaluations []*layer4.ControlEvaluation // Control_Evaluations is a slice of evaluations to be executed
 
-	payload   *interface{}   // payload is the data to be evaluated
+	payload   interface{}    // payload is the data to be evaluated
 	config    *config.Config // config is the global configuration for the plugin
 	successes int            // successes is the number of successful evaluations
 	failures  int            // failures is the number of failed evaluations
@@ -45,8 +45,9 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 	for _, evaluation := range e.Control_Evaluations {
 		evaluation.Evaluate(e.payload, e.config.Policy.Applicability)
 		evaluation.Cleanup()
-
-		e.Corrupted_State = evaluation.Corrupted_State
+		if !e.Corrupted_State {
+			e.Corrupted_State = evaluation.Corrupted_State
+		}
 		e.Result = layer4.UpdateAggregateResult(e.Result, evaluation.Result)
 		if evaluation.Result == layer4.Passed {
 			e.successes += 1
@@ -60,15 +61,18 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 	e.cleanup()
 	e.End_Time = time.Now().String()
 
-	output := fmt.Sprintf("%s: %v/%v control evaluations passed", e.Name, e.successes, len(e.Control_Evaluations))
+	output := fmt.Sprintf("> %s: %v/%v control evaluations passed", e.Name, e.successes, len(e.Control_Evaluations))
 	if e.Corrupted_State {
 		return CORRUPTION_FOUND()
 	}
-	if e.Result == 0 {
+	if e.Result == layer4.Passed {
 		e.config.Logger.Info(output)
-		return nil
+	} else if e.Result == layer4.NotRun {
+		e.config.Logger.Trace(output)
+	} else {
+		e.config.Logger.Error(output)
 	}
-	return errors.New(output)
+	return nil
 }
 
 func (e *EvaluationSuite) WriteControlEvaluations(serviceName string, output string) error {

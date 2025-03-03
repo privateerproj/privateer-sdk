@@ -34,52 +34,67 @@ type Config struct {
 type Policy struct {
 	// TODO: We will want to replace this with an SCI layer3 object when that is ready
 	ControlCatalogs []string
-	Applicability   string
+	Applicability   []string
 }
 
 func NewConfig(requiredVars []string) Config {
-	serviceName := viper.GetString("service") // the currently running service
-	topLoglevel := viper.GetString("loglevel")
-	topInvasive := viper.GetBool("invasive")
-	topControlCatalogs := viper.GetStringSlice("control-catalogs")
-	writeDir := viper.GetString("write-directory")
-	write := viper.GetBool("write")
-	output := strings.ToLower(strings.TrimSpace(viper.GetString("output")))
+	var errString string
 
-	loglevel := viper.GetString(fmt.Sprintf("services.%s.loglevel", serviceName))
-	invasive := viper.GetBool(fmt.Sprintf("services.%s.invasive", serviceName))
-	applicability := viper.GetString(fmt.Sprintf("services.%s.policy.applicability", serviceName))
-	controlCatalogs := viper.GetStringSlice(fmt.Sprintf("services.%s.policy.catalogs", serviceName))
+	serviceName := viper.GetString("service") // the currently running service; if empty, we're probably running from core
+
+	write := viper.GetBool("write")                                         // defaults to true, but allow the user to disable file writing
+	output := strings.ToLower(strings.TrimSpace(viper.GetString("output"))) // defaults to yaml, but can be set to json
+
+	topVars := viper.GetStringMap("vars")
 	vars := viper.GetStringMap(fmt.Sprintf("services.%s.vars", serviceName))
+	if len(vars) == 0 {
+		vars = topVars
+	}
 
+	topLoglevel := viper.GetString("loglevel")
+	loglevel := viper.GetString(fmt.Sprintf("services.%s.loglevel", serviceName))
 	if loglevel == "" && topLoglevel != "" {
 		loglevel = topLoglevel
 	} else if loglevel == "" {
 		loglevel = "Error"
 	}
 
-	if !invasive && topInvasive {
-		invasive = topInvasive
-	}
-
-	if len(controlCatalogs) == 0 {
-		controlCatalogs = topControlCatalogs
-	}
-
+	writeDir := viper.GetString("write-directory")
 	if writeDir == "" {
 		writeDir = defaultWritePath()
 	}
 
-	var errString string
-	if serviceName != "" && (applicability == "" || len(controlCatalogs) == 0) {
-		errString = fmt.Sprintf("invalid policy for service %s: %s", serviceName, viper.GetString("config"))
+	topInvasive := viper.GetBool("invasive") // make sure we're actually using this to block changes
+	invasive := viper.GetBool(fmt.Sprintf("services.%s.invasive", serviceName))
+	if !invasive && topInvasive {
+		invasive = topInvasive
+	}
+
+	topCatalogs := viper.GetStringSlice("policy.catalogs")
+	catalogs := viper.GetStringSlice(fmt.Sprintf("services.%s.policy.catalogs", serviceName))
+	if len(catalogs) == 0 {
+		catalogs = topCatalogs
+	}
+
+	topApplicability := viper.GetStringSlice("policy.applicability")
+	applicability := viper.GetStringSlice(fmt.Sprintf("services.%s.policy.applicability", serviceName))
+	if len(applicability) == 0 {
+		applicability = topApplicability
+	}
+
+	if serviceName != "" && (len(applicability) == 0 || len(catalogs) == 0) {
+		errString = fmt.Sprintf("invalid policy for service %s. applicability=%v catalogs=%v",
+			serviceName, len(applicability), len(catalogs))
 	}
 
 	var missingVars []string
 	for _, v := range requiredVars {
 		found := viper.Get(fmt.Sprintf("services.%s.vars.%s", serviceName, v))
 		if found == nil || found == "" {
-			missingVars = append(missingVars, v)
+			foundTop := viper.Get(fmt.Sprintf("vars.%s", v))
+			if foundTop == nil || foundTop == "" {
+				missingVars = append(missingVars, v)
+			}
 		}
 	}
 	if len(missingVars) > 0 {
@@ -105,7 +120,7 @@ func NewConfig(requiredVars []string) Config {
 		Output:         output,
 		Invasive:       invasive,
 		Policy: Policy{
-			ControlCatalogs: controlCatalogs,
+			ControlCatalogs: catalogs,
 			Applicability:   applicability,
 		},
 		Vars:  vars,
@@ -122,7 +137,7 @@ func NewConfig(requiredVars []string) Config {
 		"write-directory", writeDir,
 		"invasive", invasive,
 		"applicability", applicability,
-		"control-catalogs", controlCatalogs,
+		"control-catalogs", catalogs,
 		"vars", vars,
 		"output", output,
 	)
