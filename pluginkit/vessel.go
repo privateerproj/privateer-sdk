@@ -1,127 +1,190 @@
 package pluginkit
 
 import (
-	"errors"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path"
+	"strings"
 
-	"github.com/hashicorp/go-hclog"
 	"github.com/privateerproj/privateer-sdk/config"
+	"github.com/revanite-io/sci/pkg/layer4"
+	"gopkg.in/yaml.v3"
 )
 
-// The vessel gets the armory in position to execute the testSets specified in the testSuites
+// The vessel gets the armory in position to execute the ControlEvaluations specified in the testSuites
 type Vessel struct {
-	ServiceName      string
-	PluginName       string
-	RequiredVars     []string
-	Armory           *Armory
-	TestSuites       []TestSuite
-	Initializer      func(*config.Config) error
-	config           *config.Config
-	logger           hclog.Logger
-	executedTestSets *[]string
+	Service_Name      string
+	Plugin_Name       string
+	Payload           Payload
+	Evaluation_Suites []*EvaluationSuite // EvaluationSuite is a map of evaluations to their catalog names
+
+	possibleSuites []*EvaluationSuite
+	requiredVars   []string
+	config         *config.Config
 }
 
-func NewVessel(
-	name string,
-	armory *Armory,
-	initializer func(*config.Config) error,
-	requiredVars []string) Vessel {
+type Payload struct {
+	Data   interface{}
+	config *config.Config
+}
 
-	return Vessel{
-		PluginName:   name,
-		Armory:       armory,
-		Initializer:  initializer,
-		RequiredVars: requiredVars,
+func NewVessel(pluginName string, payload interface{}, requiredVars []string) *Vessel {
+	if payload == nil {
+		payload = new(interface{})
+	}
+	v := &Vessel{
+		Plugin_Name:  pluginName,
+		requiredVars: requiredVars,
+	}
+	v.SetPayload(payload)
+	return v
+}
+
+// SetPayload allows the user to pass data to be referenced in assessments
+func (v *Vessel) SetPayload(payload interface{}) {
+	if payload == nil {
+		payload = new(interface{})
+	}
+	v.Payload = Payload{
+		Data: payload,
 	}
 }
 
-// StockArmory sets up the armory for the vessel to use
-func (v *Vessel) StockArmory() error {
-	if v.Armory == nil {
-		return errors.New("vessel's Armory field cannot be nil")
+func (v *Vessel) SetupConfig() {
+	if v.config == nil {
+		c := config.NewConfig(v.requiredVars)
+		v.config = &c
 	}
-	if v.logger == nil {
-		if v.config == nil {
-			config := config.NewConfig(v.RequiredVars)
-			v.config = &config
-		}
+}
+
+func (v *Vessel) AddEvaluationSuite(catalogId string, payload interface{}, evaluations []*layer4.ControlEvaluation) {
+	suite := EvaluationSuite{
+		Catalog_Id:          catalogId,
+		Control_Evaluations: evaluations,
 	}
+	suite.config = v.config
+	if payload != nil {
+		suite.payload = payload
+	} else {
+		suite.payload = v.Payload.Data
+	}
+	v.possibleSuites = append(v.possibleSuites, &suite)
+}
+
+func (v *Vessel) Mobilize() error {
+	v.SetupConfig()
 	if v.config.Error != nil {
 		return v.config.Error
 	}
 
-	v.Armory.Config = v.config
-	v.Armory.Logger = v.config.Logger
-	v.Armory.ServiceTarget = v.ServiceName
+	v.config.Logger.Trace("Setting up vessel")
 
-	v.logger = v.config.Logger
-	v.ServiceName = v.config.ServiceName
-
-	if v.PluginName == "" || v.ServiceName == "" {
-		return fmt.Errorf("expected service and plugin names to be set. ServiceName='%s' PluginName='%s'", v.ServiceName, v.PluginName)
-	}
-	if v.Armory == nil {
-		return fmt.Errorf("no armory was stocked for the plugin '%s'", v.PluginName)
-	}
-	if v.Armory.TestSuites == nil {
-		return fmt.Errorf("no testSuites provided for the service")
+	if len(v.possibleSuites) == 0 {
+		return NO_EVALUATION_SUITES()
 	}
 
-	return nil
-}
+	v.Service_Name = v.config.ServiceName
 
-// Mobilize executes the testSets specified in the testSuites
-func (v *Vessel) Mobilize() (err error) {
-	err = v.StockArmory()
-	if err != nil {
-		return
+	if v.Plugin_Name == "" || v.Service_Name == "" {
+		return VESSEL_NAMES_NOT_SET(v.Service_Name, v.Plugin_Name)
 	}
-	if v.config == nil {
-		err = fmt.Errorf("failed to initialize config")
-		return
-	}
-	if v.Initializer != nil {
-		err = v.Initializer(v.config)
-		if err != nil {
-			return
-		}
-	}
-	for _, testSuiteName := range v.config.TestSuites {
-		if testSuiteName == "" {
-			err = fmt.Errorf("testSuite name cannot be an empty string")
-			return
-		}
 
-		testSuite := TestSuite{
-			testSets:         v.Armory.TestSuites[testSuiteName],
-			executedTestSets: v.executedTestSets,
-			config:           v.config,
-		}
-		testSuite.TestSuiteName = testSuiteName // Inherited, can't be set above
+	v.config.Logger.Trace("Mobilization beginning")
 
-		err = testSuite.Execute()
-
-		v.TestSuites = append(v.TestSuites, testSuite)
-
-		if testSuite.BadStateAlert {
-			break
+	for _, catalog := range v.config.Policy.ControlCatalogs {
+		for _, suite := range v.possibleSuites {
+			if suite.Catalog_Id == catalog {
+				suite.config = v.config
+				evalName := v.Service_Name + "_" + catalog
+				err := suite.Evaluate(evalName)
+				if err != nil {
+					v.config.Logger.Error(err.Error())
+				}
+				v.Evaluation_Suites = append(v.Evaluation_Suites, suite)
+			}
 		}
 	}
 	v.config.Logger.Trace("Mobilization complete")
 
 	if !v.config.Write {
-		return
+		return nil // Do not write results if the user has blocked it
 	}
 
 	// loop through the testSuites and write the results
-	for _, testSuite := range v.TestSuites {
-		err := testSuite.WriteControlEvaluations(v.ServiceName, v.config.Output)
-		if err != nil {
-			v.config.Logger.Error("Failed to write results for testSuite",
-				"testSuite", testSuite.TestSuiteName,
-				"error", err,
-			)
-		}
+	// for _, suite := range v.Evaluation_Suites {
+	// 	suite.config = v.config
+	// 	err := suite.WriteControlEvaluations(v.Service_Name, v.config.Output)
+	// 	if err != nil {
+	// 		v.config.Logger.Error(WRITE_FAILED(suite.Name, err.Error()).Error())
+	// 	}
+	// }
+
+	// instead of writing the results one at a time, write everything to a single file
+	return v.WriteResults()
+}
+
+func (v *Vessel) WriteResults() error {
+
+	var err error
+	var result []byte
+	switch v.config.Output {
+	case "json":
+		result, err = json.Marshal(v)
+	case "yaml":
+		result, err = yaml.Marshal(v)
+	default:
+		err = fmt.Errorf("output type '%s' is not supported. Supported types are 'json' and 'yaml'", v.config.Output)
 	}
-	return
+	if err != nil {
+		return err
+	}
+
+	err = v.writeResultsToFile(v.Service_Name, result, v.config.Output)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (v *Vessel) writeResultsToFile(serviceName string, result []byte, extension string) error {
+	if !strings.Contains(extension, ".") {
+		extension = fmt.Sprintf(".%s", extension)
+	}
+	dir := path.Join(v.config.WriteDirectory, serviceName)
+	filename := fmt.Sprintf("%s%s", v.Service_Name, extension)
+	filepath := path.Join(dir, filename)
+
+	v.config.Logger.Trace("Writing results", "filepath", filepath)
+
+	// Create log file and directory if it doesn't exist
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		err = os.MkdirAll(dir, os.ModePerm)
+		if err != nil {
+			v.config.Logger.Error("Error creating directory", "directory", dir)
+			return err
+		}
+		v.config.Logger.Warn("write directory for this plugin created for results, but should have been created when initializing logs", "directory", dir)
+	}
+
+	_, err := os.Create(filepath)
+	if err != nil {
+		v.config.Logger.Error("Error creating file", "filepath", filepath)
+		return err
+	}
+
+	file, err := os.OpenFile(filepath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
+	if err != nil {
+		v.config.Logger.Error("Error opening file", "filepath", filepath)
+		return err
+	}
+	defer file.Close()
+
+	_, err = file.Write(result)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

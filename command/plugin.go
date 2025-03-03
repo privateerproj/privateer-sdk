@@ -2,11 +2,9 @@ package command
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"text/tabwriter"
 
-	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/privateerproj/privateer-sdk/pluginkit"
 	"github.com/privateerproj/privateer-sdk/shared"
 	"github.com/spf13/cobra"
@@ -15,26 +13,16 @@ import (
 
 type Plugin struct{}
 
-var ActiveVessel pluginkit.Vessel
+var ActiveVessel *pluginkit.Vessel
 
 // Start will be called by Privateer via gRPC
-func (p *Plugin) Start() (err error) {
-	err = ActiveVessel.Mobilize()
-	return
+func (p *Plugin) Start() error {
+	return ActiveVessel.Mobilize()
 }
 
-func NewPluginCommands(
-	pluginName, buildVersion, buildGitCommitHash, buildTime string,
-	armory *pluginkit.Armory,
-	initializer func(*config.Config) error,
-	requiredVars []string) *cobra.Command {
+func NewPluginCommands(pluginName, buildVersion, buildGitCommitHash, buildTime string, vessel *pluginkit.Vessel) *cobra.Command {
 
-	ActiveVessel = pluginkit.NewVessel(
-		pluginName,
-		armory,
-		initializer,
-		requiredVars,
-	)
+	ActiveVessel = vessel
 
 	runCmd := runCommand(pluginName)
 
@@ -71,9 +59,10 @@ func debugCommand() *cobra.Command {
 		Use:   "debug",
 		Short: "Run the Plugin in debug mode",
 		Run: func(cmd *cobra.Command, args []string) {
+			cmd.Print("Running in debug mode\n")
 			err := ActiveVessel.Mobilize()
 			if err != nil {
-				log.Fatal(err)
+				cmd.Println(err)
 			}
 		},
 	}

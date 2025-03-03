@@ -1,200 +1,304 @@
 package pluginkit
 
+// This file contains table tests for the following functions:
+// func (v *Vessel) SetInitilizer(initializer func(*config.Config) error) {
+// func (v *Vessel) SetPayload(payload interface{}) {
+// func (v *Vessel) Config() *config.Config {
+// func (v *Vessel) AddEvaluationSuite(name string, evaluations []layer4.ControlEvaluation) {
+// func (v *Vessel) Mobilize(requiredVars []string, suites map[string]EvaluationSuite) error {
+
 import (
-	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/revanite-io/sci/pkg/layer4"
-	"github.com/spf13/viper"
 )
 
-var (
-	goodApplyFunc = func() (*interface{}, error) {
-		return nil, nil
-	}
-	goodRevertFunc = func() error {
-		return nil
-	}
-	badApplyFunc = func() (*interface{}, error) {
-		return nil, errors.New("error")
-	}
-	badRevertFunc = func() error {
-		return errors.New("error")
-	}
-)
+func TestSetPayload(t *testing.T) {
+	v := NewVessel("test", nil, []string{})
 
-func passingTestSet() layer4.ControlEvaluation {
-	assessment := layer4.Assessment{
-		Result:      layer4.Passed,
-		Description: "passing test",
+	payloadTestData := []struct {
+		name     string
+		payload  interface{}
+		expected bool
+	}{
+		{
+			name:    "nil payload",
+			payload: nil,
+		},
+		{
+			name:    "empty payload",
+			payload: interface{}(nil),
+		},
+		{
+			name:    "string payload",
+			payload: interface{}("test"),
+		},
 	}
-	change := assessment.NewChange("Change1", "Target1", nil, goodApplyFunc, goodRevertFunc)
-	change.Apply()
-	return layer4.ControlEvaluation{
-		Result:      layer4.Passed,
-		Message:     "passing testSet",
-		Assessments: []layer4.Assessment{assessment},
+
+	for _, test := range payloadTestData {
+		t.Run(test.name, func(t *testing.T) {
+			payload := &test.payload
+			v.SetPayload(payload)
+			if test.payload != nil && v.Payload.Data != payload {
+				t.Errorf("expected payload data to be set to %v, but got %v", payload, v.Payload.Data)
+			}
+			if v.Payload.Data == nil {
+				t.Error("expected v.Payload.Data to never be nil")
+			}
+		})
 	}
 }
 
-func failingTestSet() layer4.ControlEvaluation {
-	assessment := layer4.Assessment{
-		Result:      layer4.Failed,
-		Description: "failing test",
-	}
-	change := assessment.NewChange("Change1", "Target1", nil, goodApplyFunc, goodRevertFunc)
-	change.Apply()
-
-	return layer4.ControlEvaluation{
-		Result:      layer4.Failed,
-		Message:     "passing testSet",
-		Assessments: []layer4.Assessment{assessment},
+func TestConfig(t *testing.T) {
+	v := NewVessel("test", nil, []string{})
+	v.SetupConfig()
+	if v.config == nil {
+		t.Error("Expected config to be returned")
 	}
 }
 
-func passingBadStateAlertTestSet() layer4.ControlEvaluation {
-	assessment := layer4.Assessment{
-		Result:      layer4.Passed,
-		Description: "passing test",
+func TestAddEvaluationSuite(t *testing.T) {
+	testData := []testingData{
+		{
+			testName:       "Good Evaluation",
+			expectedResult: layer4.Passed,
+			evals: []*layer4.ControlEvaluation{
+				passingEvaluation(),
+			},
+		},
 	}
-	change := assessment.NewChange("Change1", "Target1", nil, badApplyFunc, badRevertFunc)
-	change.Apply()
-
-	return layer4.ControlEvaluation{
-		Result:      layer4.Passed,
-		Message:     "passing testSet",
-		Assessments: []layer4.Assessment{assessment},
-	}
-}
-
-func failingBadStateAlertTestSet() layer4.ControlEvaluation {
-	assessment := layer4.Assessment{
-		Result:      layer4.Failed,
-		Description: "passing test",
-	}
-	change := assessment.NewChange("Change1", "Target1", nil, badApplyFunc, badRevertFunc)
-	change.Apply()
-
-	return layer4.ControlEvaluation{
-		Result:      layer4.Failed,
-		Message:     "passing testSet",
-		Assessments: []layer4.Assessment{assessment},
-	}
-}
-
-var goodArmory = &Armory{
-	TestSuites: map[string][]TestSet{
-		"PassTestSuite":                {passingTestSet},
-		"FailTestSuite":                {failingTestSet},
-		"PassedBadStateAlertTestSuite": {passingBadStateAlertTestSet},
-		"FailedBadStateAlertTestSuite": {failingBadStateAlertTestSet},
-	},
-}
-var goodVessel = Vessel{
-	PluginName: "TestPlugin",
-}
-
-var tests = []struct {
-	name             string
-	serviceName      string
-	vessel           Vessel
-	armory           *Armory
-	testSuiteRequest []string
-	requiredVars     []string
-	expectedError    error
-}{
-	{
-		name:          "missing service and plugin names",
-		serviceName:   "",
-		vessel:        Vessel{},
-		armory:        goodArmory,
-		expectedError: errors.New("expected service and plugin names to be set. ServiceName='' PluginName=''"),
-	},
-	{
-		name:          "missing armory",
-		serviceName:   "missingArmory",
-		vessel:        goodVessel,
-		armory:        nil,
-		expectedError: errors.New("vessel's Armory field cannot be nil"),
-	},
-	{
-		name:          "missing test-suites",
-		serviceName:   "missingTestSuites",
-		vessel:        goodVessel,
-		armory:        goodArmory,
-		expectedError: errors.New("no test suites requested for service in config: "),
-	},
-	{
-		name:          "missing required vars",
-		serviceName:   "missingRequiredVars",
-		vessel:        goodVessel,
-		armory:        goodArmory,
-		requiredVars:  []string{"key", "missing1", "missing2"},
-		expectedError: errors.New("missing required variables: [missing1 missing2]"),
-	},
-	{
-		name:             "successful mobilization",
-		serviceName:      "successfulMobilization",
-		vessel:           goodVessel,
-		armory:           goodArmory,
-		testSuiteRequest: []string{"PassTestSuite"},
-	},
-	{
-		name:             "successful mobilization, with required vars",
-		serviceName:      "successfulMobilization",
-		vessel:           goodVessel,
-		armory:           goodArmory,
-		testSuiteRequest: []string{"PassTestSuite"},
-		requiredVars:     []string{"key"},
-	},
-	{
-		name:             "successful mobilization, failed testSuite",
-		serviceName:      "failedTestSuite",
-		vessel:           goodVessel,
-		armory:           goodArmory,
-		testSuiteRequest: []string{"FailTestSuite"},
-		expectedError:    errors.New("FailTestSuite: 0/1 test sets succeeded"),
-	},
-	{
-		name:             "successful mobilization, passing testSuite, bad state alert",
-		serviceName:      "failedTestSuiteBadState",
-		vessel:           goodVessel,
-		armory:           goodArmory,
-		testSuiteRequest: []string{"PassedBadStateAlertTestSuite"},
-		expectedError:    errors.New("!Bad state alert! One or more changes failed to revert. See logs for more information"),
-	},
-	{
-		name:             "successful mobilization, failed testSuite, bad state alert",
-		serviceName:      "failedTestSuiteBadState",
-		vessel:           goodVessel,
-		armory:           goodArmory,
-		testSuiteRequest: []string{"FailedBadStateAlertTestSuite"},
-		expectedError:    errors.New("!Bad state alert! One or more changes failed to revert. See logs for more information"),
-	},
-}
-
-func TestVessel_Mobilize(t *testing.T) {
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Config reading is tested elsewhere, we care about the ingestion of it
-			viper.Set("service", tt.serviceName)
-			viper.Set("write-directory", "./tmp")
-			viper.Set("services."+tt.serviceName+".test-suites", tt.testSuiteRequest)
-			viper.Set("services."+tt.serviceName+".vars", map[string]interface{}{"key": "value"})
-			tt.vessel.Armory = tt.armory
-			tt.vessel.RequiredVars = tt.requiredVars
-			err := tt.vessel.Mobilize()
-
-			if tt.expectedError != nil {
-				if err == nil {
-					t.Errorf("expected error '%v' but got nil", tt.expectedError)
-				} else {
-					if err.Error() != tt.expectedError.Error() {
-						t.Errorf("expected error '%v' but got '%v'", tt.expectedError, err)
+	for _, test := range testData {
+		t.Run(test.testName, func(t *testing.T) {
+			for _, suite := range test.evals {
+				t.Run("subtest_"+suite.Name, func(t *testing.T) {
+					v := NewVessel("test", nil, []string{})
+					v.config = setSimpleConfig()
+					v.AddEvaluationSuite("test", nil, test.evals)
+					if v.possibleSuites == nil || len(v.possibleSuites) == 0 {
+						t.Error("Expected evaluation suites to be set")
+						return
 					}
-				}
-			} else if tt.expectedError == nil && err != nil {
-				t.Errorf("expected no error, but got '%v'", err)
+					for _, suite := range v.possibleSuites {
+						if suite.Name != "" {
+							t.Errorf("Expected pending evaluation suite name to be unset, but got %s", suite.Name)
+						}
+						if len(suite.Control_Evaluations) != len(test.evals) {
+							t.Errorf("Expected control evaluations to match test data, but got %v", suite.Control_Evaluations)
+						}
+						if suite.config != v.config {
+							t.Errorf("Expected config to match simpleConfig but got %v", suite.config)
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestMobilize(t *testing.T) {
+	testData := []testingData{
+		{
+			testName:       "Pass Evaluation",
+			expectedResult: layer4.Passed,
+			evals: []*layer4.ControlEvaluation{
+				passingEvaluation(),
+			},
+		},
+		{
+			testName:       "Fail Evaluation",
+			expectedResult: layer4.Failed,
+			evals: []*layer4.ControlEvaluation{
+				failingEvaluation(),
+			},
+		},
+		{
+			testName:       "Needs Review Evaluation",
+			expectedResult: layer4.NeedsReview,
+			evals: []*layer4.ControlEvaluation{
+				needsReviewEvaluation(),
+			},
+		},
+		{
+			testName:           "Corrupted Evaluation",
+			expectedResult:     layer4.Unknown,
+			expectedCorruption: true,
+			evals: []*layer4.ControlEvaluation{
+				corruptedEvaluation(),
+			},
+		},
+		{
+			testName:       "Pass, Pass, Pass",
+			expectedResult: layer4.Passed,
+			evals: []*layer4.ControlEvaluation{
+				passingEvaluation(),
+				passingEvaluation(),
+				passingEvaluation(),
+			},
+		},
+		{
+			testName:       "Pass Then Fail",
+			expectedResult: layer4.Failed,
+			evals: []*layer4.ControlEvaluation{
+				passingEvaluation(),
+				failingEvaluation(),
+			},
+		},
+		{
+			testName:       "Pass Then Needs Review",
+			expectedResult: layer4.NeedsReview,
+			evals: []*layer4.ControlEvaluation{
+				passingEvaluation(),
+				needsReviewEvaluation(),
+			},
+		},
+		{
+			testName:           "Pass Then Corrupted",
+			expectedResult:     layer4.Unknown,
+			expectedCorruption: true,
+			evals: []*layer4.ControlEvaluation{
+				passingEvaluation(),
+				corruptedEvaluation(),
+			},
+		},
+		{
+			testName:       "Needs Review Then Pass",
+			expectedResult: layer4.NeedsReview,
+			evals: []*layer4.ControlEvaluation{
+				needsReviewEvaluation(),
+				passingEvaluation(),
+			},
+		},
+		{
+			testName:       "Needs Review Then Fail",
+			expectedResult: layer4.Failed,
+			evals: []*layer4.ControlEvaluation{
+				needsReviewEvaluation(),
+				failingEvaluation(),
+			},
+		},
+		{
+			testName:           "Corrupt, Pass, Pass",
+			expectedResult:     layer4.Unknown,
+			expectedCorruption: true,
+			evals: []*layer4.ControlEvaluation{
+				corruptedEvaluation(),
+				passingEvaluation(),
+				passingEvaluation(),
+			},
+		},
+		{
+			testName:           "Pass, Corrupt, Pass",
+			expectedResult:     layer4.Unknown,
+			expectedCorruption: true,
+			evals: []*layer4.ControlEvaluation{
+				passingEvaluation(),
+				corruptedEvaluation(),
+				passingEvaluation(),
+			},
+		},
+		{
+			testName:           "Pass, Pass, Corrupt",
+			expectedResult:     layer4.Unknown,
+			expectedCorruption: true,
+			evals: []*layer4.ControlEvaluation{
+				passingEvaluation(),
+				passingEvaluation(),
+				corruptedEvaluation(),
+			},
+		},
+		{
+			testName:           "Corrupt, Corrupt, Pass",
+			expectedResult:     layer4.Unknown,
+			expectedCorruption: true,
+			evals: []*layer4.ControlEvaluation{
+				corruptedEvaluation(),
+				corruptedEvaluation(),
+				passingEvaluation(),
+			},
+		},
+		{
+			testName:           "Corrupt, Corrupt, Corrupt",
+			expectedResult:     layer4.Unknown,
+			expectedCorruption: true,
+			evals: []*layer4.ControlEvaluation{
+				corruptedEvaluation(),
+				corruptedEvaluation(),
+				corruptedEvaluation(),
+			},
+		},
+		{
+			testName:           "Corrupt then Needs Review",
+			expectedResult:     layer4.Unknown,
+			expectedCorruption: true,
+			evals: []*layer4.ControlEvaluation{
+				corruptedEvaluation(),
+				needsReviewEvaluation(),
+			},
+		},
+	}
+
+	for _, test := range testData {
+		t.Run(test.testName, func(tt *testing.T) {
+
+			v := NewVessel("test", nil, []string{})
+			v.config = setSimpleConfig()
+
+			examplePayload := &PayloadTypeExample{CustomPayloadField: true}
+
+			catalogName := strings.Replace(test.testName, " ", "-", -1)
+			v.AddEvaluationSuite(catalogName, examplePayload, test.evals)
+
+			// Nothing from our test data should be applicable right now, but they should be possible
+			err := v.Mobilize()
+			if err != nil {
+				tt.Errorf("Expected no error, but got %v", err)
+			}
+			if v.possibleSuites == nil || len(v.possibleSuites) == 0 {
+				tt.Errorf("Expected evaluation suites to be set, but got %v", v.possibleSuites)
+				return
+			}
+			if len(v.Evaluation_Suites) > 0 {
+				tt.Errorf("Expected no Evaluation Suites to be set, but got %v", len(v.possibleSuites))
+				return
+			}
+
+			// Now we set the catalog to be applicable, then run Mobilize again to find results
+			v.config.Policy.ControlCatalogs = []string{catalogName}
+			v.Mobilize()
+			if v.Evaluation_Suites == nil || len(v.Evaluation_Suites) == 0 {
+				tt.Errorf("Expected evaluation suites to be set, but got %v", v.Evaluation_Suites)
+				return
+			}
+
+			for _, suite := range v.Evaluation_Suites {
+				tt.Run("suite", func(ttt *testing.T) {
+					if len(test.evals) != len(suite.Control_Evaluations) {
+						ttt.Errorf("Expected %v control evaluations, but got %v", len(test.evals), len(v.Evaluation_Suites))
+					}
+					if test.expectedResult != suite.Result {
+						ttt.Errorf("Expected result to be %v, but got %v", test.expectedResult, suite.Result)
+					}
+					if suite.Corrupted_State != test.expectedCorruption {
+						ttt.Errorf("Expected corrupted state to be %v, but got %v", test.expectedCorruption, suite.Corrupted_State)
+					}
+					evaluationSuiteName := fmt.Sprintf("%s_%s", v.Service_Name, catalogName)
+					if suite.Name != evaluationSuiteName {
+						ttt.Errorf("Expected evaluation suite name to be %s, but got %s", evaluationSuiteName, suite.Name)
+					}
+					for _, evaluatedSuite := range v.Evaluation_Suites {
+						if len(suite.Control_Evaluations) != len(evaluatedSuite.Control_Evaluations) {
+							ttt.Errorf("Expected control evaluations to match test data, but got %v", evaluatedSuite.Control_Evaluations)
+						}
+						if examplePayload != evaluatedSuite.payload {
+							ttt.Errorf("Expected payload to match test data, but got %v", evaluatedSuite.payload)
+						}
+						if evaluatedSuite.config != v.config {
+							ttt.Errorf("Expected config to match simpleConfig but got %v", evaluatedSuite.config)
+						}
+					}
+				})
 			}
 		})
 	}

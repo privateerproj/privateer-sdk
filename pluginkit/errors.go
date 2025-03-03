@@ -1,0 +1,30 @@
+// errors.go contains error definitions to streamline testing and log management
+package pluginkit
+
+import (
+	"errors"
+	"fmt"
+)
+
+// Errors with no parameters
+var (
+	CORRUPTION_FOUND = func() error {
+		return errors.New("Target state may be corrupted! Halting to prevent futher damage. See logs for more information")
+	}
+	NO_EVALUATION_SUITES = func() error {
+		return errors.New("No control evaluations provided by the plugin")
+	}
+	EVAL_NAME_MISSING = func() error {
+		return errors.New("EvaluationSuite name must not be empty")
+	}
+)
+
+// Errors with parameters required
+var (
+	VESSEL_NAMES_NOT_SET = func(serviceName, pluginName string) error {
+		return fmt.Errorf("expected service and plugin names to be set. ServiceName='%s' PluginName='%s'", serviceName, pluginName)
+	}
+	WRITE_FAILED = func(name, err string) error {
+		return fmt.Errorf("Failed to write results for evaluation suite. name: %s, error: %s", name, err)
+	}
+)
