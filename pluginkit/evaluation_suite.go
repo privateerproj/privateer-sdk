@@ -29,6 +29,7 @@ type EvaluationSuite struct {
 	Control_Evaluations []*layer4.ControlEvaluation // Control_Evaluations is a slice of evaluations to be executed
 
 	payload   interface{}    // payload is the data to be evaluated
+	loader    DataLoader     // loader is the function to load the payload
 	config    *config.Config // config is the global configuration for the plugin
 	successes int            // successes is the number of successful evaluations
 	failures  int            // failures is the number of failed evaluations

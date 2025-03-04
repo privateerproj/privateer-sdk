@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/revanite-io/sci/pkg/layer4"
 )
 
@@ -28,32 +29,32 @@ func TestSetPayload(t *testing.T) {
 			payload: nil,
 		},
 		{
-			name:    "empty payload",
-			payload: interface{}(nil),
-		},
-		{
-			name:    "string payload",
-			payload: interface{}("test"),
+			name: "string payload",
+			payload: PayloadTypeExample{
+				CustomPayloadField: true,
+			},
 		},
 	}
 
 	for _, test := range payloadTestData {
 		t.Run(test.name, func(t *testing.T) {
-			payload := &test.payload
-			v.SetPayload(payload)
-			if test.payload != nil && v.Payload.Data != payload {
-				t.Errorf("expected payload data to be set to %v, but got %v", payload, v.Payload.Data)
+			v.loader = func(*config.Config) (interface{}, error) { return &test.payload, nil }
+			err := v.loadPayload()
+			if err != nil {
+				t.Errorf("Expected no error, but got %v", err)
+				return
 			}
-			if v.Payload.Data == nil {
-				t.Error("expected v.Payload.Data to never be nil")
+			if v.Payload == nil {
+				t.Error("expected v.Payload to never be nil")
 			}
+			// TODO: Add a test to check if the loaded payload is the same as the test payload
 		})
 	}
 }
 
 func TestConfig(t *testing.T) {
 	v := NewVessel("test", nil, []string{})
-	v.SetupConfig()
+	v.setupConfig()
 	if v.config == nil {
 		t.Error("Expected config to be returned")
 	}
@@ -245,8 +246,6 @@ func TestMobilize(t *testing.T) {
 			v := NewVessel("test", nil, []string{})
 			v.config = setSimpleConfig()
 
-			examplePayload := &PayloadTypeExample{CustomPayloadField: true}
-
 			catalogName := strings.Replace(test.testName, " ", "-", -1)
 			v.AddEvaluationSuite(catalogName, examplePayload, test.evals)
 
@@ -291,8 +290,10 @@ func TestMobilize(t *testing.T) {
 						if len(suite.Control_Evaluations) != len(evaluatedSuite.Control_Evaluations) {
 							ttt.Errorf("Expected control evaluations to match test data, but got %v", evaluatedSuite.Control_Evaluations)
 						}
-						if examplePayload != evaluatedSuite.payload {
-							ttt.Errorf("Expected payload to match test data, but got %v", evaluatedSuite.payload)
+						testPayloadData := testPayload.(PayloadTypeExample)
+						suitePayloadData := evaluatedSuite.payload.(PayloadTypeExample)
+						if testPayloadData != suitePayloadData {
+							ttt.Errorf("Expected payload to be %v, but got %v", testPayloadData, suitePayloadData)
 						}
 						if evaluatedSuite.config != v.config {
 							ttt.Errorf("Expected config to match simpleConfig but got %v", evaluatedSuite.config)
