@@ -18,6 +18,12 @@ type testingData struct {
 	expectedResult         layer4.Result
 }
 
+var testPayload = interface{}(PayloadTypeExample{CustomPayloadField: true})
+
+func examplePayload(_ *config.Config) (interface{}, error) {
+	return testPayload, nil
+}
+
 func passingEvaluation() (evaluation *layer4.ControlEvaluation) {
 	evaluation = &layer4.ControlEvaluation{
 		Control_Id: "good-evaluation",

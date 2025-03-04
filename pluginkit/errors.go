@@ -27,4 +27,7 @@ var (
 	WRITE_FAILED = func(name, err string) error {
 		return fmt.Errorf("Failed to write results for evaluation suite. name: %s, error: %s", name, err)
 	}
+	BAD_LOADER = func(pluginName string, err error) error {
+		return fmt.Errorf("Failed to load payload for %s: %s", pluginName, err)
+	}
 )

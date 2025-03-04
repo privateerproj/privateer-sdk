@@ -16,66 +16,48 @@ import (
 type Vessel struct {
 	Service_Name      string
 	Plugin_Name       string
-	Payload           Payload
+	Payload           interface{}
 	Evaluation_Suites []*EvaluationSuite // EvaluationSuite is a map of evaluations to their catalog names
 
 	possibleSuites []*EvaluationSuite
 	requiredVars   []string
 	config         *config.Config
+	loader         DataLoader
 }
 
-type Payload struct {
-	Data   interface{}
-	config *config.Config
-}
+type DataLoader func(*config.Config) (interface{}, error)
 
-func NewVessel(pluginName string, payload interface{}, requiredVars []string) *Vessel {
-	if payload == nil {
-		payload = new(interface{})
-	}
+func NewVessel(pluginName string, loader DataLoader, requiredVars []string) *Vessel {
 	v := &Vessel{
 		Plugin_Name:  pluginName,
 		requiredVars: requiredVars,
+		loader:       loader,
 	}
-	v.SetPayload(payload)
 	return v
 }
 
-// SetPayload allows the user to pass data to be referenced in assessments
-func (v *Vessel) SetPayload(payload interface{}) {
-	if payload == nil {
-		payload = new(interface{})
-	}
-	v.Payload = Payload{
-		Data: payload,
-	}
-}
-
-func (v *Vessel) SetupConfig() {
-	if v.config == nil {
-		c := config.NewConfig(v.requiredVars)
-		v.config = &c
-	}
-}
-
-func (v *Vessel) AddEvaluationSuite(catalogId string, payload interface{}, evaluations []*layer4.ControlEvaluation) {
+func (v *Vessel) AddEvaluationSuite(catalogId string, loader DataLoader, evaluations []*layer4.ControlEvaluation) {
 	suite := EvaluationSuite{
 		Catalog_Id:          catalogId,
 		Control_Evaluations: evaluations,
 	}
 	suite.config = v.config
-	if payload != nil {
-		suite.payload = payload
+	if loader != nil {
+		suite.loader = loader
 	} else {
-		suite.payload = v.Payload.Data
+		suite.loader = v.loader
 	}
 	v.possibleSuites = append(v.possibleSuites, &suite)
 }
 
 func (v *Vessel) Mobilize() error {
-	v.SetupConfig()
+	v.setupConfig()
 	if v.config.Error != nil {
 		return v.config.Error
+	}
+	err := v.loadPayload()
+	if err != nil {
+		return BAD_LOADER(v.Plugin_Name, err)
 	}
 
 	v.config.Logger.Trace("Setting up vessel")
@@ -110,17 +92,6 @@ func (v *Vessel) Mobilize() error {
 	if !v.config.Write {
 		return nil // Do not write results if the user has blocked it
 	}
-
-	// loop through the testSuites and write the results
-	// for _, suite := range v.Evaluation_Suites {
-	// 	suite.config = v.config
-	// 	err := suite.WriteControlEvaluations(v.Service_Name, v.config.Output)
-	// 	if err != nil {
-	// 		v.config.Logger.Error(WRITE_FAILED(suite.Name, err.Error()).Error())
-	// 	}
-	// }
-
-	// instead of writing the results one at a time, write everything to a single file
 	return v.WriteResults()
 }
 
@@ -187,4 +158,36 @@ func (v *Vessel) writeResultsToFile(serviceName string, result []byte, extension
 	}
 
 	return nil
+}
+
+// SetPayload allows the user to pass data to be referenced in assessments
+func (v *Vessel) loadPayload() (err error) {
+	payload := new(interface{})
+	if v.loader != nil {
+		data, err := v.loader(v.config)
+		if err != nil {
+			return err
+		}
+		payload = &data
+	}
+	v.Payload = payload
+	for _, suite := range v.possibleSuites {
+		if suite.loader != nil {
+			data, err := suite.loader(v.config)
+			if err != nil {
+				return err
+			}
+			suite.payload = data
+		} else {
+			suite.payload = v.Payload
+		}
+	}
+	return nil
+}
+
+func (v *Vessel) setupConfig() {
+	if v.config == nil {
+		c := config.NewConfig(v.requiredVars)
+		v.config = &c
+	}
 }
