@@ -52,11 +52,11 @@ func TestSetPayload(t *testing.T) {
 	}
 }
 
-func TestConfig(t *testing.T) {
+func TestSetupConfig(t *testing.T) {
 	v := NewVessel("test", nil, []string{})
 	v.setupConfig()
 	if v.config == nil {
-		t.Error("Expected config to be returned")
+		t.Error("Expected config to always be returned")
 	}
 }
 
@@ -75,7 +75,7 @@ func TestAddEvaluationSuite(t *testing.T) {
 			for _, suite := range test.evals {
 				t.Run("subtest_"+suite.Name, func(t *testing.T) {
 					v := NewVessel("test", nil, []string{})
-					v.config = setSimpleConfig()
+					v.config = setBasicConfig()
 					v.AddEvaluationSuite("test", nil, test.evals)
 					if v.possibleSuites == nil || len(v.possibleSuites) == 0 {
 						t.Error("Expected evaluation suites to be set")
@@ -244,13 +244,23 @@ func TestMobilize(t *testing.T) {
 		t.Run(test.testName, func(tt *testing.T) {
 
 			v := NewVessel("test", nil, []string{})
-			v.config = setSimpleConfig()
+			v.config = setLimitedConfig()
 
 			catalogName := strings.Replace(test.testName, " ", "-", -1)
 			v.AddEvaluationSuite(catalogName, examplePayload, test.evals)
 
-			// Nothing from our test data should be applicable right now, but they should be possible
+			// grab a count of the applicable evaluations when config is limited
 			err := v.Mobilize()
+			if err != nil {
+				tt.Errorf("Expected no error, but got %v", err)
+			}
+			limitedConfigEvaluationCount := len(v.Evaluation_Suites)
+
+			// Now do a full test suite on the evaluation suites
+			v.config = setBasicConfig()
+
+			// Nothing from our test data should be applicable right now, but they should be possible
+			err = v.Mobilize()
 			if err != nil {
 				tt.Errorf("Expected no error, but got %v", err)
 			}
@@ -268,6 +278,10 @@ func TestMobilize(t *testing.T) {
 			v.Mobilize()
 			if v.Evaluation_Suites == nil || len(v.Evaluation_Suites) == 0 {
 				tt.Errorf("Expected evaluation suites to be set, but got %v", v.Evaluation_Suites)
+				return
+			}
+			if len(v.Evaluation_Suites) == limitedConfigEvaluationCount {
+				tt.Errorf("Expected fewer Evaluation Suites to be when using limited config, but got the same count")
 				return
 			}
 
