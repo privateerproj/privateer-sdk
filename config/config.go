@@ -45,11 +45,13 @@ func NewConfig(requiredVars []string) Config {
 	write := viper.GetBool("write")                                         // defaults to true, but allow the user to disable file writing
 	output := strings.ToLower(strings.TrimSpace(viper.GetString("output"))) // defaults to yaml, but can be set to json
 
-	topVars := viper.GetStringMap("vars")
-	vars := viper.GetStringMap(fmt.Sprintf("services.%s.vars", serviceName))
-	if len(vars) == 0 {
-		vars = topVars
+	vars := viper.GetStringMap("vars")
+	localVars := viper.GetStringMap(fmt.Sprintf("services.%s.vars", serviceName))
+	for key, value := range localVars {
+		// Overwrite or add local vars onto the global vars
+		vars[key] = value
 	}
+	log.Printf("vars: %v", vars)
 
 	topLoglevel := viper.GetString("loglevel")
 	loglevel := viper.GetString(fmt.Sprintf("services.%s.loglevel", serviceName))
@@ -88,13 +90,9 @@ func NewConfig(requiredVars []string) Config {
 	}
 
 	var missingVars []string
-	for _, v := range requiredVars {
-		found := viper.Get(fmt.Sprintf("services.%s.vars.%s", serviceName, v))
-		if found == nil || found == "" {
-			foundTop := viper.Get(fmt.Sprintf("vars.%s", v))
-			if foundTop == nil || foundTop == "" {
-				missingVars = append(missingVars, v)
-			}
+	for _, key := range requiredVars {
+		if _, ok := vars[key]; !ok {
+			missingVars = append(missingVars, key)
 		}
 	}
 	if len(missingVars) > 0 {

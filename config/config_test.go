@@ -378,7 +378,37 @@ services:
     policy:
       catalogs: ["FINOS-CCC"]
       applicability: ["tlp_green"]
-`},
+`}, {
+		testName:             "Good - required vars set at top level",
+		runningServiceName:   "my-service-1",
+		runningApplicability: []string{"tlp_green"},
+		requiredVars:         []string{"key"},
+		config: `
+vars:
+  key: value
+services:
+  my-service-1:
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: ["tlp_green"]
+`}, {
+		testName:             "Good - required vars set at top and service level",
+		runningServiceName:   "my-service-1",
+		runningApplicability: []string{"tlp_green"},
+		requiredVars:         []string{"key", "key2"},
+		config: `
+vars:
+  key: value
+services:
+  my-service-1:
+    vars:
+      key2: value2
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: ["tlp_green"]`,
+	},
 }
 
 func TestNewConfig(t *testing.T) {
