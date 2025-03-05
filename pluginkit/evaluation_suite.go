@@ -28,11 +28,16 @@ type EvaluationSuite struct {
 
 	Control_Evaluations []*layer4.ControlEvaluation // Control_Evaluations is a slice of evaluations to be executed
 
-	payload   interface{}    // payload is the data to be evaluated
-	loader    DataLoader     // loader is the function to load the payload
-	config    *config.Config // config is the global configuration for the plugin
-	successes int            // successes is the number of successful evaluations
-	failures  int            // failures is the number of failed evaluations
+	payload interface{}    // payload is the data to be evaluated
+	loader  DataLoader     // loader is the function to load the payload
+	config  *config.Config // config is the global configuration for the plugin
+
+	assessmentSuccesses int // successes is the number of successful evaluations
+	assessmentWarnings  int // attempts is the number of evaluations attempted
+	assessmentFailures  int // failures is the number of failed evaluations
+	evalSuccesses       int // successes is the number of successful evaluations
+	evalFailures        int // failures is the number of failed evaluations
+	evalWarnings        int // warnings is the number of evaluations that need review
 }
 
 // Execute is used to execute a list of ControlEvaluations provided by a Plugin and customized by user config
@@ -67,9 +72,11 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 		}
 
 		if evaluation.Result == layer4.Passed {
-			e.successes += 1
-		} else {
-			e.failures += 1
+			e.evalSuccesses += 1
+		} else if evaluation.Result == layer4.Failed {
+			e.evalFailures += 1
+		} else if evaluation.Result != layer4.NotRun {
+			e.evalWarnings += 1
 		}
 		if e.Corrupted_State {
 			break
@@ -79,7 +86,7 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 	e.cleanup()
 	e.End_Time = time.Now().String()
 
-	output := fmt.Sprintf("> %s: %v/%v control evaluations passed", e.Name, e.successes, len(e.Control_Evaluations))
+	output := fmt.Sprintf("> %s: %v Passed, %v Warnings, %v Failed", e.Name, e.evalSuccesses, e.evalWarnings, e.evalFailures)
 	if e.Corrupted_State {
 		return CORRUPTION_FOUND()
 	}
