@@ -18,6 +18,12 @@ type testingData struct {
 	expectedResult         layer4.Result
 }
 
+var testPayload = interface{}(PayloadTypeExample{CustomPayloadField: true})
+
+func examplePayload(_ *config.Config) (interface{}, error) {
+	return testPayload, nil
+}
+
 func passingEvaluation() (evaluation *layer4.ControlEvaluation) {
 	evaluation = &layer4.ControlEvaluation{
 		Control_Id: "good-evaluation",
@@ -108,11 +114,20 @@ func corruptedEvaluation() (evaluation *layer4.ControlEvaluation) {
 }
 
 var requestedApplicability = []string{"valid-applicability-1", "valid-applicability-2"}
+var requestedCatalogs = []string{"catalog1", "catalog2", "catalog3"}
 
-func setSimpleConfig() *config.Config {
+func setBasicConfig() *config.Config {
 	viper.Set("service", "test-service")
 	viper.Set("policy.applicability", requestedApplicability)
-	viper.Set("policy.catalogs", []string{"catalog1", "catalog2", "catalog3"})
+	viper.Set("policy.catalogs", requestedCatalogs)
+	c := config.NewConfig(nil)
+	return &c
+}
+
+func setLimitedConfig() *config.Config {
+	viper.Set("service", "test-service")
+	viper.Set("services.test-service.policy.applicability", requestedApplicability[0])
+	viper.Set("policy.catalogs", requestedCatalogs[0])
 	c := config.NewConfig(nil)
 	return &c
 }

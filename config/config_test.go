@@ -10,24 +10,26 @@ import (
 // example config yaml objects
 
 var testConfigs = []struct {
-	testName         string
-	runningService   string
-	requiredVars     []string
-	missingVars      []string
-	config           string
-	output           string
-	invasiveSet      bool
-	writeDirSet      bool
-	writeSet         bool
-	expectedLogLevel string
-	expectedOutput   string
-	expectedError    string
-	expectedWrite    bool
+	testName             string
+	runningServiceName   string
+	runningApplicability []string
+	requiredVars         []string
+	missingVars          []string
+	config               string
+	output               string
+	invasiveSet          bool
+	writeDirSet          bool
+	writeSet             bool
+	expectedLogLevel     string
+	expectedOutput       string
+	expectedError        string
+	expectedWrite        bool
 }{
 	{
-		testName:       "Good - One Service",
-		runningService: "my-service-1",
-		requiredVars:   []string{},
+		testName:             "Good - One Service",
+		runningServiceName:   "my-service-1",
+		runningApplicability: []string{"tlp_green"},
+		requiredVars:         []string{},
 		config: `
 services:
   my-service-1:
@@ -36,8 +38,8 @@ services:
         - FINOS-CCC
       applicability: ["tlp_green"]
 `}, {
-		testName:       "Good - Two Services",
-		runningService: "my-service-2",
+		testName:           "Good - Two Services",
+		runningServiceName: "my-service-2",
 		config: `
 services:
   my-service-1:
@@ -51,10 +53,11 @@ services:
         - FINOS-CCC
       applicability: ["tlp_green"]
 `}, {
-		testName:         "Good - Log Level Set at Top Level",
-		runningService:   "my-service-1",
-		requiredVars:     []string{},
-		expectedLogLevel: "debug",
+		testName:             "Good - Log Level Set at Top Level",
+		runningServiceName:   "my-service-1",
+		runningApplicability: []string{"tlp_green"},
+		requiredVars:         []string{},
+		expectedLogLevel:     "debug",
 		config: `
 loglevel: debug
 services:
@@ -64,10 +67,11 @@ services:
         - FINOS-CCC
       applicability: ["tlp_green"]
 `}, {
-		testName:         "Good - Log Level Set in Service",
-		runningService:   "my-service-1",
-		requiredVars:     []string{},
-		expectedLogLevel: "debug",
+		testName:             "Good - Log Level Set in Service",
+		runningServiceName:   "my-service-1",
+		runningApplicability: []string{"tlp_green"},
+		requiredVars:         []string{},
+		expectedLogLevel:     "debug",
 		config: `
 services:
   my-service-1:
@@ -77,10 +81,11 @@ services:
         - FINOS-CCC
       applicability: ["tlp_green"]
 `}, {
-		testName:         "Good - Log Level Set in Service and Top Level",
-		runningService:   "my-service-1",
-		requiredVars:     []string{},
-		expectedLogLevel: "debug",
+		testName:             "Good - Log Level Set in Service and Top Level",
+		runningServiceName:   "my-service-1",
+		runningApplicability: []string{"tlp_green"},
+		requiredVars:         []string{},
+		expectedLogLevel:     "debug",
 		config: `
 loglevel: info
 services:
@@ -91,10 +96,11 @@ services:
         - FINOS-CCC
       applicability: ["tlp_green"]
 `}, {
-		testName:       "Good - Invasive Set at Top Level",
-		runningService: "my-service-1",
-		requiredVars:   []string{},
-		invasiveSet:    true,
+		testName:             "Good - Invasive Set at Top Level",
+		runningServiceName:   "my-service-1",
+		runningApplicability: []string{"tlp_green"},
+		requiredVars:         []string{},
+		invasiveSet:          true,
 		config: `
 invasive: true
 services:
@@ -104,10 +110,11 @@ services:
         - FINOS-CCC
       applicability: ["tlp_green"]
 `}, {
-		testName:       "Good - Invasive Set at Service Level",
-		runningService: "my-service-1",
-		requiredVars:   []string{},
-		invasiveSet:    true,
+		testName:             "Good - Invasive Set at Service Level",
+		runningServiceName:   "my-service-1",
+		runningApplicability: []string{"tlp_green"},
+		requiredVars:         []string{},
+		invasiveSet:          true,
 		config: `
 services:
   my-service-1:
@@ -117,10 +124,11 @@ services:
         - FINOS-CCC
       applicability: ["tlp_green"]
 `}, {
-		testName:       "Good - Invasive Set at Service and Top Level",
-		runningService: "my-service-1",
-		requiredVars:   []string{},
-		invasiveSet:    true,
+		testName:             "Good - Invasive Set at Service and Top Level",
+		runningServiceName:   "my-service-1",
+		runningApplicability: []string{"tlp_green"},
+		requiredVars:         []string{},
+		invasiveSet:          true,
 		config: `
 invasive: false
 services:
@@ -131,10 +139,11 @@ services:
         - FINOS-CCC
       applicability: ["tlp_green"]
 `}, {
-		testName:       "Good - Write Directory Set",
-		runningService: "my-service-1",
-		requiredVars:   []string{},
-		writeDirSet:    true,
+		testName:             "Good - Write Directory Set",
+		runningServiceName:   "my-service-1",
+		runningApplicability: []string{"tlp_green"},
+		requiredVars:         []string{},
+		writeDirSet:          true,
 		config: `
 write-directory: ./tmp
 services:
@@ -144,9 +153,10 @@ services:
         - FINOS-CCC
       applicability: ["tlp_green"]
 `}, {
-		testName:       "Good - Required Var (Single)",
-		runningService: "my-service-1",
-		requiredVars:   []string{"key"},
+		testName:             "Good - Required Var (Single)",
+		runningServiceName:   "my-service-1",
+		runningApplicability: []string{"tlp_green"},
+		requiredVars:         []string{"key"},
 		config: `
 services:
   my-service-1:
@@ -157,9 +167,10 @@ services:
     vars:
       key: value
 `}, {
-		testName:       "Good - Required Vars (Multiple)",
-		runningService: "my-service-1",
-		requiredVars:   []string{"key", "key2"},
+		testName:             "Good - Required Vars (Multiple)",
+		runningServiceName:   "my-service-1",
+		runningApplicability: []string{"tlp_green"},
+		requiredVars:         []string{"key", "key2"},
 		config: `
 services:
   my-service-1:
@@ -171,11 +182,12 @@ services:
       key: value
       key2: value2
 `}, {
-		testName:       "Bad - Missing Required Var (A)",
-		runningService: "my-service-1",
-		requiredVars:   []string{"missing"},
-		missingVars:    []string{"missing"},
-		expectedError:  "missing required variables: [missing]",
+		testName:             "Bad - Missing Required Var (A)",
+		runningServiceName:   "my-service-1",
+		runningApplicability: []string{"tlp_green"},
+		requiredVars:         []string{"missing"},
+		missingVars:          []string{"missing"},
+		expectedError:        "missing required variables: [missing]",
 		config: `
 services:
   my-service-1:
@@ -186,11 +198,12 @@ services:
     vars:
       key: value
 `}, {
-		testName:       "Bad - Missing Required Var (B)",
-		runningService: "my-service-1",
-		requiredVars:   []string{"key", "missing"},
-		missingVars:    []string{"missing"},
-		expectedError:  "missing required variables: [missing]",
+		testName:             "Bad - Missing Required Var (B)",
+		runningServiceName:   "my-service-1",
+		runningApplicability: []string{"tlp_green"},
+		requiredVars:         []string{"key", "missing"},
+		missingVars:          []string{"missing"},
+		expectedError:        "missing required variables: [missing]",
 		config: `
 services:
   my-service-1:
@@ -201,11 +214,12 @@ services:
     vars:
       key: value
 `}, {
-		testName:       "Bad - Missing Required Vars (A)",
-		runningService: "my-service-1",
-		requiredVars:   []string{"missing1", "missing2"},
-		missingVars:    []string{"missing1", "missing2"},
-		expectedError:  "missing required variables: [missing1 missing2]",
+		testName:             "Bad - Missing Required Vars (A)",
+		runningServiceName:   "my-service-1",
+		runningApplicability: []string{"tlp_green"},
+		requiredVars:         []string{"missing1", "missing2"},
+		missingVars:          []string{"missing1", "missing2"},
+		expectedError:        "missing required variables: [missing1 missing2]",
 		config: `
 services:
   my-service-1:
@@ -216,11 +230,12 @@ services:
     vars:
       key: value
 `}, {
-		testName:       "Bad - Missing Required Vars (B)",
-		runningService: "my-service-1",
-		requiredVars:   []string{"key", "missing1", "missing2"},
-		missingVars:    []string{"missing1", "missing2"},
-		expectedError:  "missing required variables: [missing1 missing2]",
+		testName:             "Bad - Missing Required Vars (B)",
+		runningServiceName:   "my-service-1",
+		runningApplicability: []string{"tlp_green"},
+		requiredVars:         []string{"key", "missing1", "missing2"},
+		missingVars:          []string{"missing1", "missing2"},
+		expectedError:        "missing required variables: [missing1 missing2]",
 		config: `
 services:
   my-service-1:
@@ -231,18 +246,33 @@ services:
     vars:
       key: value
 `}, {
-		testName:       "Bad - Missing Policy",
-		runningService: "my-service-1",
-		requiredVars:   []string{},
-		expectedError:  "invalid policy for service my-service-1. applicability=0 catalogs=0",
+		testName:             "Good - Policy at top level",
+		runningServiceName:   "my-service-1",
+		runningApplicability: []string{"tlp_green"},
+		requiredVars:         []string{},
+		config: `
+policy:
+  catalogs:
+    - FINOS-CCC
+  applicability: ["tlp_green"]
+services:
+  my-service-1:
+`},
+	{
+		testName:             "Bad - Missing Policy",
+		runningServiceName:   "my-service-1",
+		runningApplicability: []string{"tlp_green"},
+		requiredVars:         []string{},
+		expectedError:        "invalid policy for service my-service-1. applicability=0 catalogs=0",
 		config: `
 services:
   my-service-1:
 `}, {
-		testName:       "Bad - Missing Applicability",
-		runningService: "my-service-1",
-		requiredVars:   []string{},
-		expectedError:  "invalid policy for service my-service-1. applicability=0 catalogs=1",
+		testName:             "Bad - Missing Applicability",
+		runningServiceName:   "my-service-1",
+		runningApplicability: []string{"tlp_green"},
+		requiredVars:         []string{},
+		expectedError:        "invalid policy for service my-service-1. applicability=0 catalogs=1",
 		config: `
 services:
   my-service-1:
@@ -250,10 +280,11 @@ services:
       catalogs:
         - FINOS-CCC
 `}, {
-		testName:       "Good - Default YAML output when missing",
-		runningService: "my-service-1",
-		requiredVars:   []string{},
-		expectedOutput: "yaml",
+		testName:             "Good - Default YAML output when missing",
+		runningServiceName:   "my-service-1",
+		runningApplicability: []string{"tlp_green"},
+		requiredVars:         []string{},
+		expectedOutput:       "yaml",
 		config: `
 services:
   my-service-1:
@@ -262,10 +293,11 @@ services:
         - FINOS-CCC
       applicability: ["tlp_green"]
 `}, {
-		testName:       "Good - designated output type JSON",
-		runningService: "my-service-1",
-		requiredVars:   []string{},
-		expectedOutput: "json",
+		testName:             "Good - designated output type JSON",
+		runningServiceName:   "my-service-1",
+		runningApplicability: []string{"tlp_green"},
+		requiredVars:         []string{},
+		expectedOutput:       "json",
 		config: `
 output: json
 services:
@@ -275,10 +307,11 @@ services:
         - FINOS-CCC
       applicability: ["tlp_green"]
 `}, {
-		testName:       "Good - designated output type YAML",
-		runningService: "my-service-1",
-		requiredVars:   []string{},
-		expectedOutput: "yaml",
+		testName:             "Good - designated output type YAML",
+		runningServiceName:   "my-service-1",
+		runningApplicability: []string{"tlp_green"},
+		requiredVars:         []string{},
+		expectedOutput:       "yaml",
 		config: `
 output: yaml
 services:
@@ -288,10 +321,11 @@ services:
         - FINOS-CCC
       applicability: ["tlp_green"]
 `}, {
-		testName:       "Bad - Bad output type",
-		runningService: "my-service-1",
-		requiredVars:   []string{},
-		expectedError:  "bad output type, allowed output types are json or yaml",
+		testName:             "Bad - Bad output type",
+		runningServiceName:   "my-service-1",
+		runningApplicability: []string{"tlp_green"},
+		requiredVars:         []string{},
+		expectedError:        "bad output type, allowed output types are json or yaml",
 		config: `
 output: bad
 services:
@@ -301,11 +335,12 @@ services:
         - FINOS-CCC
       applicability: ["tlp_green"]
 `}, {
-		testName:       "Good - explicit write true",
-		runningService: "my-service-1",
-		requiredVars:   []string{},
-		writeSet:       true,
-		expectedWrite:  true,
+		testName:             "Good - explicit write true",
+		runningServiceName:   "my-service-1",
+		runningApplicability: []string{"tlp_green"},
+		requiredVars:         []string{},
+		writeSet:             true,
+		expectedWrite:        true,
 		config: `
 write: true
 services:
@@ -315,11 +350,12 @@ services:
         - FINOS-CCC
       applicability: ["tlp_green"]
 `}, {
-		testName:       "Good - explicit write false",
-		runningService: "my-service-1",
-		requiredVars:   []string{},
-		writeSet:       true,
-		expectedWrite:  false,
+		testName:             "Good - explicit write false",
+		runningServiceName:   "my-service-1",
+		runningApplicability: []string{"tlp_green"},
+		requiredVars:         []string{},
+		writeSet:             true,
+		expectedWrite:        false,
 		config: `
 write: false
 services:
@@ -329,11 +365,12 @@ services:
         - FINOS-CCC
       applicability: ["tlp_green"]
 `}, {
-		testName:       "Good - write non boolean default to false false",
-		runningService: "my-service-1",
-		requiredVars:   []string{},
-		writeSet:       true,
-		expectedWrite:  false,
+		testName:             "Good - write non boolean default to false false",
+		runningServiceName:   "my-service-1",
+		runningApplicability: []string{"tlp_green"},
+		requiredVars:         []string{},
+		writeSet:             true,
+		expectedWrite:        false,
 		config: `
 write: blahblah
 services:
@@ -355,8 +392,22 @@ func TestNewConfig(t *testing.T) {
 				t.Fatalf("error reading config: %v", err)
 			}
 
-			viper.Set("service", tt.runningService)
+			viper.Set("service", tt.runningServiceName)
 			c := NewConfig(tt.requiredVars)
+
+			for _, foundApplicability := range tt.runningApplicability {
+				var found bool
+				for _, expectedApplicability := range c.Policy.Applicability {
+					if foundApplicability == expectedApplicability {
+						found = true
+						break
+					}
+				}
+				if !found && c.Error.Error() != tt.expectedError {
+					t.Errorf("expected applicability to be '%v', got '%v'", tt.runningApplicability, c.Policy)
+					break
+				}
+			}
 
 			if c.Error == nil && tt.expectedError != "" {
 				t.Errorf("expected error '%s', got nil", tt.expectedError)
@@ -371,8 +422,8 @@ func TestNewConfig(t *testing.T) {
 				return
 			}
 
-			if c.ServiceName != tt.runningService {
-				t.Errorf("expected service name to be '%s', got '%s'", tt.runningService, c.ServiceName)
+			if c.ServiceName != tt.runningServiceName {
+				t.Errorf("expected service name to be '%s', got '%s'", tt.runningServiceName, c.ServiceName)
 			}
 
 			if tt.invasiveSet != c.Invasive {

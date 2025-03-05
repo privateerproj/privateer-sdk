@@ -29,7 +29,7 @@ func TestCleanup(t *testing.T) {
 				Name:                test.testName,
 				Control_Evaluations: test.evals,
 			}
-			data.config = setSimpleConfig()
+			data.config = setBasicConfig()
 			for _, eval := range data.Control_Evaluations {
 				expectedCorrupted := eval.Corrupted_State
 				eval.Cleanup()
@@ -65,7 +65,7 @@ func TestEvaluate(t *testing.T) {
 				Name:                test.testName,
 				Control_Evaluations: test.evals,
 			}
-			suite.config = setSimpleConfig()
+			suite.config = setBasicConfig()
 			err := suite.Evaluate("")
 			if err.Error() != EVAL_NAME_MISSING().Error() {
 				t.Errorf("Expected '%s', but got '%s'", EVAL_NAME_MISSING(), err)
