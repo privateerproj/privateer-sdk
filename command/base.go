@@ -16,6 +16,9 @@ func SetBase(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringP("config", "c", defaultConfigPath(), "Configuration File, JSON or YAML")
 	_ = viper.BindPFlag("config", cmd.PersistentFlags().Lookup("config"))
 
+	cmd.PersistentFlags().StringP("write-directory", "w", "evaluation_results", "Directory to write evaluation results to")
+	_ = viper.BindPFlag("write-directory", cmd.PersistentFlags().Lookup("write-directory"))
+
 	cmd.PersistentFlags().StringP("loglevel", "l", "error", "Log level (trace, debug, info, warn, error, off)")
 	_ = viper.BindPFlag("loglevel", cmd.PersistentFlags().Lookup("loglevel"))
 
