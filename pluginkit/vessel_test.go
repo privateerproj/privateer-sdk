@@ -99,221 +99,97 @@ func TestAddEvaluationSuite(t *testing.T) {
 }
 
 func TestMobilize(t *testing.T) {
-	testData := []testingData{
-		{
-			testName:       "Pass Evaluation",
-			expectedResult: layer4.Passed,
-			evals: []*layer4.ControlEvaluation{
-				passingEvaluation(),
-			},
-		},
-		{
-			testName:       "Fail Evaluation",
-			expectedResult: layer4.Failed,
-			evals: []*layer4.ControlEvaluation{
-				failingEvaluation(),
-			},
-		},
-		{
-			testName:       "Needs Review Evaluation",
-			expectedResult: layer4.NeedsReview,
-			evals: []*layer4.ControlEvaluation{
-				needsReviewEvaluation(),
-			},
-		},
-		{
-			testName:           "Corrupted Evaluation",
-			expectedResult:     layer4.Unknown,
-			expectedCorruption: true,
-			evals: []*layer4.ControlEvaluation{
-				corruptedEvaluation(),
-			},
-		},
-		{
-			testName:       "Pass, Pass, Pass",
-			expectedResult: layer4.Passed,
-			evals: []*layer4.ControlEvaluation{
-				passingEvaluation(),
-				passingEvaluation(),
-				passingEvaluation(),
-			},
-		},
-		{
-			testName:       "Pass Then Fail",
-			expectedResult: layer4.Failed,
-			evals: []*layer4.ControlEvaluation{
-				passingEvaluation(),
-				failingEvaluation(),
-			},
-		},
-		{
-			testName:       "Pass Then Needs Review",
-			expectedResult: layer4.NeedsReview,
-			evals: []*layer4.ControlEvaluation{
-				passingEvaluation(),
-				needsReviewEvaluation(),
-			},
-		},
-		{
-			testName:           "Pass Then Corrupted",
-			expectedResult:     layer4.Unknown,
-			expectedCorruption: true,
-			evals: []*layer4.ControlEvaluation{
-				passingEvaluation(),
-				corruptedEvaluation(),
-			},
-		},
-		{
-			testName:       "Needs Review Then Pass",
-			expectedResult: layer4.NeedsReview,
-			evals: []*layer4.ControlEvaluation{
-				needsReviewEvaluation(),
-				passingEvaluation(),
-			},
-		},
-		{
-			testName:       "Needs Review Then Fail",
-			expectedResult: layer4.Failed,
-			evals: []*layer4.ControlEvaluation{
-				needsReviewEvaluation(),
-				failingEvaluation(),
-			},
-		},
-		{
-			testName:           "Corrupt, Pass, Pass",
-			expectedResult:     layer4.Unknown,
-			expectedCorruption: true,
-			evals: []*layer4.ControlEvaluation{
-				corruptedEvaluation(),
-				passingEvaluation(),
-				passingEvaluation(),
-			},
-		},
-		{
-			testName:           "Pass, Corrupt, Pass",
-			expectedResult:     layer4.Unknown,
-			expectedCorruption: true,
-			evals: []*layer4.ControlEvaluation{
-				passingEvaluation(),
-				corruptedEvaluation(),
-				passingEvaluation(),
-			},
-		},
-		{
-			testName:           "Pass, Pass, Corrupt",
-			expectedResult:     layer4.Unknown,
-			expectedCorruption: true,
-			evals: []*layer4.ControlEvaluation{
-				passingEvaluation(),
-				passingEvaluation(),
-				corruptedEvaluation(),
-			},
-		},
-		{
-			testName:           "Corrupt, Corrupt, Pass",
-			expectedResult:     layer4.Unknown,
-			expectedCorruption: true,
-			evals: []*layer4.ControlEvaluation{
-				corruptedEvaluation(),
-				corruptedEvaluation(),
-				passingEvaluation(),
-			},
-		},
-		{
-			testName:           "Corrupt, Corrupt, Corrupt",
-			expectedResult:     layer4.Unknown,
-			expectedCorruption: true,
-			evals: []*layer4.ControlEvaluation{
-				corruptedEvaluation(),
-				corruptedEvaluation(),
-				corruptedEvaluation(),
-			},
-		},
-		{
-			testName:           "Corrupt then Needs Review",
-			expectedResult:     layer4.Unknown,
-			expectedCorruption: true,
-			evals: []*layer4.ControlEvaluation{
-				corruptedEvaluation(),
-				needsReviewEvaluation(),
-			},
-		},
+	for _, test := range mobilizeTestData {
+		t.Run(test.testName, func(tt *testing.T) {
+			var limitedConfigEvaluationCount int
+
+			tt.Run("limitedConfig", func(tt *testing.T) {
+				v := NewVessel("test", nil, []string{})
+				v.config = setLimitedConfig()
+
+				catalogName := strings.Replace(test.testName, " ", "-", -1)
+				v.AddEvaluationSuite(catalogName, examplePayload, test.evals)
+
+				// grab a count of the applicable evaluations when config is limited
+				err := v.Mobilize()
+				if err != nil {
+					tt.Errorf("Expected no error, but got %v", err)
+				}
+				limitedConfigEvaluationCount = len(v.Evaluation_Suites)
+			})
+
+			// tt.Run("non-invasive", func(tt *testing.T) {
+			// 	runMobilizeTests(tt, test, false, limitedConfigEvaluationCount)
+			// })
+			tt.Run("invasive", func(tt *testing.T) {
+				runMobilizeTests(tt, test, true, limitedConfigEvaluationCount)
+			})
+		})
+	}
+}
+
+func runMobilizeTests(t *testing.T, test testingData, invasive bool, limitedConfigEvaluationCount int) {
+	catalogName := strings.Replace(test.testName, " ", "-", -1)
+
+	v := NewVessel("test", nil, []string{})
+	v.config = setBasicConfig()
+	v.config.Invasive = invasive
+
+	v.AddEvaluationSuite(catalogName, examplePayload, test.evals)
+
+	// Nothing from our test data should be applicable right now, but they should be possible
+	err := v.Mobilize()
+	if err != nil {
+		t.Errorf("Expected no error, but got %v", err)
+	}
+	if v.possibleSuites == nil || len(v.possibleSuites) == 0 {
+		t.Errorf("Expected evaluation suites to be set, but got %v", v.possibleSuites)
+		return
+	}
+	if len(v.Evaluation_Suites) > 0 {
+		t.Errorf("Expected no Evaluation Suites to be set, but got %v", len(v.possibleSuites))
+		return
 	}
 
-	for _, test := range testData {
-		t.Run(test.testName, func(tt *testing.T) {
+	// Now we set the catalog to be applicable, then run Mobilize again to find results
+	v.config.Policy.ControlCatalogs = []string{catalogName}
+	v.Mobilize()
+	if v.Evaluation_Suites == nil || len(v.Evaluation_Suites) == 0 {
+		t.Errorf("Expected evaluation suites to be set, but got %v", v.Evaluation_Suites)
+		return
+	}
+	if len(v.Evaluation_Suites) == limitedConfigEvaluationCount {
+		t.Errorf("Expected fewer Evaluation Suites to be when using limited config, but got the same count")
+		return
+	}
 
-			v := NewVessel("test", nil, []string{})
-			v.config = setLimitedConfig()
-
-			catalogName := strings.Replace(test.testName, " ", "-", -1)
-			v.AddEvaluationSuite(catalogName, examplePayload, test.evals)
-
-			// grab a count of the applicable evaluations when config is limited
-			err := v.Mobilize()
-			if err != nil {
-				tt.Errorf("Expected no error, but got %v", err)
+	for _, suite := range v.Evaluation_Suites {
+		t.Run(suite.Name, func(tt *testing.T) {
+			if len(test.evals) != len(suite.Control_Evaluations) {
+				tt.Errorf("Expected %v control evaluations, but got %v", len(test.evals), len(v.Evaluation_Suites))
 			}
-			limitedConfigEvaluationCount := len(v.Evaluation_Suites)
-
-			// Now do a full test suite on the evaluation suites
-			v.config = setBasicConfig()
-
-			// Nothing from our test data should be applicable right now, but they should be possible
-			err = v.Mobilize()
-			if err != nil {
-				tt.Errorf("Expected no error, but got %v", err)
+			if test.expectedResult != suite.Result {
+				tt.Errorf("Expected result to be %v, but got %v", test.expectedResult, suite.Result)
 			}
-			if v.possibleSuites == nil || len(v.possibleSuites) == 0 {
-				tt.Errorf("Expected evaluation suites to be set, but got %v", v.possibleSuites)
-				return
+			if v.config.Invasive && suite.Corrupted_State != test.expectedCorruption {
+				tt.Errorf("Expected corrupted state to be %v, but got %v", test.expectedCorruption, suite.Corrupted_State)
 			}
-			if len(v.Evaluation_Suites) > 0 {
-				tt.Errorf("Expected no Evaluation Suites to be set, but got %v", len(v.possibleSuites))
-				return
+			evaluationSuiteName := fmt.Sprintf("%s_%s", v.Service_Name, catalogName)
+			if suite.Name != evaluationSuiteName {
+				tt.Errorf("Expected evaluation suite name to be %s, but got %s", evaluationSuiteName, suite.Name)
 			}
-
-			// Now we set the catalog to be applicable, then run Mobilize again to find results
-			v.config.Policy.ControlCatalogs = []string{catalogName}
-			v.Mobilize()
-			if v.Evaluation_Suites == nil || len(v.Evaluation_Suites) == 0 {
-				tt.Errorf("Expected evaluation suites to be set, but got %v", v.Evaluation_Suites)
-				return
-			}
-			if len(v.Evaluation_Suites) == limitedConfigEvaluationCount {
-				tt.Errorf("Expected fewer Evaluation Suites to be when using limited config, but got the same count")
-				return
-			}
-
-			for _, suite := range v.Evaluation_Suites {
-				tt.Run("suite", func(ttt *testing.T) {
-					if len(test.evals) != len(suite.Control_Evaluations) {
-						ttt.Errorf("Expected %v control evaluations, but got %v", len(test.evals), len(v.Evaluation_Suites))
-					}
-					if test.expectedResult != suite.Result {
-						ttt.Errorf("Expected result to be %v, but got %v", test.expectedResult, suite.Result)
-					}
-					if suite.Corrupted_State != test.expectedCorruption {
-						ttt.Errorf("Expected corrupted state to be %v, but got %v", test.expectedCorruption, suite.Corrupted_State)
-					}
-					evaluationSuiteName := fmt.Sprintf("%s_%s", v.Service_Name, catalogName)
-					if suite.Name != evaluationSuiteName {
-						ttt.Errorf("Expected evaluation suite name to be %s, but got %s", evaluationSuiteName, suite.Name)
-					}
-					for _, evaluatedSuite := range v.Evaluation_Suites {
-						if len(suite.Control_Evaluations) != len(evaluatedSuite.Control_Evaluations) {
-							ttt.Errorf("Expected control evaluations to match test data, but got %v", evaluatedSuite.Control_Evaluations)
-						}
-						testPayloadData := testPayload.(PayloadTypeExample)
-						suitePayloadData := evaluatedSuite.payload.(PayloadTypeExample)
-						if testPayloadData != suitePayloadData {
-							ttt.Errorf("Expected payload to be %v, but got %v", testPayloadData, suitePayloadData)
-						}
-						if evaluatedSuite.config != v.config {
-							ttt.Errorf("Expected config to match simpleConfig but got %v", evaluatedSuite.config)
-						}
-					}
-				})
+			for _, evaluatedSuite := range v.Evaluation_Suites {
+				if len(suite.Control_Evaluations) != len(evaluatedSuite.Control_Evaluations) {
+					tt.Errorf("Expected control evaluations to match test data, but got %v", evaluatedSuite.Control_Evaluations)
+				}
+				testPayloadData := testPayload.(PayloadTypeExample)
+				suitePayloadData := evaluatedSuite.payload.(PayloadTypeExample)
+				if testPayloadData != suitePayloadData {
+					tt.Errorf("Expected payload to be %v, but got %v", testPayloadData, suitePayloadData)
+				}
+				if evaluatedSuite.config != v.config {
+					tt.Errorf("Expected config to match simpleConfig but got %v", evaluatedSuite.config)
+				}
 			}
 		})
 	}

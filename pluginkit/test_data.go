@@ -170,3 +170,144 @@ func step_Corrupted(_ interface{}, changes map[string]*layer4.Change) (result la
 	changes["corrupted-change"].Apply()
 	return layer4.Unknown, "This step always returns unknown and applies a corrupted change"
 }
+
+var mobilizeTestData = []testingData{
+	{
+		testName:       "Pass Evaluation",
+		expectedResult: layer4.Passed,
+		evals: []*layer4.ControlEvaluation{
+			passingEvaluation(),
+		},
+	},
+	{
+		testName:       "Fail Evaluation",
+		expectedResult: layer4.Failed,
+		evals: []*layer4.ControlEvaluation{
+			failingEvaluation(),
+		},
+	},
+	{
+		testName:       "Needs Review Evaluation",
+		expectedResult: layer4.NeedsReview,
+		evals: []*layer4.ControlEvaluation{
+			needsReviewEvaluation(),
+		},
+	},
+	{
+		testName:           "Corrupted Evaluation",
+		expectedResult:     layer4.Unknown,
+		expectedCorruption: true,
+		evals: []*layer4.ControlEvaluation{
+			corruptedEvaluation(),
+		},
+	},
+	{
+		testName:       "Pass Pass Pass",
+		expectedResult: layer4.Passed,
+		evals: []*layer4.ControlEvaluation{
+			passingEvaluation(),
+			passingEvaluation(),
+			passingEvaluation(),
+		},
+	},
+	{
+		testName:       "Pass Then Fail",
+		expectedResult: layer4.Failed,
+		evals: []*layer4.ControlEvaluation{
+			passingEvaluation(),
+			failingEvaluation(),
+		},
+	},
+	{
+		testName:       "Pass Then Needs Review",
+		expectedResult: layer4.NeedsReview,
+		evals: []*layer4.ControlEvaluation{
+			passingEvaluation(),
+			needsReviewEvaluation(),
+		},
+	},
+	{
+		testName:           "Pass Then Corrupted",
+		expectedResult:     layer4.Unknown,
+		expectedCorruption: true,
+		evals: []*layer4.ControlEvaluation{
+			passingEvaluation(),
+			corruptedEvaluation(),
+		},
+	},
+	{
+		testName:       "Needs Review Then Pass",
+		expectedResult: layer4.NeedsReview,
+		evals: []*layer4.ControlEvaluation{
+			needsReviewEvaluation(),
+			passingEvaluation(),
+		},
+	},
+	{
+		testName:       "Needs Review Then Fail",
+		expectedResult: layer4.Failed,
+		evals: []*layer4.ControlEvaluation{
+			needsReviewEvaluation(),
+			failingEvaluation(),
+		},
+	},
+	{
+		testName:           "Corrupt Pass Pass",
+		expectedResult:     layer4.Unknown,
+		expectedCorruption: true,
+		evals: []*layer4.ControlEvaluation{
+			corruptedEvaluation(),
+			passingEvaluation(),
+			passingEvaluation(),
+		},
+	},
+	{
+		testName:           "Pass Corrupt Pass",
+		expectedResult:     layer4.Unknown,
+		expectedCorruption: true,
+		evals: []*layer4.ControlEvaluation{
+			passingEvaluation(),
+			corruptedEvaluation(),
+			passingEvaluation(),
+		},
+	},
+	{
+		testName:           "Pass Pass Corrupt",
+		expectedResult:     layer4.Unknown,
+		expectedCorruption: true,
+		evals: []*layer4.ControlEvaluation{
+			passingEvaluation(),
+			passingEvaluation(),
+			corruptedEvaluation(),
+		},
+	},
+	{
+		testName:           "Corrupt Corrupt Pass",
+		expectedResult:     layer4.Unknown,
+		expectedCorruption: true,
+		evals: []*layer4.ControlEvaluation{
+			corruptedEvaluation(),
+			corruptedEvaluation(),
+			passingEvaluation(),
+		},
+	},
+	{
+		testName:           "Corrupt Corrupt Corrupt",
+		expectedResult:     layer4.Unknown,
+		expectedCorruption: true,
+		evals: []*layer4.ControlEvaluation{
+			corruptedEvaluation(),
+			corruptedEvaluation(),
+			corruptedEvaluation(),
+		},
+	},
+	{
+		testName:           "Corrupt then Needs Review",
+		expectedResult:     layer4.Unknown,
+		expectedCorruption: true,
+		evals: []*layer4.ControlEvaluation{
+			corruptedEvaluation(),
+			needsReviewEvaluation(),
+		},
+	},
+}
