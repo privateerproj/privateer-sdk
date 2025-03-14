@@ -50,7 +50,7 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 	e.Start_Time = time.Now().String()
 	e.config.Logger.Trace("Starting evaluation", "name", e.Name, "time", e.Start_Time)
 	for _, evaluation := range e.Control_Evaluations {
-		evaluation.Evaluate(e.payload, e.config.Policy.Applicability)
+		evaluation.Evaluate(e.payload, e.config.Policy.Applicability, e.config.Invasive)
 		evaluation.Cleanup()
 		if !e.Corrupted_State {
 			e.Corrupted_State = evaluation.Corrupted_State
