@@ -17,7 +17,7 @@ import (
 
 type TestSet func() (result layer4.ControlEvaluation)
 
-// TestSuite is a struct that contains the results of all ControlEvaluations, orgainzed by name
+// TestSuite is a struct that contains the results of all ControlEvaluations, organized by name
 type EvaluationSuite struct {
 	Name            string        // Name is the name of the suite
 	Catalog_Id      string        // Catalog_Id associates this suite with an catalog
