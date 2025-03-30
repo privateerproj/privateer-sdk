@@ -104,7 +104,7 @@ func corruptedEvaluation() (evaluation *layer4.ControlEvaluation) {
 		"this change doesn't do anything",
 		nil,
 		func(interface{}) (interface{}, error) {
-			return nil, fmt.Errorf("corrupted")
+			return nil, nil
 		},
 		func(interface{}) error {
 			return fmt.Errorf("corrupted")

@@ -44,4 +44,4 @@ require (
 	gopkg.in/ini.v1 v1.67.0 // indirect
 )
 
-// replace github.com/revanite-io/sci => ../sci
+// replace github.com/revanite-io/sci => ../../revanite-io/sci
