@@ -4,10 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/signal"
 	"path"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/privateerproj/privateer-sdk/config"
@@ -32,12 +30,9 @@ type EvaluationSuite struct {
 	loader  DataLoader     // loader is the function to load the payload
 	config  *config.Config // config is the global configuration for the plugin
 
-	assessmentSuccesses int // successes is the number of successful evaluations
-	assessmentWarnings  int // attempts is the number of evaluations attempted
-	assessmentFailures  int // failures is the number of failed evaluations
-	evalSuccesses       int // successes is the number of successful evaluations
-	evalFailures        int // failures is the number of failed evaluations
-	evalWarnings        int // warnings is the number of evaluations that need review
+	evalSuccesses int // successes is the number of successful evaluations
+	evalFailures  int // failures is the number of failed evaluations
+	evalWarnings  int // warnings is the number of evaluations that need review
 }
 
 // Execute is used to execute a list of ControlEvaluations provided by a Plugin and customized by user config
@@ -62,11 +57,15 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 		// Log each assessment result as a separate line
 		for _, assessment := range evaluation.Assessments {
 			message := fmt.Sprintf("%s: %s", assessment.Requirement_Id, assessment.Message)
-			if assessment.Result == layer4.Passed {
+			// switch case the code below
+			switch assessment.Result {
+			case layer4.Passed:
 				e.config.Logger.Info(message)
-			} else if assessment.Result == layer4.NeedsReview {
+			case layer4.NeedsReview:
 				e.config.Logger.Warn(message)
-			} else if assessment.Result == layer4.Failed || assessment.Result == layer4.Unknown {
+			case layer4.Failed:
+				e.config.Logger.Error(message)
+			case layer4.Unknown:
 				e.config.Logger.Error(message)
 			}
 		}
@@ -90,11 +89,12 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 	if e.Corrupted_State {
 		return CORRUPTION_FOUND()
 	}
-	if e.Result == layer4.Passed {
+	switch e.Result {
+	case layer4.Passed:
 		e.config.Logger.Info(output)
-	} else if e.Result == layer4.NotRun {
+	case layer4.NotRun:
 		e.config.Logger.Trace(output)
-	} else {
+	default:
 		e.config.Logger.Error(output)
 	}
 	return nil
@@ -158,7 +158,9 @@ func (e *EvaluationSuite) writeControlEvaluationsToFile(serviceName string, resu
 		e.config.Logger.Error("Error opening file", "filepath", filepath)
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	_, err = file.Write(result)
 	if err != nil {
@@ -176,25 +178,4 @@ func (e *EvaluationSuite) cleanup() (passed bool) {
 		}
 	}
 	return !e.Corrupted_State
-}
-
-// closeHandler creates a 'listener' on a new goroutine which will notify the
-// program if it receives an interrupt from the OS. We then handle this by calling
-// our clean up procedure and exiting the program.
-// Ref: https://golangcode.com/handle-ctrl-c-exit-in-terminal/
-func (e *EvaluationSuite) closeHandler() {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-c
-		e.config.Logger.Error("[ERROR] Execution aborted - %v", "SIGTERM")
-		e.config.Logger.Warn("[WARN] Attempting to revert changes made by the terminated Plugin. Do not interrupt this process.")
-		if e.cleanup() {
-			e.config.Logger.Info("Cleanup did not encounter an error.")
-			os.Exit(0)
-		} else {
-			e.config.Logger.Error("[ERROR] Cleanup returned an error, and may not be complete.")
-			os.Exit(2)
-		}
-	}()
 }

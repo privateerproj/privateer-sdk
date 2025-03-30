@@ -145,7 +145,7 @@ func NewConfig(requiredVars []string) Config {
 func defaultWritePath() string {
 	home, err := os.UserHomeDir()
 	datetime := time.Now().Local().Format(time.RFC3339)
-	dirName := strings.Replace(datetime, ":", "", -1)
+	dirName := strings.ReplaceAll(datetime, ":", "")
 	if err != nil {
 		return ""
 	}

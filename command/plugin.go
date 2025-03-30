@@ -76,10 +76,10 @@ func versionCommand(
 		Run: func(cmd *cobra.Command, args []string) {
 			writer := tabwriter.NewWriter(os.Stdout, 1, 1, 1, ' ', 0)
 			if viper.GetBool("verbose") {
-				fmt.Fprintf(writer, "Version:\t%s\n", buildVersion)
-				fmt.Fprintf(writer, "Commit:\t%s\n", buildGitCommitHash)
-				fmt.Fprintf(writer, "Build Time:\t%s\n", buildTime)
-				writer.Flush()
+				_, _ = fmt.Fprintf(writer, "Version:\t%s\n", buildVersion)
+				_, _ = fmt.Fprintf(writer, "Commit:\t%s\n", buildGitCommitHash)
+				_, _ = fmt.Fprintf(writer, "Build Time:\t%s\n", buildTime)
+				_ = writer.Flush()
 			} else {
 				fmt.Println(buildVersion)
 			}

@@ -77,7 +77,7 @@ func TestAddEvaluationSuite(t *testing.T) {
 					v := NewVessel("test", nil, []string{})
 					v.config = setBasicConfig()
 					v.AddEvaluationSuite("test", nil, test.evals)
-					if v.possibleSuites == nil || len(v.possibleSuites) == 0 {
+					if len(v.possibleSuites) == 0 {
 						t.Error("Expected evaluation suites to be set")
 						return
 					}
@@ -107,7 +107,7 @@ func TestMobilize(t *testing.T) {
 				v := NewVessel("test", nil, []string{})
 				v.config = setLimitedConfig()
 
-				catalogName := strings.Replace(test.testName, " ", "-", -1)
+				catalogName := strings.ReplaceAll(test.testName, " ", "-")
 				v.AddEvaluationSuite(catalogName, examplePayload, test.evals)
 
 				// grab a count of the applicable evaluations when config is limited
@@ -129,7 +129,7 @@ func TestMobilize(t *testing.T) {
 }
 
 func runMobilizeTests(t *testing.T, test testingData, invasive bool, limitedConfigEvaluationCount int) {
-	catalogName := strings.Replace(test.testName, " ", "-", -1)
+	catalogName := strings.ReplaceAll(test.testName, " ", "-")
 
 	v := NewVessel("test", nil, []string{})
 	v.config = setBasicConfig()
@@ -142,7 +142,7 @@ func runMobilizeTests(t *testing.T, test testingData, invasive bool, limitedConf
 	if err != nil {
 		t.Errorf("Expected no error, but got %v", err)
 	}
-	if v.possibleSuites == nil || len(v.possibleSuites) == 0 {
+	if len(v.possibleSuites) == 0 {
 		t.Errorf("Expected evaluation suites to be set, but got %v", v.possibleSuites)
 		return
 	}
@@ -153,8 +153,8 @@ func runMobilizeTests(t *testing.T, test testingData, invasive bool, limitedConf
 
 	// Now we set the catalog to be applicable, then run Mobilize again to find results
 	v.config.Policy.ControlCatalogs = []string{catalogName}
-	v.Mobilize()
-	if v.Evaluation_Suites == nil || len(v.Evaluation_Suites) == 0 {
+	_ = v.Mobilize()
+	if len(v.Evaluation_Suites) == 0 {
 		t.Errorf("Expected evaluation suites to be set, but got %v", v.Evaluation_Suites)
 		return
 	}
