@@ -41,10 +41,10 @@ func passingEvaluation() (evaluation *layer4.ControlEvaluation) {
 		"fake-target-name",
 		"this change doesn't do anything",
 		nil,
-		func() (interface{}, error) {
+		func(interface{}) (interface{}, error) {
 			return nil, nil
 		},
-		func() error {
+		func(interface{}) error {
 			return nil
 		},
 	)
@@ -102,10 +102,10 @@ func corruptedEvaluation() (evaluation *layer4.ControlEvaluation) {
 		"fake-target-name",
 		"this change doesn't do anything",
 		nil,
-		func() (interface{}, error) {
-			return nil, fmt.Errorf("corrupted")
+		func(interface{}) (interface{}, error) {
+			return nil, nil
 		},
-		func() error {
+		func(interface{}) error {
 			return fmt.Errorf("corrupted")
 		},
 	)
@@ -135,9 +135,9 @@ type PayloadTypeExample struct {
 	CustomPayloadField bool
 }
 
-func step_Pass(_ interface{}, changes map[string]*layer4.Change) (result layer4.Result, message string) {
+func step_Pass(data interface{}, changes map[string]*layer4.Change) (result layer4.Result, message string) {
 	if changes != nil && changes["good-change"] != nil {
-		changes["good-change"].Apply()
+		changes["good-change"].Apply("target_name", "target_object", data)
 	}
 	return layer4.Passed, "This step always passes"
 }
@@ -150,8 +150,8 @@ func step_NeedsReview(_ interface{}, _ map[string]*layer4.Change) (result layer4
 	return layer4.NeedsReview, "This step always needs review"
 }
 
-func step_Corrupted(_ interface{}, changes map[string]*layer4.Change) (result layer4.Result, message string) {
-	changes["corrupted-change"].Apply()
+func step_Corrupted(data interface{}, changes map[string]*layer4.Change) (result layer4.Result, message string) {
+	changes["corrupted-change"].Apply("target_name", "target_object", data)
 	return layer4.Unknown, "This step always returns unknown and applies a corrupted change"
 }
 
