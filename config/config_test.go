@@ -466,7 +466,7 @@ func TestNewConfig(t *testing.T) {
 				t.Errorf("expected write directory to be default, but got '%s'", c.WriteDirectory)
 			}
 
-			if c.Policy.ControlCatalogs == nil || len(c.Policy.ControlCatalogs) == 0 {
+			if len(c.Policy.ControlCatalogs) == 0 {
 				t.Errorf("expected policy to be set, but got %v", c.Policy)
 			}
 

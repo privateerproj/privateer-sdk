@@ -77,14 +77,12 @@ func ReformatError(e string, v ...interface{}) error {
 	b.WriteString("[ERROR] ")
 	b.WriteString(e)
 
-	s := fmt.Sprintf(b.String(), v...)
-
-	return fmt.Errorf(s)
+	return fmt.Errorf(b.String(), v...)
 }
 
 // ReplaceBytesValue replaces a substring with a new value for a given string in bytes
 func ReplaceBytesValue(b []byte, old string, new string) []byte {
-	newString := strings.Replace(string(b), old, new, -1)
+	newString := strings.ReplaceAll(string(b), old, new)
 	return []byte(newString)
 }
 

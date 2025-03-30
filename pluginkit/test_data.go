@@ -11,7 +11,6 @@ import (
 
 type testingData struct {
 	testName               string
-	serviceName            string
 	evals                  []*layer4.ControlEvaluation
 	expectedEvalSuiteError error
 	expectedCorruption     bool
@@ -136,17 +135,6 @@ type PayloadTypeExample struct {
 	CustomPayloadField bool
 }
 
-func step_checkPayload(payloadData interface{}, _ map[string]*layer4.Change) (result layer4.Result, message string) {
-	payload, ok := payloadData.(*PayloadTypeExample)
-	if !ok {
-		return layer4.Unknown, fmt.Sprintf("Malformed assessment: expected payload type %T, got %T (%v)", &PayloadTypeExample{}, payloadData, payloadData)
-	}
-	if payload.CustomPayloadField {
-		return layer4.Passed, "Multi-factor authentication is configured"
-	}
-	return layer4.Unknown, "Not implemented"
-}
-
 func step_Pass(_ interface{}, changes map[string]*layer4.Change) (result layer4.Result, message string) {
 	if changes != nil && changes["good-change"] != nil {
 		changes["good-change"].Apply()
@@ -160,10 +148,6 @@ func step_Fail(_ interface{}, _ map[string]*layer4.Change) (result layer4.Result
 
 func step_NeedsReview(_ interface{}, _ map[string]*layer4.Change) (result layer4.Result, message string) {
 	return layer4.NeedsReview, "This step always needs review"
-}
-
-func step_Unknown(_ interface{}, _ map[string]*layer4.Change) (result layer4.Result, message string) {
-	return layer4.Unknown, "This step always returns unknown"
 }
 
 func step_Corrupted(_ interface{}, changes map[string]*layer4.Change) (result layer4.Result, message string) {

@@ -150,7 +150,9 @@ func (v *Vessel) writeResultsToFile(serviceName string, result []byte, extension
 		v.config.Logger.Error("Error opening file", "filepath", filepath)
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	_, err = file.Write(result)
 	if err != nil {
