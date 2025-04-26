@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/goccy/go-yaml"
 	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/revanite-io/sci/pkg/layer4"
-	"gopkg.in/yaml.v3"
 )
 
 type TestSet func() (result layer4.ControlEvaluation)
