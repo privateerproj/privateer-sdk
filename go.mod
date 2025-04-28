@@ -8,7 +8,7 @@ require (
 	github.com/goccy/go-yaml v1.17.1
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.6.3
-	github.com/revanite-io/sci v0.3.2
+	github.com/revanite-io/sci v0.3.4
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1
 )
