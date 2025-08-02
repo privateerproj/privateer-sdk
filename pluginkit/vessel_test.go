@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/privateerproj/privateer-sdk/config"
-	"github.com/revanite-io/sci/pkg/layer4"
+	"github.com/revanite-io/sci/layer4"
 )
 
 func TestSetPayload(t *testing.T) {

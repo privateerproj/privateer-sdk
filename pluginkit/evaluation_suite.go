@@ -10,7 +10,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 	"github.com/privateerproj/privateer-sdk/config"
-	"github.com/revanite-io/sci/pkg/layer4"
+	"github.com/revanite-io/sci/layer4"
 )
 
 type TestSet func() (result layer4.ControlEvaluation)
@@ -119,10 +119,15 @@ func (e *EvaluationSuite) WriteControlEvaluations(serviceName string, output str
 		return err
 	}
 
+
+
+
 	err = e.writeControlEvaluationsToFile(serviceName, result, output)
 	if err != nil {
 		return err
 	}
+
+
 
 	return nil
 }

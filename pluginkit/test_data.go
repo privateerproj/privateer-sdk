@@ -3,7 +3,7 @@ package pluginkit
 import (
 	"fmt"
 
-	"github.com/revanite-io/sci/pkg/layer4"
+	"github.com/revanite-io/sci/layer4"
 	"github.com/spf13/viper"
 
 	"github.com/privateerproj/privateer-sdk/config"
