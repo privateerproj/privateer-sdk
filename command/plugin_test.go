@@ -20,9 +20,9 @@ func testingLoaderFunc(*config.Config) (interface{}, error) { return &nilInterfa
 
 func TestNewPluginCommands(t *testing.T) {
 	requiredVars := []string{}
-	vessel := pluginkit.NewVessel(pluginName, testingLoaderFunc, requiredVars)
+	orchestrator := pluginkit.NewEvaluationOrchestrator(pluginName, testingLoaderFunc, requiredVars)
 
-	cmd := NewPluginCommands(pluginName, buildVersion, buildGitCommitHash, buildTime, vessel)
+	cmd := NewPluginCommands(pluginName, buildVersion, buildGitCommitHash, buildTime, orchestrator)
 	if cmd.Use != pluginName {
 		t.Errorf("Expected cmd.Use to be %s, but got %s", pluginName, cmd.Use)
 	}
