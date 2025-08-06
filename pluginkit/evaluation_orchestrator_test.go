@@ -1,12 +1,5 @@
 package pluginkit
 
-// This file contains table tests for the following functions:
-// func (v *Vessel) SetInitilizer(initializer func(*config.Config) error) {
-// func (v *Vessel) SetPayload(payload interface{}) {
-// func (v *Vessel) Config() *config.Config {
-// func (v *Vessel) AddEvaluationSuite(name string, evaluations []layer4.ControlEvaluation) {
-// func (v *Vessel) Mobilize(requiredVars []string, suites map[string]EvaluationSuite) error {
-
 import (
 	"fmt"
 	"strings"
@@ -17,7 +10,7 @@ import (
 )
 
 func TestSetPayload(t *testing.T) {
-	v := NewVessel("test", nil, []string{})
+	v := NewEvaluationOrchestrator("test", nil, []string{})
 
 	payloadTestData := []struct {
 		name     string
@@ -53,7 +46,7 @@ func TestSetPayload(t *testing.T) {
 }
 
 func TestSetupConfig(t *testing.T) {
-	v := NewVessel("test", nil, []string{})
+	v := NewEvaluationOrchestrator("test", nil, []string{})
 	v.setupConfig()
 	if v.config == nil {
 		t.Error("Expected config to always be returned")
@@ -74,7 +67,7 @@ func TestAddEvaluationSuite(t *testing.T) {
 		t.Run(test.testName, func(t *testing.T) {
 			for _, suite := range test.evals {
 				t.Run("subtest_"+suite.Name, func(t *testing.T) {
-					v := NewVessel("test", nil, []string{})
+					v := NewEvaluationOrchestrator("test", nil, []string{})
 					v.config = setBasicConfig()
 					v.AddEvaluationSuite("test", nil, test.evals)
 					if len(v.possibleSuites) == 0 {
@@ -104,7 +97,7 @@ func TestMobilize(t *testing.T) {
 			var limitedConfigEvaluationCount int
 
 			tt.Run("limitedConfig", func(tt *testing.T) {
-				v := NewVessel("test", nil, []string{})
+				v := NewEvaluationOrchestrator("test", nil, []string{})
 				v.config = setLimitedConfig()
 
 				catalogName := strings.ReplaceAll(test.testName, " ", "-")
@@ -131,7 +124,7 @@ func TestMobilize(t *testing.T) {
 func runMobilizeTests(t *testing.T, test testingData, invasive bool, limitedConfigEvaluationCount int) {
 	catalogName := strings.ReplaceAll(test.testName, " ", "-")
 
-	v := NewVessel("test", nil, []string{})
+	v := NewEvaluationOrchestrator("test", nil, []string{})
 	v.config = setBasicConfig()
 	v.config.Invasive = invasive
 
