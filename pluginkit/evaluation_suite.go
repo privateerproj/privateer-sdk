@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/goccy/go-yaml"
+	"github.com/privateerproj/privateer-sdk/baseline"
 	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/revanite-io/sci/layer4"
 )
@@ -68,6 +69,17 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 			case layer4.Unknown:
 				e.config.Logger.Error(message)
 			}
+			
+			br := baseline.NewReader("./baseline/data");
+
+			a, err := br.GetAssesmentRequirementById(assessment.Requirement_Id)
+
+			if(err != nil) {
+				// fmt.Println("ALEXXXXX ERROR", err)
+			}
+			if( err == nil ){
+				assessment.Recommendation = a.Recommendation
+			}
 		}
 
 		if evaluation.Result == layer4.Passed {
@@ -119,14 +131,13 @@ func (e *EvaluationSuite) WriteControlEvaluations(serviceName string, output str
 		return err
 	}
 
-
+	
 
 
 	err = e.writeControlEvaluationsToFile(serviceName, result, output)
 	if err != nil {
 		return err
 	}
-
 
 
 	return nil
