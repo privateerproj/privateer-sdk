@@ -3,7 +3,6 @@ package baseline
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"testing"
 )
 
@@ -16,7 +15,7 @@ func TestReader_ReadAllYAMLFiles(t *testing.T) {
 		t.Skip("Data directory does not exist, skipping test")
 	}
 
-	reader := NewReader(dataDir)
+	reader := NewReader()
 	
 	baselineData, err := reader.ReadAllYAMLFiles()
 	if err != nil {
@@ -71,45 +70,24 @@ func TestReader_ReadAllYAMLFiles(t *testing.T) {
 	t.Logf("Successfully loaded %d control families", len(baselineData.Catalog.ControlFamilies))
 }
 
-func TestReader_ListYAMLFiles(t *testing.T) {
-	dataDir := "./data"
-	
-	// Check if data directory exists, skip test if not
-	if _, err := os.Stat(dataDir); os.IsNotExist(err) {
-		t.Skip("Data directory does not exist, skipping test")
-	}
 
-	reader := NewReader(dataDir)
-	
-	files, err := reader.ListYAMLFiles()
-	if err != nil {
-		t.Fatalf("Failed to list YAML files: %v", err)
-	}
+func TestReader_GetAssessmentById(t*testing.T){
 
-	if len(files) == 0 {
-		t.Fatal("No YAML files found")
-	}
+	reader := NewReader()
 
-	// Verify all files have .yaml or .yml extension
-	for _, file := range files {
-		ext := filepath.Ext(file)
-		if ext != ".yaml" && ext != ".yml" {
-			t.Errorf("File %s does not have YAML extension", file)
-		}
-	}
+	reader.GetAssessmentRequirementById("OSPS-AC-02.01")
 
-	t.Logf("Found %d YAML files", len(files))
+
 }
 
 func TestReader_GetControlByID(t *testing.T) {
-	dataDir := "./data"
 	
 	// Check if data directory exists, skip test if not
 	if _, err := os.Stat(dataDir); os.IsNotExist(err) {
 		t.Skip("Data directory does not exist, skipping test")
 	}
 
-	reader := NewReader(dataDir)
+	reader := NewReader()
 	
 	// Test getting a known control (assuming OSPS-AC-01 exists)
 	control, familyTitle, err := reader.GetControlByID("OSPS-AC-01")
@@ -139,14 +117,14 @@ func TestReader_GetControlByID(t *testing.T) {
 }
 
 func TestReader_GetControlsByFamily(t *testing.T) {
-	dataDir := "./data"
+	dataDir := "data"
 	
 	// Check if data directory exists, skip test if not
 	if _, err := os.Stat(dataDir); os.IsNotExist(err) {
 		t.Skip("Data directory does not exist, skipping test")
 	}
 
-	reader := NewReader(dataDir)
+	reader := NewReader()
 	
 	// Test getting controls for AC family (assuming OSPS-AC.yaml exists)
 	controls, err := reader.GetControlsByFamily("AC")
@@ -182,7 +160,7 @@ func TestReader_GetReccomendationForEval(t *testing.T) {
 		t.Skip("Data directory does not exist, skipping test")
 	}
 
-	reader := NewReader(dataDir)
+	reader := NewReader()
 	
 	control,_,_:= reader.GetControlByID("OSPS-VM-04")
 
@@ -191,7 +169,7 @@ func TestReader_GetReccomendationForEval(t *testing.T) {
 }
 
 func TestReader_ExtractFamilyID(t *testing.T) {
-	reader := NewReader("./data")
+	reader := NewReader()
 	
 	tests := []struct {
 		filename   string
@@ -212,19 +190,6 @@ func TestReader_ExtractFamilyID(t *testing.T) {
 	}
 }
 
-func TestReader_NonExistentDirectory(t *testing.T) {
-	reader := NewReader("/non/existent/directory")
-	
-	_, err := reader.ReadAllYAMLFiles()
-	if err == nil {
-		t.Error("Expected error for non-existent directory")
-	}
-
-	_, err = reader.ListYAMLFiles()
-	if err == nil {
-		t.Error("Expected error for non-existent directory")
-	}
-}
 
 // Helper function to check if a string contains a substring
 func containsString(s, substr string) bool {

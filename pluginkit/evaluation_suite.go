@@ -70,9 +70,9 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 				e.config.Logger.Error(message)
 			}
 			
-			br := baseline.NewReader("./baseline/data");
+			br := baseline.NewReader();
 
-			a, err := br.GetAssesmentRequirementById(assessment.Requirement_Id)
+			a,err := br.GetAssessmentRequirementById(assessment.Requirement_Id)
 
 			if(err != nil) {
 				// fmt.Println("ALEXXXXX ERROR", err)

@@ -54,14 +54,9 @@ func TestCleanup(t *testing.T) {
 func TestReader (t *testing.T) {
 
 	
-	reader := baseline.NewReader("../baseline/data")
+	reader := baseline.NewReader()
 	if reader == nil {
 		t.Fatal("Failed to create Reader instance")
-	}
-
-	files, err := reader.ListYAMLFiles()
-	if err != nil {
-		t.Fatalf("Failed to list YAML files: %v", err)
 	}
 
 	control, _, err := reader.GetControlByID("OSPS-AC-01")
@@ -71,15 +66,6 @@ func TestReader (t *testing.T) {
 
 	fmt.Println(control.AssessmentRequirements)
 
-	if len(files) == 0 {
-		t.Fatal("No YAML files found in data directory")
-	}
-
-	for _, file := range files {
-		if file == "" {
-			t.Error("Found empty filename in list of YAML files")
-		}
-	}
 }
 
 func TestEvaluate(t *testing.T) {

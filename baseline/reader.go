@@ -3,8 +3,7 @@ package baseline
 import (
 	"embed"
 	"fmt"
-	"io/fs"
-	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -12,7 +11,7 @@ import (
 	"github.com/revanite-io/sci/layer2"
 )
 
-const path string = "data"
+const dataDir string = "data"
 
 //go:embed data
 var files embed.FS
@@ -34,22 +33,21 @@ type ControlFamilyData struct {
 
 // Reader provides functionality to read baseline YAML files
 type Reader struct {
-	dataDir string
 }
 
 // NewReader creates a new Reader instance
-func NewReader(dataDir string) *Reader {
+func NewReader() *Reader {
 	return &Reader{
-		dataDir: dataDir,
 	}
 }
 
 // ReadAllYAMLFiles reads all YAML files in the data directory and returns the complete baseline data
 func (r *Reader) ReadAllYAMLFiles() (*BaselineData, error) {
 
-	dir,_ := files.ReadDir(path)
-	for _,file := range dir{
-		fmt.Println("File: ", file.Name())
+	dir,err := files.ReadDir(dataDir)
+	// Check if files are in the right place
+	if  err != nil {
+		return nil, fmt.Errorf("data directory does not exist: %s", dataDir)
 	}
 
 	baselineData := &BaselineData{
@@ -59,19 +57,16 @@ func (r *Reader) ReadAllYAMLFiles() (*BaselineData, error) {
 		},
 	}
 
-	// Check if files are in the right place
-	if _, err := os.Stat(r.dataDir); os.IsNotExist(err) {
-		return nil, fmt.Errorf("data directory does not exist: %s", r.dataDir)
-	}
 
 	// Process each YAML file
-	for _, filePath := range dir {
-		controlFamily, familyID, err := r.readYAMLFile(filePath.Name())
+	for _, file := range dir {
+		filePath := path.Join(dataDir, file.Name())
+		controlFamily, familyID, err := r.readYAMLFile(filePath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read file %s: %w", filePath, err)
 		}
 
-		baselineData.ControlFamilyFiles[familyID] = filePath.Name()
+		baselineData.ControlFamilyFiles[familyID] = filePath
 		baselineData.Catalog.ControlFamilies = append(baselineData.Catalog.ControlFamilies, *controlFamily)
 	}
 
@@ -80,26 +75,11 @@ func (r *Reader) ReadAllYAMLFiles() (*BaselineData, error) {
 
 // ReadYAMLFile reads a single YAML file and returns the control family data
 func (r *Reader) ReadYAMLFile(filename string) (*layer2.ControlFamily, error) {
-	filePath := filepath.Join(r.dataDir, filename)
+	filePath := filepath.Join(dataDir, filename)
 	controlFamily, _, err := r.readYAMLFile(filePath)
 	return controlFamily, err
 }
 
-// ListYAMLFiles returns a list of all YAML files in the data directory
-func (r *Reader) ListYAMLFiles() ([]string, error) {
-	files, err := r.findYAMLFiles()
-	if err != nil {
-		return nil, err
-	}
-
-	// Return just the filenames, not full paths
-	var filenames []string
-	for _, file := range files {
-		filenames = append(filenames, filepath.Base(file))
-	}
-
-	return filenames, nil
-}
 
 // GetControlFamilyCount returns the number of control families available
 func (r *Reader) GetControlFamilyCount() (int, error) {
@@ -114,30 +94,21 @@ func (r *Reader) GetControlFamilyCount() (int, error) {
 func (r *Reader) findYAMLFiles() ([]string, error) {
 	var yamlFiles []string
 
-	err := filepath.WalkDir(r.dataDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if d.IsDir() {
-			return nil
-		}
-
-		// Check for .yaml or .yml extensions
-		ext := strings.ToLower(filepath.Ext(path))
+	fileList,err := files.ReadDir(dataDir)
+	for _,f := range fileList{
+		ext := strings.ToLower(filepath.Ext(f.Name()))
 		if ext == ".yaml" || ext == ".yml" {
-			yamlFiles = append(yamlFiles, path)
+			yamlFiles = append(yamlFiles, f.Name())
 		}
-
-		return nil
-	})
+	}
 
 	return yamlFiles, err
 }
 
 // readYAMLFile reads and parses a single YAML file
 func (r *Reader) readYAMLFile(filePath string) (*layer2.ControlFamily, string, error) {
-	data, err := os.ReadFile(path+"/"+filePath)
+	// data, err := os.ReadFile(dataDir+"/"+filePath)
+	data, err := files.ReadFile(filePath)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to read file: %w", err)
 	}
@@ -193,7 +164,7 @@ func (r *Reader) GetControlByID(controlID string) (*layer2.Control, string, erro
 	return nil, "", fmt.Errorf("control with ID %s not found", controlID)
 }
 
-func(r *Reader)GetAssesmentRequirementById(assessmentID string)(*layer2.AssessmentRequirement, error){
+func(r *Reader)GetAssessmentRequirementById(assessmentID string)(*layer2.AssessmentRequirement, error){
 	//extract the control id
 	controlID := strings.Split(assessmentID, ".")[0]
 	control,_,err := r.GetControlByID(controlID)
@@ -220,41 +191,4 @@ func (r *Reader) GetControlsByFamily(familyID string) ([]layer2.Control, error) 
 	}
 
 	return controlFamily.Controls, nil
-}
-
-// PrintSummary prints a summary of all loaded baseline data
-func (r *Reader) PrintSummary() error {
-	baselineData, err := r.ReadAllYAMLFiles()
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("Baseline Data Summary:\n")
-	fmt.Printf("=====================\n")
-	fmt.Printf("Total Control Families: %d\n\n", len(baselineData.Catalog.ControlFamilies))
-
-	totalControls := 0
-	totalRequirements := 0
-
-	for _, family := range baselineData.Catalog.ControlFamilies {
-		controlCount := len(family.Controls)
-		totalControls += controlCount
-
-		requirementCount := 0
-		for _, control := range family.Controls {
-			requirementCount += len(control.AssessmentRequirements)
-		}
-		totalRequirements += requirementCount
-
-		fmt.Printf("Family: %s\n", family.Title)
-		fmt.Printf("  Description: %s\n", family.Description)
-		fmt.Printf("  Controls: %d\n", controlCount)
-		fmt.Printf("  Assessment Requirements: %d\n\n", requirementCount)
-	}
-
-	fmt.Printf("Totals:\n")
-	fmt.Printf("  Controls: %d\n", totalControls)
-	fmt.Printf("  Assessment Requirements: %d\n", totalRequirements)
-
-	return nil
 }
