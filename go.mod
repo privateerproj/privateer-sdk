@@ -5,7 +5,7 @@ go 1.23.4
 toolchain go1.24.1
 
 require (
-	github.com/goccy/go-yaml v1.17.1
+	github.com/goccy/go-yaml v1.18.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.6.3
 	github.com/revanite-io/sci v0.3.2
