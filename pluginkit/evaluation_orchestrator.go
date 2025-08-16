@@ -12,8 +12,8 @@ import (
 	"github.com/revanite-io/sci/layer4"
 )
 
-// The vessel gets the armory in position to execute the ControlEvaluations specified in the testSuites
-type Vessel struct {
+// The evaluation orchestrator gets the plugin in position to execute the specified evaluation suites
+type EvaluationOrchestrator struct {
 	Service_Name      string
 	Plugin_Name       string
 	Payload           interface{}
@@ -27,8 +27,8 @@ type Vessel struct {
 
 type DataLoader func(*config.Config) (interface{}, error)
 
-func NewVessel(pluginName string, loader DataLoader, requiredVars []string) *Vessel {
-	v := &Vessel{
+func NewEvaluationOrchestrator(pluginName string, loader DataLoader, requiredVars []string) *EvaluationOrchestrator {
+	v := &EvaluationOrchestrator{
 		Plugin_Name:  pluginName,
 		requiredVars: requiredVars,
 		loader:       loader,
@@ -36,7 +36,7 @@ func NewVessel(pluginName string, loader DataLoader, requiredVars []string) *Ves
 	return v
 }
 
-func (v *Vessel) AddEvaluationSuite(catalogId string, loader DataLoader, evaluations []*layer4.ControlEvaluation) {
+func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader DataLoader, evaluations []*layer4.ControlEvaluation) {
 	suite := EvaluationSuite{
 		Catalog_Id:          catalogId,
 		Control_Evaluations: evaluations,
@@ -50,7 +50,7 @@ func (v *Vessel) AddEvaluationSuite(catalogId string, loader DataLoader, evaluat
 	v.possibleSuites = append(v.possibleSuites, &suite)
 }
 
-func (v *Vessel) Mobilize() error {
+func (v *EvaluationOrchestrator) Mobilize() error {
 	v.setupConfig()
 	if v.config.Error != nil {
 		return v.config.Error
@@ -60,7 +60,7 @@ func (v *Vessel) Mobilize() error {
 		return BAD_LOADER(v.Plugin_Name, err)
 	}
 
-	v.config.Logger.Trace("Setting up vessel")
+	v.config.Logger.Trace("Setting up evaluation orchestrator")
 
 	if len(v.possibleSuites) == 0 {
 		return NO_EVALUATION_SUITES()
@@ -69,7 +69,7 @@ func (v *Vessel) Mobilize() error {
 	v.Service_Name = v.config.ServiceName
 
 	if v.Plugin_Name == "" || v.Service_Name == "" {
-		return VESSEL_NAMES_NOT_SET(v.Service_Name, v.Plugin_Name)
+		return EVALUATION_ORCHESTRATOR_NAMES_NOT_SET(v.Service_Name, v.Plugin_Name)
 	}
 
 	v.config.Logger.Trace("Mobilization beginning")
@@ -95,7 +95,7 @@ func (v *Vessel) Mobilize() error {
 	return v.WriteResults()
 }
 
-func (v *Vessel) WriteResults() error {
+func (v *EvaluationOrchestrator) WriteResults() error {
 
 	var err error
 	var result []byte
@@ -119,7 +119,7 @@ func (v *Vessel) WriteResults() error {
 	return nil
 }
 
-func (v *Vessel) writeResultsToFile(serviceName string, result []byte, extension string) error {
+func (v *EvaluationOrchestrator) writeResultsToFile(serviceName string, result []byte, extension string) error {
 	if !strings.Contains(extension, ".") {
 		extension = fmt.Sprintf(".%s", extension)
 	}
@@ -163,7 +163,7 @@ func (v *Vessel) writeResultsToFile(serviceName string, result []byte, extension
 }
 
 // SetPayload allows the user to pass data to be referenced in assessments
-func (v *Vessel) loadPayload() (err error) {
+func (v *EvaluationOrchestrator) loadPayload() (err error) {
 	payload := new(interface{})
 	if v.loader != nil {
 		data, err := v.loader(v.config)
@@ -187,7 +187,7 @@ func (v *Vessel) loadPayload() (err error) {
 	return nil
 }
 
-func (v *Vessel) setupConfig() {
+func (v *EvaluationOrchestrator) setupConfig() {
 	if v.config == nil {
 		c := config.NewConfig(v.requiredVars)
 		v.config = &c

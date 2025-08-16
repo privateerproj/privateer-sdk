@@ -13,16 +13,16 @@ import (
 
 type Plugin struct{}
 
-var ActiveVessel *pluginkit.Vessel
+var ActiveEvaluationOrchestrator *pluginkit.EvaluationOrchestrator
 
 // Start will be called by Privateer via gRPC
 func (p *Plugin) Start() error {
-	return ActiveVessel.Mobilize()
+	return ActiveEvaluationOrchestrator.Mobilize()
 }
 
-func NewPluginCommands(pluginName, buildVersion, buildGitCommitHash, buildTime string, vessel *pluginkit.Vessel) *cobra.Command {
+func NewPluginCommands(pluginName, buildVersion, buildGitCommitHash, buildTime string, orchestrator *pluginkit.EvaluationOrchestrator) *cobra.Command {
 
-	ActiveVessel = vessel
+	ActiveEvaluationOrchestrator = orchestrator
 
 	runCmd := runCommand(pluginName)
 
@@ -60,7 +60,7 @@ func debugCommand() *cobra.Command {
 		Short: "Run the Plugin in debug mode",
 		Run: func(cmd *cobra.Command, args []string) {
 			cmd.Print("Running in debug mode\n")
-			err := ActiveVessel.Mobilize()
+			err := ActiveEvaluationOrchestrator.Mobilize()
 			if err != nil {
 				cmd.Println(err)
 			}

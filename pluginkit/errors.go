@@ -24,6 +24,9 @@ var (
 	VESSEL_NAMES_NOT_SET = func(serviceName, pluginName string) error {
 		return fmt.Errorf("expected service and plugin names to be set. ServiceName='%s' PluginName='%s'", serviceName, pluginName)
 	}
+	EVALUATION_ORCHESTRATOR_NAMES_NOT_SET = func(serviceName, pluginName string) error {
+		return fmt.Errorf("expected service and plugin names to be set. ServiceName='%s' PluginName='%s'", serviceName, pluginName)
+	}
 	WRITE_FAILED = func(name, err string) error {
 		return fmt.Errorf("failed to write results for evaluation suite. name: %s, error: %s", name, err)
 	}
