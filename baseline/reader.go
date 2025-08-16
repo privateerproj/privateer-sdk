@@ -11,6 +11,11 @@ import (
 	"github.com/revanite-io/sci/layer2"
 )
 
+//This reader was put in place as a stopgap solution to get recommendation text on the output
+//yml files.  Improvement is needed, and eventually these baseline files will most likey be
+//Stored on github somehwere and retreived by tag, but for now we will embed them into the
+//SDK and retrieve them that way.
+
 const dataDir string = "data"
 
 //go:embed data

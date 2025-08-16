@@ -36,10 +36,11 @@ func NewEvaluationOrchestrator(pluginName string, loader DataLoader, requiredVar
 	return v
 }
 
-func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader DataLoader, evaluations []*layer4.ControlEvaluation) {
+func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader DataLoader, evaluations []*layer4.ControlEvaluation, recommendations map[string]string) {
 	suite := EvaluationSuite{
 		Catalog_Id:          catalogId,
 		Control_Evaluations: evaluations,
+		Recommendations: recommendations,
 	}
 	suite.config = v.config
 	if loader != nil {

@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/goccy/go-yaml"
-	"github.com/privateerproj/privateer-sdk/baseline"
 	"github.com/privateerproj/privateer-sdk/config"
+	"github.com/revanite-io/pvtr-github-repo/baseline"
 	"github.com/revanite-io/sci/layer4"
 )
 
@@ -26,6 +26,10 @@ type EvaluationSuite struct {
 	Corrupted_State bool          // BadState is true if any testSet failed to revert at the end of the evaluation
 
 	Control_Evaluations []*layer4.ControlEvaluation // Control_Evaluations is a slice of evaluations to be executed
+
+	//Put a map for recommendations with the Assessment id as the index, passed in from the plugin, initialized when
+	//we call AddEvaluationSuite
+	Recommendations map[string]string
 
 	payload interface{}    // payload is the data to be evaluated
 	loader  DataLoader     // loader is the function to load the payload
@@ -72,13 +76,16 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 			
 			br := baseline.NewReader();
 
+			//TODO call local in memory object instead of the br object from the add evaluation suite method
+
 			a,err := br.GetAssessmentRequirementById(assessment.Requirement_Id)
 
 			if(err != nil) {
 				// fmt.Println("ALEXXXXX ERROR", err)
 			}
 			if( err == nil ){
-				assessment.Recommendation = a.Recommendation
+				//TODO wrap this access in a function that returns an empty string if not found
+				assessment.Recommendation = e.Recommendations[assessment.Requirement_Id]
 			}
 		}
 
