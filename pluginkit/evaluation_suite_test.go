@@ -1,10 +1,8 @@
 package pluginkit
 
 import (
-	"fmt"
 	"testing"
 
-	"github.com/privateerproj/privateer-sdk/baseline"
 	"github.com/revanite-io/sci/layer4"
 )
 
@@ -50,23 +48,6 @@ func TestCleanup(t *testing.T) {
 	}
 }
 
-
-func TestReader (t *testing.T) {
-
-	
-	reader := baseline.NewReader()
-	if reader == nil {
-		t.Fatal("Failed to create Reader instance")
-	}
-
-	control, _, err := reader.GetControlByID("OSPS-AC-01")
-	if err != nil {
-		t.Fatalf("Failed to get control by ID: %v", err)
-	}
-
-	fmt.Println(control.AssessmentRequirements)
-
-}
 
 func TestEvaluate(t *testing.T) {
 	testData := []testingData{
