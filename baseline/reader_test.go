@@ -103,14 +103,6 @@ func TestReader_GetControlByID(t *testing.T) {
 		t.Errorf("Expected control ID OSPS-AC-01, got %s", control.Id)
 	}
 
-	if len(control.AssessmentRequirements) == 0 {
-        t.Error("Control has no assessment requirements")
-    } else {
-        // Then check if Recommendation is empty
-        if control.AssessmentRequirements[0].Recommendation == "" {
-            t.Error("Assessment requirement recommendation is empty")
-        }
-    }
 
 	if familyTitle == "" {
 		t.Error("Family title is empty")
@@ -174,7 +166,15 @@ func TestReader_GetReccomendationForEval(t *testing.T) {
 	
 	control,_,_:= reader.GetControlByID("OSPS-VM-04")
 
-	fmt.Printf("%v", control)
+
+	if len(control.AssessmentRequirements) == 0 {
+        t.Error("Control has no assessment requirements")
+    } else {
+        // Then check if Recommendation is empty
+        if control.AssessmentRequirements[0].Recommendation == "" {
+            t.Error("Assessment requirement recommendation is empty")
+        }
+    }
 
 }
 
