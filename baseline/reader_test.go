@@ -103,9 +103,19 @@ func TestReader_GetControlByID(t *testing.T) {
 		t.Errorf("Expected control ID OSPS-AC-01, got %s", control.Id)
 	}
 
+	if len(control.AssessmentRequirements) == 0 {
+        t.Error("Control has no assessment requirements")
+    } else {
+        // Then check if Recommendation is empty
+        if control.AssessmentRequirements[0].Recommendation == "" {
+            t.Error("Assessment requirement recommendation is empty")
+        }
+    }
+
 	if familyTitle == "" {
 		t.Error("Family title is empty")
 	}
+
 
 	// Test getting a non-existent control
 	_, _, err = reader.GetControlByID("NON-EXISTENT-CONTROL")
