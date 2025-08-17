@@ -10,7 +10,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 	"github.com/privateerproj/privateer-sdk/config"
-	"github.com/revanite-io/pvtr-github-repo/baseline"
+	"github.com/revanite-io/sci/layer2"
 	"github.com/revanite-io/sci/layer4"
 )
 
@@ -27,9 +27,9 @@ type EvaluationSuite struct {
 
 	Control_Evaluations []*layer4.ControlEvaluation // Control_Evaluations is a slice of evaluations to be executed
 
-	//Put a map for recommendations with the Assessment id as the index, passed in from the plugin, initialized when
-	//we call AddEvaluationSuite
-	Recommendations map[string]string
+	//The plugin will pass us a list of the assessment requirements so that we can build our results, mainly used
+	//for populating the reccomendation field.
+	Recommendations map[string]*layer2.AssessmentRequirement
 
 	payload interface{}    // payload is the data to be evaluated
 	loader  DataLoader     // loader is the function to load the payload
@@ -74,18 +74,9 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 				e.config.Logger.Error(message)
 			}
 			
-			br := baseline.NewReader();
-
-			//TODO call local in memory object instead of the br object from the add evaluation suite method
-
-			a,err := br.GetAssessmentRequirementById(assessment.Requirement_Id)
-
-			if(err != nil) {
-				// fmt.Println("ALEXXXXX ERROR", err)
-			}
-			if( err == nil ){
-				//TODO wrap this access in a function that returns an empty string if not found
-				assessment.Recommendation = e.Recommendations[assessment.Requirement_Id]
+			//populate the assessment reccomendation off of the list passed in (if passed)
+			if len(e.Recommendations) > 0 {
+				assessment.Recommendation = e.Recommendations[assessment.Requirement_Id].Recommendation
 			}
 		}
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 	"github.com/privateerproj/privateer-sdk/config"
+	"github.com/revanite-io/sci/layer2"
 	"github.com/revanite-io/sci/layer4"
 )
 
@@ -36,7 +37,7 @@ func NewEvaluationOrchestrator(pluginName string, loader DataLoader, requiredVar
 	return v
 }
 
-func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader DataLoader, evaluations []*layer4.ControlEvaluation, recommendations map[string]string) {
+func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader DataLoader, evaluations []*layer4.ControlEvaluation, recommendations map[string]*layer2.AssessmentRequirement) {
 	suite := EvaluationSuite{
 		Catalog_Id:          catalogId,
 		Control_Evaluations: evaluations,
