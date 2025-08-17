@@ -3,7 +3,7 @@ package pluginkit
 import (
 	"testing"
 
-	"github.com/revanite-io/sci/pkg/layer4"
+	"github.com/ossf/gemara/layer4"
 )
 
 func TestCleanup(t *testing.T) {
@@ -31,10 +31,10 @@ func TestCleanup(t *testing.T) {
 			}
 			data.config = setBasicConfig()
 			for _, eval := range data.Control_Evaluations {
-				expectedCorrupted := eval.Corrupted_State
+				expectedCorrupted := eval.CorruptedState
 				eval.Cleanup()
-				if eval.Corrupted_State != expectedCorrupted {
-					t.Errorf("Expected control evaluation corruption to be %v, but got %v", expectedCorrupted, eval.Corrupted_State)
+				if eval.CorruptedState != expectedCorrupted {
+					t.Errorf("Expected control evaluation corruption to be %v, but got %v", expectedCorrupted, eval.CorruptedState)
 				}
 				result := data.cleanup()
 				if result == expectedCorrupted {
@@ -76,7 +76,7 @@ func TestEvaluate(t *testing.T) {
 				t.Errorf("Expected %s, but got %s", test.expectedEvalSuiteError, err)
 			}
 			for _, eval := range suite.Control_Evaluations {
-				if (eval.Result == layer4.Passed) && eval.Corrupted_State {
+				if (eval.Result == layer4.Passed) && eval.CorruptedState {
 					t.Errorf("Control evaluation was marked 'Passed' and Corrupted_State=true")
 				}
 				// TODO: test more of the evaluation suite behavior

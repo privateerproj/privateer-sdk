@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/goccy/go-yaml"
+	"github.com/ossf/gemara/layer4"
 	"github.com/privateerproj/privateer-sdk/config"
-	"github.com/revanite-io/sci/pkg/layer4"
 )
 
 type TestSet func() (result layer4.ControlEvaluation)
@@ -48,7 +48,7 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 		evaluation.Evaluate(e.payload, e.config.Policy.Applicability, e.config.Invasive)
 		evaluation.Cleanup()
 		if !e.Corrupted_State {
-			e.Corrupted_State = evaluation.Corrupted_State
+			e.Corrupted_State = evaluation.CorruptedState
 		}
 
 		// Make sure the evaluation result is updated based on the complete assessment results
@@ -56,7 +56,7 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 
 		// Log each assessment result as a separate line
 		for _, assessment := range evaluation.Assessments {
-			message := fmt.Sprintf("%s: %s", assessment.Requirement_Id, assessment.Message)
+			message := fmt.Sprintf("%s: %s", assessment.RequirementId, assessment.Message)
 			// switch case the code below
 			switch assessment.Result {
 			case layer4.Passed:
@@ -173,8 +173,8 @@ func (e *EvaluationSuite) writeControlEvaluationsToFile(serviceName string, resu
 func (e *EvaluationSuite) cleanup() (passed bool) {
 	for _, result := range e.Control_Evaluations {
 		result.Cleanup()
-		if result.Corrupted_State {
-			e.Corrupted_State = result.Corrupted_State
+		if result.CorruptedState {
+			e.Corrupted_State = result.CorruptedState
 		}
 	}
 	return !e.Corrupted_State

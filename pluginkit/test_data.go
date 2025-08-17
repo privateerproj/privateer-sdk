@@ -3,7 +3,7 @@ package pluginkit
 import (
 	"fmt"
 
-	"github.com/revanite-io/sci/pkg/layer4"
+	"github.com/ossf/gemara/layer4"
 	"github.com/spf13/viper"
 
 	"github.com/privateerproj/privateer-sdk/config"
@@ -25,7 +25,7 @@ func examplePayload(_ *config.Config) (interface{}, error) {
 
 func passingEvaluation() (evaluation *layer4.ControlEvaluation) {
 	evaluation = &layer4.ControlEvaluation{
-		Control_Id: "good-evaluation",
+		ControlID: "good-evaluation",
 	}
 
 	assessment := evaluation.AddAssessment(
@@ -53,7 +53,7 @@ func passingEvaluation() (evaluation *layer4.ControlEvaluation) {
 
 func failingEvaluation() (evaluation *layer4.ControlEvaluation) {
 	evaluation = &layer4.ControlEvaluation{
-		Control_Id: "bad-evaluation",
+		ControlID: "bad-evaluation",
 	}
 
 	evaluation.AddAssessment(
@@ -70,7 +70,7 @@ func failingEvaluation() (evaluation *layer4.ControlEvaluation) {
 
 func needsReviewEvaluation() (evaluation *layer4.ControlEvaluation) {
 	evaluation = &layer4.ControlEvaluation{
-		Control_Id: "needs-review-evaluation",
+		ControlID: "needs-review-evaluation",
 	}
 
 	evaluation.AddAssessment(
@@ -86,7 +86,7 @@ func needsReviewEvaluation() (evaluation *layer4.ControlEvaluation) {
 
 func corruptedEvaluation() (evaluation *layer4.ControlEvaluation) {
 	evaluation = &layer4.ControlEvaluation{
-		Control_Id: "corrupted-evaluation",
+		ControlID: "corrupted-evaluation",
 	}
 
 	assessment := evaluation.AddAssessment(
