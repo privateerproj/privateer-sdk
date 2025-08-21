@@ -32,7 +32,7 @@ type Config struct {
 }
 
 type Policy struct {
-	// TODO: We will want to replace this with an SCI layer3 object when that is ready
+	// TODO: We will want to replace this with a Gemara layer3 object now that those are ready
 	ControlCatalogs []string
 	Applicability   []string
 }
