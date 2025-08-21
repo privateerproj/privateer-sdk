@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
+	"github.com/ossf/gemara/layer2"
 	"github.com/ossf/gemara/layer4"
 	"github.com/privateerproj/privateer-sdk/config"
 )
@@ -36,10 +37,11 @@ func NewEvaluationOrchestrator(pluginName string, loader DataLoader, requiredVar
 	return v
 }
 
-func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader DataLoader, evaluations []*layer4.ControlEvaluation) {
+func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader DataLoader, evaluations []*layer4.ControlEvaluation, requirements map[string]*layer2.AssessmentRequirement) {
 	suite := EvaluationSuite{
 		Catalog_Id:          catalogId,
 		Control_Evaluations: evaluations,
+		requirements:        requirements,
 	}
 	suite.config = v.config
 	if loader != nil {

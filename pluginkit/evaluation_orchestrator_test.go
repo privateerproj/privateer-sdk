@@ -69,7 +69,7 @@ func TestAddEvaluationSuite(t *testing.T) {
 				t.Run("subtest_"+suite.Name, func(t *testing.T) {
 					v := NewEvaluationOrchestrator("test", nil, []string{})
 					v.config = setBasicConfig()
-					v.AddEvaluationSuite("test", nil, test.evals)
+					v.AddEvaluationSuite("test", nil, test.evals, nil)
 					if len(v.possibleSuites) == 0 {
 						t.Error("Expected evaluation suites to be set")
 						return
@@ -101,7 +101,7 @@ func TestMobilize(t *testing.T) {
 				v.config = setLimitedConfig()
 
 				catalogName := strings.ReplaceAll(test.testName, " ", "-")
-				v.AddEvaluationSuite(catalogName, examplePayload, test.evals)
+				v.AddEvaluationSuite(catalogName, examplePayload, test.evals, nil)
 
 				// grab a count of the applicable evaluations when config is limited
 				err := v.Mobilize()
@@ -128,7 +128,7 @@ func runMobilizeTests(t *testing.T, test testingData, invasive bool, limitedConf
 	v.config = setBasicConfig()
 	v.config.Invasive = invasive
 
-	v.AddEvaluationSuite(catalogName, examplePayload, test.evals)
+	v.AddEvaluationSuite(catalogName, examplePayload, test.evals, nil)
 
 	// Nothing from our test data should be applicable right now, but they should be possible
 	err := v.Mobilize()

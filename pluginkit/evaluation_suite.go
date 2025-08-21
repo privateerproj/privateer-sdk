@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/goccy/go-yaml"
+	"github.com/ossf/gemara/layer2"
 	"github.com/ossf/gemara/layer4"
 	"github.com/privateerproj/privateer-sdk/config"
 )
@@ -25,6 +26,10 @@ type EvaluationSuite struct {
 	Corrupted_State bool          // BadState is true if any testSet failed to revert at the end of the evaluation
 
 	Control_Evaluations []*layer4.ControlEvaluation // Control_Evaluations is a slice of evaluations to be executed
+
+	//The plugin will pass us a list of the assessment requirements so that we can build our results, mainly used
+	//for populating the reccomendation field.
+	requirements map[string]*layer2.AssessmentRequirement
 
 	payload interface{}    // payload is the data to be evaluated
 	loader  DataLoader     // loader is the function to load the payload
@@ -67,6 +72,11 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 				e.config.Logger.Error(message)
 			case layer4.Unknown:
 				e.config.Logger.Error(message)
+			}
+
+			//populate the assessment reccomendation off of the requirement list passed in (if passed)
+			if len(e.requirements) > 0 && e.requirements[assessment.RequirementId] != nil {
+				assessment.Recommendation = e.requirements[assessment.RequirementId].Recommendation
 			}
 		}
 
