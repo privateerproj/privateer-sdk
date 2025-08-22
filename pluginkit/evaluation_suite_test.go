@@ -26,11 +26,11 @@ func TestCleanup(t *testing.T) {
 	for _, test := range testData {
 		t.Run(test.testName, func(t *testing.T) {
 			data := &EvaluationSuite{
-				Name:                test.testName,
-				Control_Evaluations: test.evals,
+				Name:               test.testName,
+				ControlEvaluations: test.evals,
 			}
 			data.config = setBasicConfig()
-			for _, eval := range data.Control_Evaluations {
+			for _, eval := range data.ControlEvaluations {
 				expectedCorrupted := eval.CorruptedState
 				eval.Cleanup()
 				if eval.CorruptedState != expectedCorrupted {
@@ -40,7 +40,7 @@ func TestCleanup(t *testing.T) {
 				if result == expectedCorrupted {
 					t.Errorf("Expected cleanup to return %v, but got %v", expectedCorrupted, result)
 				}
-				if data.Corrupted_State != expectedCorrupted {
+				if data.CorruptedState != expectedCorrupted {
 					t.Errorf("Expected suite result to be %v, but got %v", expectedCorrupted, data.Result)
 				}
 			}
@@ -62,8 +62,8 @@ func TestEvaluate(t *testing.T) {
 	for _, test := range testData {
 		t.Run(test.testName, func(t *testing.T) {
 			suite := &EvaluationSuite{
-				Name:                test.testName,
-				Control_Evaluations: test.evals,
+				Name:               test.testName,
+				ControlEvaluations: test.evals,
 			}
 			suite.config = setBasicConfig()
 			err := suite.Evaluate("")
@@ -75,9 +75,9 @@ func TestEvaluate(t *testing.T) {
 			if err != nil && test.expectedEvalSuiteError != nil && err.Error() != test.expectedEvalSuiteError.Error() {
 				t.Errorf("Expected %s, but got %s", test.expectedEvalSuiteError, err)
 			}
-			for _, eval := range suite.Control_Evaluations {
+			for _, eval := range suite.ControlEvaluations {
 				if (eval.Result == layer4.Passed) && eval.CorruptedState {
-					t.Errorf("Control evaluation was marked 'Passed' and Corrupted_State=true")
+					t.Errorf("Control evaluation was marked 'Passed' and CorruptedState=true")
 				}
 				// TODO: test more of the evaluation suite behavior
 			}

@@ -15,10 +15,10 @@ import (
 
 // The evaluation orchestrator gets the plugin in position to execute the specified evaluation suites
 type EvaluationOrchestrator struct {
-	Service_Name      string
-	Plugin_Name       string
+	ServiceName       string `yaml:"service-name"`
+	PluginName        string `yaml:"plugin-name"`
 	Payload           interface{}
-	Evaluation_Suites []*EvaluationSuite // EvaluationSuite is a map of evaluations to their catalog names
+	Evaluation_Suites []*EvaluationSuite `yaml:"evaluation-suites"` // EvaluationSuite is a map of evaluations to their catalog names
 
 	possibleSuites []*EvaluationSuite
 	requiredVars   []string
@@ -30,7 +30,7 @@ type DataLoader func(*config.Config) (interface{}, error)
 
 func NewEvaluationOrchestrator(pluginName string, loader DataLoader, requiredVars []string) *EvaluationOrchestrator {
 	v := &EvaluationOrchestrator{
-		Plugin_Name:  pluginName,
+		PluginName:   pluginName,
 		requiredVars: requiredVars,
 		loader:       loader,
 	}
@@ -39,9 +39,9 @@ func NewEvaluationOrchestrator(pluginName string, loader DataLoader, requiredVar
 
 func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader DataLoader, evaluations []*layer4.ControlEvaluation, requirements map[string]*layer2.AssessmentRequirement) {
 	suite := EvaluationSuite{
-		Catalog_Id:          catalogId,
-		Control_Evaluations: evaluations,
-		requirements:        requirements,
+		CatalogId:          catalogId,
+		ControlEvaluations: evaluations,
+		requirements:       requirements,
 	}
 	suite.config = v.config
 	if loader != nil {
@@ -59,7 +59,7 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 	}
 	err := v.loadPayload()
 	if err != nil {
-		return BAD_LOADER(v.Plugin_Name, err)
+		return BAD_LOADER(v.PluginName, err)
 	}
 
 	v.config.Logger.Trace("Setting up evaluation orchestrator")
@@ -68,19 +68,19 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 		return NO_EVALUATION_SUITES()
 	}
 
-	v.Service_Name = v.config.ServiceName
+	v.ServiceName = v.config.ServiceName
 
-	if v.Plugin_Name == "" || v.Service_Name == "" {
-		return EVALUATION_ORCHESTRATOR_NAMES_NOT_SET(v.Service_Name, v.Plugin_Name)
+	if v.PluginName == "" || v.ServiceName == "" {
+		return EVALUATION_ORCHESTRATOR_NAMES_NOT_SET(v.ServiceName, v.PluginName)
 	}
 
 	v.config.Logger.Trace("Mobilization beginning")
 
 	for _, catalog := range v.config.Policy.ControlCatalogs {
 		for _, suite := range v.possibleSuites {
-			if suite.Catalog_Id == catalog {
+			if suite.CatalogId == catalog {
 				suite.config = v.config
-				evalName := v.Service_Name + "_" + catalog
+				evalName := v.ServiceName + "_" + catalog
 				err := suite.Evaluate(evalName)
 				if err != nil {
 					v.config.Logger.Error(err.Error())
@@ -113,7 +113,7 @@ func (v *EvaluationOrchestrator) WriteResults() error {
 		return err
 	}
 
-	err = v.writeResultsToFile(v.Service_Name, result, v.config.Output)
+	err = v.writeResultsToFile(v.ServiceName, result, v.config.Output)
 	if err != nil {
 		return err
 	}
@@ -126,7 +126,7 @@ func (v *EvaluationOrchestrator) writeResultsToFile(serviceName string, result [
 		extension = fmt.Sprintf(".%s", extension)
 	}
 	dir := path.Join(v.config.WriteDirectory, serviceName)
-	filename := fmt.Sprintf("%s%s", v.Service_Name, extension)
+	filename := fmt.Sprintf("%s%s", v.ServiceName, extension)
 	filepath := path.Join(dir, filename)
 
 	v.config.Logger.Trace("Writing results", "filepath", filepath)

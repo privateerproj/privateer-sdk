@@ -78,8 +78,8 @@ func TestAddEvaluationSuite(t *testing.T) {
 						if suite.Name != "" {
 							t.Errorf("Expected pending evaluation suite name to be unset, but got %s", suite.Name)
 						}
-						if len(suite.Control_Evaluations) != len(test.evals) {
-							t.Errorf("Expected control evaluations to match test data, but got %v", suite.Control_Evaluations)
+						if len(suite.ControlEvaluations) != len(test.evals) {
+							t.Errorf("Expected control evaluations to match test data, but got %v", suite.ControlEvaluations)
 						}
 						if suite.config != v.config {
 							t.Errorf("Expected config to match simpleConfig but got %v", suite.config)
@@ -158,22 +158,22 @@ func runMobilizeTests(t *testing.T, test testingData, invasive bool, limitedConf
 
 	for _, suite := range v.Evaluation_Suites {
 		t.Run(suite.Name, func(tt *testing.T) {
-			if len(test.evals) != len(suite.Control_Evaluations) {
+			if len(test.evals) != len(suite.ControlEvaluations) {
 				tt.Errorf("Expected %v control evaluations, but got %v", len(test.evals), len(v.Evaluation_Suites))
 			}
 			if test.expectedResult != suite.Result {
 				tt.Errorf("Expected result to be %v, but got %v", test.expectedResult, suite.Result)
 			}
-			if v.config.Invasive && suite.Corrupted_State != test.expectedCorruption {
-				tt.Errorf("Expected corrupted state to be %v, but got %v", test.expectedCorruption, suite.Corrupted_State)
+			if v.config.Invasive && suite.CorruptedState != test.expectedCorruption {
+				tt.Errorf("Expected corrupted state to be %v, but got %v", test.expectedCorruption, suite.CorruptedState)
 			}
-			evaluationSuiteName := fmt.Sprintf("%s_%s", v.Service_Name, catalogName)
+			evaluationSuiteName := fmt.Sprintf("%s_%s", v.ServiceName, catalogName)
 			if suite.Name != evaluationSuiteName {
 				tt.Errorf("Expected evaluation suite name to be %s, but got %s", evaluationSuiteName, suite.Name)
 			}
 			for _, evaluatedSuite := range v.Evaluation_Suites {
-				if len(suite.Control_Evaluations) != len(evaluatedSuite.Control_Evaluations) {
-					tt.Errorf("Expected control evaluations to match test data, but got %v", evaluatedSuite.Control_Evaluations)
+				if len(suite.ControlEvaluations) != len(evaluatedSuite.ControlEvaluations) {
+					tt.Errorf("Expected control evaluations to match test data, but got %v", evaluatedSuite.ControlEvaluations)
 				}
 				testPayloadData := testPayload.(PayloadTypeExample)
 				suitePayloadData := evaluatedSuite.payload.(PayloadTypeExample)

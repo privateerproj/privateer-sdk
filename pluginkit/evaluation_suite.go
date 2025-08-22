@@ -18,14 +18,16 @@ type TestSet func() (result layer4.ControlEvaluation)
 
 // TestSuite is a struct that contains the results of all ControlEvaluations, organized by name
 type EvaluationSuite struct {
-	Name            string        // Name is the name of the suite
-	Catalog_Id      string        // Catalog_Id associates this suite with an catalog
-	Start_Time      string        // Start_Time is the time the plugin started
-	End_Time        string        // End_Time is the time the plugin ended
-	Result          layer4.Result // Result is Passed if all evaluations in the suite passed
-	Corrupted_State bool          // BadState is true if any testSet failed to revert at the end of the evaluation
+	Name   string        // Name is the name of the suite
+	Result layer4.Result // Result is Passed if all evaluations in the suite passed
 
-	Control_Evaluations []*layer4.ControlEvaluation // Control_Evaluations is a slice of evaluations to be executed
+	CatalogId string `yaml:"catalog-id"` // CatalogId associates this suite with an catalog
+	StartTime string `yaml:"start-time"` // StartTime is the time the plugin started
+	EndTime   string `yaml:"end-time"`   // EndTime is the time the plugin ended
+
+	CorruptedState bool `yaml:"corrupted-state"` // BadState is true if any testSet failed to revert at the end of the evaluation
+
+	ControlEvaluations []*layer4.ControlEvaluation `yaml:"control-evaluations"` // ControlEvaluations is a slice of evaluations to be executed
 
 	//The plugin will pass us a list of the assessment requirements so that we can build our results, mainly used
 	//for populating the reccomendation field.
@@ -47,13 +49,13 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 		return EVAL_NAME_MISSING()
 	}
 	e.Name = name
-	e.Start_Time = time.Now().String()
-	e.config.Logger.Trace("Starting evaluation", "name", e.Name, "time", e.Start_Time)
-	for _, evaluation := range e.Control_Evaluations {
+	e.StartTime = time.Now().String()
+	e.config.Logger.Trace("Starting evaluation", "name", e.Name, "time", e.StartTime)
+	for _, evaluation := range e.ControlEvaluations {
 		evaluation.Evaluate(e.payload, e.config.Policy.Applicability, e.config.Invasive)
 		evaluation.Cleanup()
-		if !e.Corrupted_State {
-			e.Corrupted_State = evaluation.CorruptedState
+		if !e.CorruptedState {
+			e.CorruptedState = evaluation.CorruptedState
 		}
 
 		// Make sure the evaluation result is updated based on the complete assessment results
@@ -87,16 +89,16 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 		} else if evaluation.Result != layer4.NotRun {
 			e.evalWarnings += 1
 		}
-		if e.Corrupted_State {
+		if e.CorruptedState {
 			break
 		}
 	}
 
 	e.cleanup()
-	e.End_Time = time.Now().String()
+	e.EndTime = time.Now().String()
 
 	output := fmt.Sprintf("> %s: %v Passed, %v Warnings, %v Failed", e.Name, e.evalSuccesses, e.evalWarnings, e.evalFailures)
-	if e.Corrupted_State {
+	if e.CorruptedState {
 		return CORRUPTION_FOUND()
 	}
 	switch e.Result {
@@ -181,11 +183,11 @@ func (e *EvaluationSuite) writeControlEvaluationsToFile(serviceName string, resu
 }
 
 func (e *EvaluationSuite) cleanup() (passed bool) {
-	for _, result := range e.Control_Evaluations {
+	for _, result := range e.ControlEvaluations {
 		result.Cleanup()
 		if result.CorruptedState {
-			e.Corrupted_State = result.CorruptedState
+			e.CorruptedState = result.CorruptedState
 		}
 	}
-	return !e.Corrupted_State
+	return !e.CorruptedState
 }
