@@ -8,13 +8,13 @@ require (
 	github.com/goccy/go-yaml v1.18.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.7.0
-	github.com/ossf/gemara v0.7.1
+	github.com/ossf/gemara v0.9.0
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/viper v1.21.0
 )
 
 require (
-	github.com/defenseunicorns/go-oscal v0.6.3 // indirect
+	github.com/defenseunicorns/go-oscal v0.7.0 // indirect
 	github.com/fatih/color v1.14.1 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
