@@ -30,7 +30,7 @@ type EvaluationSuite struct {
 	ControlEvaluations []*layer4.ControlEvaluation `yaml:"control-evaluations"` // ControlEvaluations is a slice of evaluations to be executed
 
 	//The plugin will pass us a list of the assessment requirements so that we can build our results, mainly used
-	//for populating the reccomendation field.
+	//for populating the recommendation field.
 	requirements map[string]*layer2.AssessmentRequirement
 
 	payload interface{}    // payload is the data to be evaluated
@@ -62,7 +62,7 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 		e.Result = layer4.UpdateAggregateResult(e.Result, evaluation.Result)
 
 		// Log each assessment result as a separate line
-		for _, assessment := range evaluation.Assessments {
+		for _, assessment := range evaluation.AssessmentLogs {
 			message := fmt.Sprintf("%s: %s", assessment.RequirementId, assessment.Message)
 			// switch case the code below
 			switch assessment.Result {
