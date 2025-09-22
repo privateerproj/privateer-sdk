@@ -51,7 +51,7 @@ func NewConfig(requiredVars []string) Config {
 		// Overwrite or add local vars onto the global vars
 		vars[key] = value
 	}
-	log.Printf("vars: %v", vars)
+	printSanitizedVars(vars)
 
 	topLoglevel := viper.GetString("loglevel")
 	loglevel := viper.GetString(fmt.Sprintf("services.%s.loglevel", serviceName))
@@ -140,6 +140,19 @@ func NewConfig(requiredVars []string) Config {
 		"output", output,
 	)
 	return config
+}
+
+func printSanitizedVars(vars map[string]interface{}) {
+	sanitizedVars := make(map[string]interface{})
+	for key, value := range vars {
+		switch key {
+		case "token", "auth", "password", "secret", "apikey", "api_key":
+			sanitizedVars[key] = "REDACTED"
+		default:
+			sanitizedVars[key] = value
+		}
+	}
+	log.Printf("Using vars: %v", sanitizedVars)
 }
 
 func defaultWritePath() string {
