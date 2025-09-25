@@ -152,7 +152,7 @@ func printSanitizedVars(logger hclog.Logger, vars map[string]interface{}) {
 			sanitizedVars[key] = value
 		}
 	}
-	logger.Trace("Using vars", "vars", sanitizedVars)
+	logger.Trace("Using vars: %v", sanitizedVars)
 }
 
 func defaultWritePath() string {
