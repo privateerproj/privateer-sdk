@@ -51,7 +51,6 @@ func NewConfig(requiredVars []string) Config {
 		// Overwrite or add local vars onto the global vars
 		vars[key] = value
 	}
-	printSanitizedVars(vars)
 
 	topLoglevel := viper.GetString("loglevel")
 	loglevel := viper.GetString(fmt.Sprintf("services.%s.loglevel", serviceName))
@@ -128,6 +127,7 @@ func NewConfig(requiredVars []string) Config {
 		serviceName = "overview"
 	}
 	config.SetupLogging(serviceName, output == "json")
+	printSanitizedVars(config.Logger, vars)
 	config.Logger.Trace("Creating a new config instance for service",
 		"serviceName", serviceName,
 		"loglevel", loglevel,
@@ -142,7 +142,7 @@ func NewConfig(requiredVars []string) Config {
 	return config
 }
 
-func printSanitizedVars(vars map[string]interface{}) {
+func printSanitizedVars(logger hclog.Logger, vars map[string]interface{}) {
 	sanitizedVars := make(map[string]interface{})
 	for key, value := range vars {
 		switch key {
@@ -152,7 +152,7 @@ func printSanitizedVars(vars map[string]interface{}) {
 			sanitizedVars[key] = value
 		}
 	}
-	log.Printf("Using vars: %v", sanitizedVars)
+	logger.Trace("Using vars", "vars", sanitizedVars)
 }
 
 func defaultWritePath() string {
