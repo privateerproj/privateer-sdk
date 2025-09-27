@@ -1,6 +1,5 @@
 build: tidy build test
 quick: build
-test: test
 testcov: test-cov
 
 tidy:
