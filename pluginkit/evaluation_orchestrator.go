@@ -17,6 +17,8 @@ import (
 type EvaluationOrchestrator struct {
 	ServiceName       string `yaml:"service-name"`
 	PluginName        string `yaml:"plugin-name"`
+	PluginUri         string `yaml:"plugin-uri"`
+	PluginVersion     string `yaml:"plugin-version"`
 	Payload           interface{}
 	Evaluation_Suites []*EvaluationSuite `yaml:"evaluation-suites"` // EvaluationSuite is a map of evaluations to their catalog names
 
@@ -39,9 +41,9 @@ func NewEvaluationOrchestrator(pluginName string, loader DataLoader, requiredVar
 
 func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader DataLoader, evaluations []*layer4.ControlEvaluation, requirements map[string]*layer2.AssessmentRequirement) {
 	suite := EvaluationSuite{
-		CatalogId:          catalogId,
-		ControlEvaluations: evaluations,
-		requirements:       requirements,
+		CatalogId:     catalogId,
+		EvaluationLog: layer4.EvaluationLog{Evaluations: evaluations},
+		requirements:  requirements,
 	}
 	suite.config = v.config
 	if loader != nil {
@@ -106,13 +108,20 @@ func (v *EvaluationOrchestrator) WriteResults() error {
 		result, err = json.Marshal(v)
 	case "yaml":
 		result, err = yaml.Marshal(v)
+	case "sarif":
+		for _, suite := range v.Evaluation_Suites {
+			sarifBytes, err := suite.EvaluationLog.ToSARIF()
+			if err != nil {
+				return err
+			}
+			result = append(result, sarifBytes...)
+		}
 	default:
 		err = fmt.Errorf("output type '%s' is not supported. Supported types are 'json' and 'yaml'", v.config.Output)
 	}
 	if err != nil {
 		return err
 	}
-
 	err = v.writeResultsToFile(v.ServiceName, result, v.config.Output)
 	if err != nil {
 		return err

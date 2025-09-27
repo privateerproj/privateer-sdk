@@ -78,8 +78,8 @@ func TestAddEvaluationSuite(t *testing.T) {
 						if suite.Name != "" {
 							t.Errorf("Expected pending evaluation suite name to be unset, but got %s", suite.Name)
 						}
-						if len(suite.ControlEvaluations) != len(test.evals) {
-							t.Errorf("Expected control evaluations to match test data, but got %v", suite.ControlEvaluations)
+						if len(suite.EvaluationLog.Evaluations) != len(test.evals) {
+							t.Errorf("Expected control evaluations to match test data, but got %v", suite.EvaluationLog.Evaluations)
 						}
 						if suite.config != v.config {
 							t.Errorf("Expected config to match simpleConfig but got %v", suite.config)
@@ -158,7 +158,7 @@ func runMobilizeTests(t *testing.T, test testingData, invasive bool, limitedConf
 
 	for _, suite := range v.Evaluation_Suites {
 		t.Run(suite.Name, func(tt *testing.T) {
-			if len(test.evals) != len(suite.ControlEvaluations) {
+			if len(test.evals) != len(suite.EvaluationLog.Evaluations) {
 				tt.Errorf("Expected %v control evaluations, but got %v", len(test.evals), len(v.Evaluation_Suites))
 			}
 			if test.expectedResult != suite.Result {
@@ -172,8 +172,8 @@ func runMobilizeTests(t *testing.T, test testingData, invasive bool, limitedConf
 				tt.Errorf("Expected evaluation suite name to be %s, but got %s", evaluationSuiteName, suite.Name)
 			}
 			for _, evaluatedSuite := range v.Evaluation_Suites {
-				if len(suite.ControlEvaluations) != len(evaluatedSuite.ControlEvaluations) {
-					tt.Errorf("Expected control evaluations to match test data, but got %v", evaluatedSuite.ControlEvaluations)
+				if len(suite.EvaluationLog.Evaluations) != len(evaluatedSuite.EvaluationLog.Evaluations) {
+					tt.Errorf("Expected control evaluations to match test data, but got %v", evaluatedSuite.EvaluationLog.Evaluations)
 				}
 				testPayloadData := testPayload.(PayloadTypeExample)
 				suitePayloadData := evaluatedSuite.payload.(PayloadTypeExample)

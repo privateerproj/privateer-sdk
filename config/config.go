@@ -16,7 +16,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-var allowedOutputTypes = []string{"json", "yaml"}
+var allowedOutputTypes = []string{"json", "yaml", "sarif"}
 
 type Config struct {
 	ServiceName    string // Must be unique in the config file or logs will be overwritten
