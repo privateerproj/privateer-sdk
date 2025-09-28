@@ -1,4 +1,3 @@
-build: tidy build test
 quick: build
 testcov: test-cov
 
@@ -6,7 +5,7 @@ tidy:
 	@echo "  >  Tidying go.mod ..."
 	go mod tidy
 
-build:
+build: tidy test
 	@echo "  >  Building ..."
 	go build ./...
 
