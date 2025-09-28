@@ -8,9 +8,6 @@ import (
 
 // Errors with no parameters
 var (
-	CORRUPTION_FOUND = func() error {
-		return errors.New("target state may be corrupted! Halting to prevent futher damage. See logs for more information")
-	}
 	NO_EVALUATION_SUITES = func() error {
 		return errors.New("no control evaluations provided by the plugin")
 	}

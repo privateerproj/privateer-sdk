@@ -1,8 +1,6 @@
 package pluginkit
 
 import (
-	"fmt"
-
 	"github.com/ossf/gemara/layer4"
 	"github.com/spf13/viper"
 
@@ -13,7 +11,6 @@ type testingData struct {
 	testName               string
 	evals                  []*layer4.ControlEvaluation
 	expectedEvalSuiteError error
-	expectedCorruption     bool
 	expectedResult         layer4.Result
 }
 
@@ -25,10 +22,10 @@ func examplePayload(_ *config.Config) (interface{}, error) {
 
 func passingEvaluation() (evaluation *layer4.ControlEvaluation) {
 	evaluation = &layer4.ControlEvaluation{
-		ControlID: "good-evaluation",
+		ControlId: "good-evaluation",
 	}
 
-	assessment := evaluation.AddAssessment(
+	evaluation.AddAssessment(
 		"assessment-good",
 		"this assessment should work fine",
 		requestedApplicability,
@@ -36,24 +33,12 @@ func passingEvaluation() (evaluation *layer4.ControlEvaluation) {
 			step_Pass,
 		},
 	)
-	assessment.NewChange(
-		"good-change",
-		"fake-target-name",
-		"this change doesn't do anything",
-		nil,
-		func(interface{}) (interface{}, error) {
-			return nil, nil
-		},
-		func(interface{}) error {
-			return nil
-		},
-	)
 	return
 }
 
 func failingEvaluation() (evaluation *layer4.ControlEvaluation) {
 	evaluation = &layer4.ControlEvaluation{
-		ControlID: "bad-evaluation",
+		ControlId: "bad-evaluation",
 	}
 
 	evaluation.AddAssessment(
@@ -70,7 +55,7 @@ func failingEvaluation() (evaluation *layer4.ControlEvaluation) {
 
 func needsReviewEvaluation() (evaluation *layer4.ControlEvaluation) {
 	evaluation = &layer4.ControlEvaluation{
-		ControlID: "needs-review-evaluation",
+		ControlId: "needs-review-evaluation",
 	}
 
 	evaluation.AddAssessment(
@@ -79,34 +64,6 @@ func needsReviewEvaluation() (evaluation *layer4.ControlEvaluation) {
 		requestedApplicability,
 		[]layer4.AssessmentStep{
 			step_NeedsReview,
-		},
-	)
-	return
-}
-
-func corruptedEvaluation() (evaluation *layer4.ControlEvaluation) {
-	evaluation = &layer4.ControlEvaluation{
-		ControlID: "corrupted-evaluation",
-	}
-
-	assessment := evaluation.AddAssessment(
-		"assessment-corrupted",
-		"this assessment should be corrupted",
-		requestedApplicability,
-		[]layer4.AssessmentStep{
-			step_Corrupted,
-		},
-	)
-	assessment.NewChange(
-		"corrupted-change",
-		"fake-target-name",
-		"this change doesn't do anything",
-		nil,
-		func(interface{}) (interface{}, error) {
-			return nil, nil
-		},
-		func(interface{}) error {
-			return fmt.Errorf("corrupted")
 		},
 	)
 	return
@@ -135,24 +92,16 @@ type PayloadTypeExample struct {
 	CustomPayloadField bool
 }
 
-func step_Pass(data interface{}, changes map[string]*layer4.Change) (result layer4.Result, message string) {
-	if changes != nil && changes["good-change"] != nil {
-		changes["good-change"].Apply("target_name", "target_object", data)
-	}
+func step_Pass(data interface{}) (result layer4.Result, message string) {
 	return layer4.Passed, "This step always passes"
 }
 
-func step_Fail(_ interface{}, _ map[string]*layer4.Change) (result layer4.Result, message string) {
+func step_Fail(_ interface{}) (result layer4.Result, message string) {
 	return layer4.Failed, "This step always fails"
 }
 
-func step_NeedsReview(_ interface{}, _ map[string]*layer4.Change) (result layer4.Result, message string) {
+func step_NeedsReview(_ interface{}) (result layer4.Result, message string) {
 	return layer4.NeedsReview, "This step always needs review"
-}
-
-func step_Corrupted(data interface{}, changes map[string]*layer4.Change) (result layer4.Result, message string) {
-	changes["corrupted-change"].Apply("target_name", "target_object", data)
-	return layer4.Unknown, "This step always returns unknown and applies a corrupted change"
 }
 
 var mobilizeTestData = []testingData{
@@ -175,14 +124,6 @@ var mobilizeTestData = []testingData{
 		expectedResult: layer4.NeedsReview,
 		evals: []*layer4.ControlEvaluation{
 			needsReviewEvaluation(),
-		},
-	},
-	{
-		testName:           "Corrupted Evaluation",
-		expectedResult:     layer4.Unknown,
-		expectedCorruption: true,
-		evals: []*layer4.ControlEvaluation{
-			corruptedEvaluation(),
 		},
 	},
 	{
@@ -211,15 +152,6 @@ var mobilizeTestData = []testingData{
 		},
 	},
 	{
-		testName:           "Pass Then Corrupted",
-		expectedResult:     layer4.Unknown,
-		expectedCorruption: true,
-		evals: []*layer4.ControlEvaluation{
-			passingEvaluation(),
-			corruptedEvaluation(),
-		},
-	},
-	{
 		testName:       "Needs Review Then Pass",
 		expectedResult: layer4.NeedsReview,
 		evals: []*layer4.ControlEvaluation{
@@ -233,65 +165,6 @@ var mobilizeTestData = []testingData{
 		evals: []*layer4.ControlEvaluation{
 			needsReviewEvaluation(),
 			failingEvaluation(),
-		},
-	},
-	{
-		testName:           "Corrupt Pass Pass",
-		expectedResult:     layer4.Unknown,
-		expectedCorruption: true,
-		evals: []*layer4.ControlEvaluation{
-			corruptedEvaluation(),
-			passingEvaluation(),
-			passingEvaluation(),
-		},
-	},
-	{
-		testName:           "Pass Corrupt Pass",
-		expectedResult:     layer4.Unknown,
-		expectedCorruption: true,
-		evals: []*layer4.ControlEvaluation{
-			passingEvaluation(),
-			corruptedEvaluation(),
-			passingEvaluation(),
-		},
-	},
-	{
-		testName:           "Pass Pass Corrupt",
-		expectedResult:     layer4.Unknown,
-		expectedCorruption: true,
-		evals: []*layer4.ControlEvaluation{
-			passingEvaluation(),
-			passingEvaluation(),
-			corruptedEvaluation(),
-		},
-	},
-	{
-		testName:           "Corrupt Corrupt Pass",
-		expectedResult:     layer4.Unknown,
-		expectedCorruption: true,
-		evals: []*layer4.ControlEvaluation{
-			corruptedEvaluation(),
-			corruptedEvaluation(),
-			passingEvaluation(),
-		},
-	},
-	{
-		testName:           "Corrupt Corrupt Corrupt",
-		expectedResult:     layer4.Unknown,
-		expectedCorruption: true,
-		evals: []*layer4.ControlEvaluation{
-			corruptedEvaluation(),
-			corruptedEvaluation(),
-			corruptedEvaluation(),
-		},
-	},
-	{
-		testName:           "Corrupt then Needs Review",
-		expectedResult:     layer4.Unknown,
-		expectedCorruption: true,
-		evals: []*layer4.ControlEvaluation{
-			corruptedEvaluation(),
-			needsReviewEvaluation(),
 		},
 	},
 }

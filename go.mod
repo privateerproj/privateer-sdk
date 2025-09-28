@@ -44,4 +44,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-// replace github.com/ossf/gemara => ../../ossf/gemara
+replace github.com/ossf/gemara => github.com/trumant/gemara v0.0.0-20250928035815-5965a511fc2e
