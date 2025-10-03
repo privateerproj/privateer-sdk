@@ -20,7 +20,6 @@ type EvaluationSuite struct {
 	StartTime string `yaml:"start-time"` // StartTime is the time the plugin started
 	EndTime   string `yaml:"end-time"`   // EndTime is the time the plugin ended
 
-	CorruptedState bool `yaml:"corrupted-state"` // BadState is true if any testSet failed to revert at the end of the evaluation
 
 	EvaluationLog layer4.EvaluationLog `yaml:"control-evaluations"` // EvaluationLog is a slice of evaluations to be executed
 
@@ -47,11 +46,7 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 	e.StartTime = time.Now().String()
 	e.config.Logger.Trace("Starting evaluation", "name", e.Name, "time", e.StartTime)
 	for _, evaluation := range e.EvaluationLog.Evaluations {
-		evaluation.Evaluate(e.payload, e.config.Policy.Applicability, e.config.Invasive)
-		evaluation.Cleanup()
-		if !e.CorruptedState {
-			e.CorruptedState = evaluation.CorruptedState
-		}
+		evaluation.Evaluate(e.payload, e.config.Policy.Applicability)
 
 		// Make sure the evaluation result is updated based on the complete assessment results
 		e.Result = layer4.UpdateAggregateResult(e.Result, evaluation.Result)
@@ -71,7 +66,7 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 				e.config.Logger.Error(message)
 			}
 
-			//populate the assessment reccomendation off of the requirement list passed in (if passed)
+			//populate the assessment recommendation off of the requirement list passed in (if passed)
 			if len(e.requirements) > 0 && e.requirements[assessment.RequirementId] != nil {
 				assessment.Recommendation = e.requirements[assessment.RequirementId].Recommendation
 			}
@@ -84,18 +79,11 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 		} else if evaluation.Result != layer4.NotRun {
 			e.evalWarnings += 1
 		}
-		if e.CorruptedState {
-			break
-		}
 	}
 
-	e.cleanup()
 	e.EndTime = time.Now().String()
 
 	output := fmt.Sprintf("> %s: %v Passed, %v Warnings, %v Failed", e.Name, e.evalSuccesses, e.evalWarnings, e.evalFailures)
-	if e.CorruptedState {
-		return CORRUPTION_FOUND()
-	}
 	switch e.Result {
 	case layer4.Passed:
 		e.config.Logger.Info(output)
@@ -107,12 +95,3 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 	return nil
 }
 
-func (e *EvaluationSuite) cleanup() (passed bool) {
-	for _, result := range e.EvaluationLog.Evaluations {
-		result.Cleanup()
-		if result.CorruptedState {
-			e.CorruptedState = result.CorruptedState
-		}
-	}
-	return !e.CorruptedState
-}

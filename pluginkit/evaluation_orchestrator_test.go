@@ -164,9 +164,6 @@ func runMobilizeTests(t *testing.T, test testingData, invasive bool, limitedConf
 			if test.expectedResult != suite.Result {
 				tt.Errorf("Expected result to be %v, but got %v", test.expectedResult, suite.Result)
 			}
-			if v.config.Invasive && suite.CorruptedState != test.expectedCorruption {
-				tt.Errorf("Expected corrupted state to be %v, but got %v", test.expectedCorruption, suite.CorruptedState)
-			}
 			evaluationSuiteName := fmt.Sprintf("%s_%s", v.ServiceName, catalogName)
 			if suite.Name != evaluationSuiteName {
 				tt.Errorf("Expected evaluation suite name to be %s, but got %s", evaluationSuiteName, suite.Name)
