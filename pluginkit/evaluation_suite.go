@@ -47,18 +47,14 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 	e.StartTime = time.Now().String()
 	e.config.Logger.Trace("Starting evaluation", "name", e.Name, "time", e.StartTime)
 	for _, evaluation := range e.EvaluationLog.Evaluations {
-		evaluation.Evaluate(e.payload, e.config.Policy.Applicability, e.config.Invasive)
-		evaluation.Cleanup()
-		if !e.CorruptedState {
-			e.CorruptedState = evaluation.CorruptedState
-		}
+		evaluation.Evaluate(e.payload, e.config.Policy.Applicability)
 
 		// Make sure the evaluation result is updated based on the complete assessment results
 		e.Result = layer4.UpdateAggregateResult(e.Result, evaluation.Result)
 
 		// Log each assessment result as a separate line
 		for _, assessment := range evaluation.AssessmentLogs {
-			message := fmt.Sprintf("%s: %s", assessment.RequirementId, assessment.Message)
+			message := fmt.Sprintf("%s: %s", assessment.Requirement.EntryId, assessment.Message)
 			// switch case the code below
 			switch assessment.Result {
 			case layer4.Passed:
@@ -72,8 +68,8 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 			}
 
 			//populate the assessment reccomendation off of the requirement list passed in (if passed)
-			if len(e.requirements) > 0 && e.requirements[assessment.RequirementId] != nil {
-				assessment.Recommendation = e.requirements[assessment.RequirementId].Recommendation
+			if len(e.requirements) > 0 && e.requirements[assessment.Requirement.EntryId] != nil {
+				assessment.Recommendation = e.requirements[assessment.Requirement.EntryId].Recommendation
 			}
 		}
 
@@ -89,7 +85,6 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 		}
 	}
 
-	e.cleanup()
 	e.EndTime = time.Now().String()
 
 	output := fmt.Sprintf("> %s: %v Passed, %v Warnings, %v Failed", e.Name, e.evalSuccesses, e.evalWarnings, e.evalFailures)
@@ -105,14 +100,4 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 		e.config.Logger.Error(output)
 	}
 	return nil
-}
-
-func (e *EvaluationSuite) cleanup() (passed bool) {
-	for _, result := range e.EvaluationLog.Evaluations {
-		result.Cleanup()
-		if result.CorruptedState {
-			e.CorruptedState = result.CorruptedState
-		}
-	}
-	return !e.CorruptedState
 }
