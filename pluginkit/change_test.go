@@ -21,10 +21,6 @@ var (
 	}
 )
 
-func pendingChangePtr() *Change {
-	c := pendingChange()
-	return &c
-}
 func pendingChange() Change {
 	return Change{
 		TargetName:  "pendingChange",
@@ -229,8 +225,8 @@ func TestChange_Revert(t *testing.T) {
 			if tt.change.Reverted != tt.expectedReverted {
 				t.Errorf("Reverted = %v, expected %v", tt.change.Reverted, tt.expectedReverted)
 			}
-			if tt.change.BadState != tt.expectedBadState {
-				t.Errorf("BadState = %v, expected %v", tt.change.BadState, tt.expectedBadState)
+			if tt.change.CorruptedState != tt.expectedBadState {
+				t.Errorf("CorruptedState = %v, expected %v", tt.change.CorruptedState, tt.expectedBadState)
 			}
 		})
 	}
@@ -378,7 +374,7 @@ func TestChangeManager_BadState(t *testing.T) {
 	if success {
 		t.Error("Apply should fail with bad apply function")
 	}
-	if !cm.BadState {
+	if !cm.CorruptedState {
 		t.Error("ChangeManager should be in bad state after failed apply")
 	}
 }

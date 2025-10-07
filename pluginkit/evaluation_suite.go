@@ -20,7 +20,7 @@ type EvaluationSuite struct {
 	StartTime string `yaml:"start-time"` // StartTime is the time the plugin started
 	EndTime   string `yaml:"end-time"`   // EndTime is the time the plugin ended
 
-	CorruptedState bool `yaml:"corrupted-state"` // BadState is true if any testSet failed to revert at the end of the evaluation
+	CorruptedState bool `yaml:"corrupted-state"` // CorruptedState is true if any testSet failed to revert at the end of the evaluation
 
 	EvaluationLog layer4.EvaluationLog `yaml:"control-evaluations"` // EvaluationLog is a slice of evaluations to be executed
 
@@ -97,17 +97,22 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 		} else if evaluation.Result != layer4.NotRun {
 			e.evalWarnings += 1
 		}
-		if e.changeManager.BadState {
+		if e.changeManager != nil && e.changeManager.CorruptedState {
 			break
 		}
 	}
 
+	output := fmt.Sprintf("> %s: %v Passed, %v Warnings, %v Failed", e.Name, e.evalSuccesses, e.evalWarnings, e.evalFailures)
+
 	e.EndTime = time.Now().String()
 
-	output := fmt.Sprintf("> %s: %v Passed, %v Warnings, %v Failed", e.Name, e.evalSuccesses, e.evalWarnings, e.evalFailures)
-	if e.CorruptedState {
-		return CORRUPTION_FOUND()
+	if e.changeManager != nil {
+		e.changeManager.RevertAll()
+		if e.CorruptedState {
+			return CORRUPTION_FOUND()
+		}
 	}
+
 	switch e.Result {
 	case layer4.Passed:
 		e.config.Logger.Info(output)

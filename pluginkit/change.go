@@ -15,8 +15,8 @@ type ChangeManager struct {
 	Changes map[string]*Change `yaml:"changes"`
 	// Allowed must be set to true before any change can be applied.
 	Allowed bool `yaml:"allowed,omitempty"`
-	// BadState is true if any change has failed to apply or revert, indicating that the system may be in a bad state.
-	BadState bool `yaml:"bad-state,omitempty"`
+	// CorruptedState is true if any change has failed to apply or revert, indicating that the system may be in a bad state.
+	CorruptedState bool `yaml:"bad-state,omitempty"`
 }
 
 // Change is a struct that contains the data and functions associated with a single change to a target resource.
@@ -29,7 +29,7 @@ type Change struct {
 	applyFunc ApplyFunc
 	// revertFunc is the function that will be executed to undo the change
 	revertFunc RevertFunc
-	// TargetObject is a representation of the object that was changed
+	// TargetObject is an optional representation of the object that is being changed
 	TargetObject interface{} `yaml:"target-object,omitempty"`
 	// Applied is true if the change was successfully applied at least once
 	Applied bool `yaml:"applied,omitempty"`
@@ -37,8 +37,8 @@ type Change struct {
 	Reverted bool `yaml:"reverted,omitempty"`
 	// Error is used if any error occurred during the change
 	Error error `yaml:"error,omitempty"`
-	// BadState is true if something went wrong during apply or revert, indicating that the system may be in a bad state
-	BadState bool `yaml:"bad-state,omitempty"`
+	// CorruptedState is true if something went wrong during apply or revert, indicating that the system may be in a bad state
+	CorruptedState bool `yaml:"bad-state,omitempty"`
 }
 
 // Allow marks the change as allowed to be applied.
@@ -63,8 +63,8 @@ func (cm *ChangeManager) Apply(changeName string, targetName string, changeInput
 		return false, nil
 	}
 	success, target = change.apply(targetName, changeInput)
-	if change.BadState {
-		cm.BadState = true
+	if change.CorruptedState {
+		cm.CorruptedState = true
 	}
 	return success, target
 }
@@ -75,8 +75,17 @@ func (cm *ChangeManager) Revert(changeName string) {
 		return
 	}
 	change.revert(change.TargetObject)
-	if change.BadState {
-		cm.BadState = true
+	if change.CorruptedState {
+		cm.CorruptedState = true
+	}
+}
+
+func (cm *ChangeManager) RevertAll() {
+	for _, change := range cm.Changes {
+		change.revert(change.TargetObject)
+		if change.CorruptedState {
+			cm.CorruptedState = true
+		}
 	}
 }
 
@@ -98,7 +107,7 @@ func (c *Change) apply(targetName string, changeInput any) (success bool, target
 	c.TargetName = targetName
 	c.TargetObject, err = c.applyFunc(changeInput)
 	if err != nil {
-		c.BadState = true
+		c.CorruptedState = true
 		c.Error = err
 		return false, c.TargetObject
 	}
@@ -120,7 +129,7 @@ func (c *Change) revert(data interface{}) {
 	err = c.revertFunc(data)
 	if err != nil {
 		c.Error = err
-		c.BadState = true
+		c.CorruptedState = true
 		return
 	}
 	c.Reverted = true
