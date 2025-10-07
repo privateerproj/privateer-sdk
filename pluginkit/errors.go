@@ -17,6 +17,9 @@ var (
 	EVAL_NAME_MISSING = func() error {
 		return errors.New("evaluationSuite name must not be empty")
 	}
+	CONFIG_NOT_INITIALIZED = func() error {
+		return errors.New("configuration not initialized")
+	}
 )
 
 // Errors with parameters required

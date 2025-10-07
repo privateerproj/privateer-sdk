@@ -70,29 +70,30 @@ func TestAddEvaluationSuite(t *testing.T) {
 	}
 	for _, test := range testData {
 		t.Run(test.testName, func(t *testing.T) {
-			for _, suite := range test.evals {
-				t.Run("subtest_"+suite.Name, func(t *testing.T) {
-					v := &EvaluationOrchestrator{
-						PluginName: "test",
-					}
-					v.config = setBasicConfig()
-					v.AddEvaluationSuite(nil, test.evals, nil)
-					if len(v.possibleSuites) == 0 {
-						t.Error("Expected evaluation suites to be set")
-						return
-					}
-					for _, suite := range v.possibleSuites {
-						if suite.Name != "" {
-							t.Errorf("Expected pending evaluation suite name to be unset, but got %s", suite.Name)
-						}
-						if len(suite.EvaluationLog.Evaluations) != len(test.evals) {
-							t.Errorf("Expected control evaluations to match test data, but got %v", suite.EvaluationLog.Evaluations)
-						}
-						if suite.config != v.config {
-							t.Errorf("Expected config to match simpleConfig but got %v", suite.config)
-						}
-					}
-				})
+			catalog, err := getTestCatalog()
+			if err != nil {
+				t.Errorf("Expected no error loading test catalog, but got %v", err)
+				return
+			}
+			v := &EvaluationOrchestrator{
+				PluginName: "test",
+			}
+			v.config = setBasicConfig()
+			v.AddEvaluationSuite(nil, test.evals, catalog)
+			if len(v.possibleSuites) == 0 {
+				t.Error("Expected evaluation suites to be set")
+				return
+			}
+			for _, suite := range v.possibleSuites {
+				if suite.Name != "" {
+					t.Errorf("Expected pending evaluation suite name to be unset, but got %s", suite.Name)
+				}
+				if len(suite.EvaluationLog.Evaluations) != len(test.evals) {
+					t.Errorf("Expected control evaluations to match test data, but got %v", suite.EvaluationLog.Evaluations)
+				}
+				if suite.config != v.config {
+					t.Errorf("Expected config to match simpleConfig but got %v", suite.config)
+				}
 			}
 		})
 	}
@@ -135,12 +136,14 @@ func TestMobilize(t *testing.T) {
 }
 
 func runMobilizeTests(t *testing.T, test testingData, invasive bool, limitedConfigEvaluationCount int) {
-	catalogName := strings.ReplaceAll(test.testName, " ", "-")
-	catalog := &layer2.Catalog{
-		Metadata: layer2.Metadata{
-			Id: catalogName,
-		},
+	catalog, err := getTestCatalog()
+	if err != nil {
+		t.Errorf("Expected no error loading test catalog, but got %v", err)
+		return
 	}
+
+	catalogName := strings.ReplaceAll(test.testName, " ", "-")
+	catalog.Metadata.Id = catalogName
 	v := &EvaluationOrchestrator{
 		PluginName: "test",
 	}
@@ -150,7 +153,7 @@ func runMobilizeTests(t *testing.T, test testingData, invasive bool, limitedConf
 	v.AddEvaluationSuite(examplePayload, test.evals, catalog)
 
 	// Nothing from our test data should be applicable right now, but they should be possible
-	err := v.Mobilize()
+	err = v.Mobilize()
 	if err != nil {
 		t.Errorf("Expected no error, but got %v", err)
 	}

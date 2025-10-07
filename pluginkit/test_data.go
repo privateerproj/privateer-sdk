@@ -1,6 +1,10 @@
 package pluginkit
 
 import (
+	"fmt"
+	"os"
+
+	"github.com/ossf/gemara/layer2"
 	"github.com/ossf/gemara/layer4"
 	"github.com/spf13/viper"
 
@@ -16,6 +20,29 @@ type testingData struct {
 }
 
 var testPayload = interface{}(PayloadTypeExample{CustomPayloadField: true})
+
+var testCatalog = &layer2.Catalog{
+	ControlFamilies: []layer2.ControlFamily{},
+}
+
+func getTestCatalog() (*layer2.Catalog, error) {
+	if len(testCatalog.ControlFamilies) > 0 {
+		return testCatalog, nil
+	}
+	catalog := &layer2.Catalog{}
+	pwd, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("could not get working directory when retrieving catalog: %w", err)
+	}
+	file1 := fmt.Sprintf("file://%s/catalog-test-data/metadata.yaml", pwd)
+	file2 := fmt.Sprintf("file://%s/catalog-test-data/controls.yaml", pwd)
+	err = catalog.LoadFiles([]string{file1, file2})
+	if err != nil {
+
+		return nil, err
+	}
+	return catalog, nil
+}
 
 func examplePayload(_ *config.Config) (interface{}, error) {
 	return testPayload, nil

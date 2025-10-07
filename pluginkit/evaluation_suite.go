@@ -47,6 +47,9 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 	if name == "" {
 		return EVAL_NAME_MISSING()
 	}
+	if e.config == nil {
+		return CONFIG_NOT_INITIALIZED()
+	}
 
 	if e.config.Invasive && e.changeManager != nil {
 		e.changeManager.Allow()
