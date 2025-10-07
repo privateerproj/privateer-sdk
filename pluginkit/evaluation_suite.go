@@ -24,9 +24,7 @@ type EvaluationSuite struct {
 
 	EvaluationLog layer4.EvaluationLog `yaml:"control-evaluations"` // EvaluationLog is a slice of evaluations to be executed
 
-	//The plugin will pass us a list of the assessment requirements so that we can build our results, mainly used
-	//for populating the recommendation field.
-	requirements map[string]*layer2.AssessmentRequirement
+	catalog *layer2.Catalog // The Catalog this evaluation suite references
 
 	payload interface{}    // payload is the data to be evaluated
 	loader  DataLoader     // loader is the function to load the payload
@@ -46,6 +44,13 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 	e.Name = name
 	e.StartTime = time.Now().String()
 	e.config.Logger.Trace("Starting evaluation", "name", e.Name, "time", e.StartTime)
+
+	requirements, err := e.GetAssessmentRequirements()
+	if err != nil {
+		e.EndTime = time.Now().String()
+		return fmt.Errorf("Failed to load assessment requirements from catalog: %w", err)
+	}
+
 	for _, evaluation := range e.EvaluationLog.Evaluations {
 		evaluation.Evaluate(e.payload, e.config.Policy.Applicability)
 
@@ -67,9 +72,8 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 				e.config.Logger.Error(message)
 			}
 
-			//populate the assessment reccomendation off of the requirement list passed in (if passed)
-			if len(e.requirements) > 0 && e.requirements[assessment.Requirement.EntryId] != nil {
-				assessment.Recommendation = e.requirements[assessment.Requirement.EntryId].Recommendation
+			if len(requirements) > 0 && requirements[assessment.Requirement.EntryId] != nil {
+				assessment.Recommendation = requirements[assessment.Requirement.EntryId].Recommendation
 			}
 		}
 
@@ -100,4 +104,21 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 		e.config.Logger.Error(output)
 	}
 	return nil
+}
+
+func (e *EvaluationSuite) GetAssessmentRequirements() (map[string]*layer2.AssessmentRequirement, error) {
+	requirements := make(map[string]*layer2.AssessmentRequirement)
+	for _, family := range e.catalog.ControlFamilies {
+		for _, control := range family.Controls {
+			for _, requirement := range control.AssessmentRequirements {
+				requirements[requirement.Id] = &requirement
+			}
+		}
+	}
+
+	if len(requirements) == 0 {
+		return nil, fmt.Errorf("GetAssessmentRequirements: 0 requirements found")
+	}
+
+	return requirements, nil
 }

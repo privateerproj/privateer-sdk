@@ -30,20 +30,18 @@ type EvaluationOrchestrator struct {
 
 type DataLoader func(*config.Config) (interface{}, error)
 
-func NewEvaluationOrchestrator(pluginName string, loader DataLoader, requiredVars []string) *EvaluationOrchestrator {
-	v := &EvaluationOrchestrator{
-		PluginName:   pluginName,
-		requiredVars: requiredVars,
-		loader:       loader,
-	}
-	return v
+func (v *EvaluationOrchestrator) AddRequiredVars(vars []string) {
+	v.requiredVars = vars
 }
 
-func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader DataLoader, evaluations []*layer4.ControlEvaluation, requirements map[string]*layer2.AssessmentRequirement) {
+func (v *EvaluationOrchestrator) AddEvaluationSuite(loader DataLoader, evaluations []*layer4.ControlEvaluation, catalog *layer2.Catalog) {
+	if catalog == nil {
+		return
+	}
 	suite := EvaluationSuite{
-		CatalogId:     catalogId,
+		CatalogId:     catalog.Metadata.Id,
 		EvaluationLog: layer4.EvaluationLog{Evaluations: evaluations},
-		requirements:  requirements,
+		catalog:       catalog,
 	}
 	suite.config = v.config
 	if loader != nil {
