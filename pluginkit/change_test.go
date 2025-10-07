@@ -29,16 +29,7 @@ func pendingChange() Change {
 		revertFunc:  goodRevertFunc,
 	}
 }
-func appliedRevertedChange() Change {
-	return Change{
-		TargetName:  "appliedRevertedChange",
-		Description: "description placeholder",
-		applyFunc:   goodApplyFunc,
-		revertFunc:  goodRevertFunc,
-		Applied:     true,
-		Reverted:    true,
-	}
-}
+
 func appliedNotRevertedChange() Change {
 	return Change{
 		TargetName:  "appliedNotRevertedChange",
@@ -48,10 +39,6 @@ func appliedNotRevertedChange() Change {
 		Applied:     true,
 	}
 }
-func badApplyChangePtr() *Change {
-	c := badApplyChange()
-	return &c
-}
 func badApplyChange() Change {
 	return Change{
 		TargetName:  "badApplyChange",
@@ -59,10 +46,6 @@ func badApplyChange() Change {
 		applyFunc:   badApplyFunc,
 		revertFunc:  goodRevertFunc,
 	}
-}
-func badRevertChangePtr() *Change {
-	c := badRevertChange()
-	return &c
 }
 func badRevertChange() Change {
 	return Change{
@@ -72,55 +55,10 @@ func badRevertChange() Change {
 		revertFunc:  badRevertFunc,
 	}
 }
-func goodRevertedChangePtr() *Change {
-	c := goodRevertedChange()
-	return &c
-}
-func goodRevertedChange() Change {
-	return Change{
-		TargetName:  "goodRevertedChange",
-		Description: "description placeholder",
-		applyFunc:   goodApplyFunc,
-		revertFunc:  goodRevertFunc,
-		Reverted:    true,
-	}
-}
-func goodNotRevertedChangePtr() *Change {
-	c := goodNotRevertedChange()
-	return &c
-}
-func goodNotRevertedChange() Change {
-	return Change{
-		TargetName:  "goodNotRevertedChange",
-		Description: "description placeholder",
-		applyFunc:   goodApplyFunc,
-		revertFunc:  goodRevertFunc,
-		Applied:     true,
-	}
-}
-func noApplyChangePtr() *Change {
-	c := noApplyChange()
-	return &c
-}
 func noApplyChange() Change {
 	return Change{
 		TargetName:  "noApplyChange",
 		Description: "description placeholder",
-		revertFunc:  goodRevertFunc,
-	}
-}
-func noRevertChange() Change {
-	return Change{
-		TargetName:  "noRevertChange",
-		Description: "description placeholder",
-		applyFunc:   goodApplyFunc,
-	}
-}
-func disallowedChange() Change {
-	return Change{
-		TargetName:  "disallowedChange",
-		Description: "description placeholder",
-		applyFunc:   goodApplyFunc,
 		revertFunc:  goodRevertFunc,
 	}
 }
@@ -318,7 +256,7 @@ func TestChangeManager_Apply(t *testing.T) {
 			cm := &ChangeManager{
 				Allowed: tt.allowed,
 				Changes: map[string]*Change{
-					"test-change": &Change{
+					"test-change": {
 						TargetName:  "test",
 						Description: "test change",
 						applyFunc:   goodApplyFunc,
@@ -338,7 +276,7 @@ func TestChangeManager_Apply(t *testing.T) {
 func TestChangeManager_Revert(t *testing.T) {
 	cm := &ChangeManager{
 		Changes: map[string]*Change{
-			"test-change": &Change{
+			"test-change": {
 				TargetName:   "test",
 				Description:  "test change",
 				applyFunc:    goodApplyFunc,

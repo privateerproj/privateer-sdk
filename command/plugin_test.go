@@ -11,8 +11,6 @@ var (
 	buildVersion       = "1.0.0"
 	buildGitCommitHash = "123"
 	buildTime          = "2020-01-01T00:00:00Z"
-
-	nilInterface = interface{}(nil)
 )
 
 func TestNewPluginCommands(t *testing.T) {

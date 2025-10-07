@@ -61,7 +61,7 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 	requirements, err := e.GetAssessmentRequirements()
 	if err != nil {
 		e.EndTime = time.Now().String()
-		return fmt.Errorf("Failed to load assessment requirements from catalog: %w", err)
+		return fmt.Errorf("failed to load assessment requirements from catalog: %w", err)
 	}
 
 	for _, evaluation := range e.EvaluationLog.Evaluations {
