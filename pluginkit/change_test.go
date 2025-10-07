@@ -299,7 +299,7 @@ func TestChangeManager_BadState(t *testing.T) {
 	cm := &ChangeManager{
 		Allowed: true,
 		Changes: map[string]*Change{
-			"bad-change": &Change{
+			"bad-change": {
 				TargetName:  "test",
 				Description: "bad change",
 				applyFunc:   badApplyFunc,

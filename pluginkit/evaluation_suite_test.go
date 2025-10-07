@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ossf/gemara/layer2"
 	"github.com/ossf/gemara/layer4"
 )
 
@@ -22,8 +21,9 @@ func TestEvaluate(t *testing.T) {
 	for _, test := range testData {
 		t.Run(test.testName, func(t *testing.T) {
 			// Create a minimal catalog to avoid nil pointer panic
-			catalog := &layer2.Catalog{
-				ControlFamilies: []layer2.ControlFamily{},
+			catalog, err := getTestCatalog()
+			if err != nil {
+				t.Fatal("Failed to load test catalog")
 			}
 
 			suite := &EvaluationSuite{
@@ -33,7 +33,7 @@ func TestEvaluate(t *testing.T) {
 			}
 			suite.config = setBasicConfig()
 
-			err := suite.Evaluate("")
+			err = suite.Evaluate("")
 			if err == nil || err.Error() != EVAL_NAME_MISSING().Error() {
 				t.Errorf("Expected '%s', but got '%v'", EVAL_NAME_MISSING(), err)
 			}
