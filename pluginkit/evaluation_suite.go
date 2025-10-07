@@ -38,8 +38,8 @@ type EvaluationSuite struct {
 
 // AddChangeManager sets up the change manager for the evaluation suite
 func (e *EvaluationSuite) AddChangeManager(cm *ChangeManager) {
-	e.changeManager = cm
-	if e.config.Invasive && e.changeManager != nil {
+	if e.config.Invasive && cm != nil {
+		e.changeManager = cm
 		e.changeManager.Allow()
 	}
 }

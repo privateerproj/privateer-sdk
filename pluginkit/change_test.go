@@ -62,6 +62,12 @@ func noApplyChange() Change {
 		revertFunc:  goodRevertFunc,
 	}
 }
+func noFuncsChange() Change {
+	return Change{
+		TargetName:  "noFuncsChange",
+		Description: "description placeholder",
+	}
+}
 
 // Test functions for Change
 func TestChange_Apply(t *testing.T) {
@@ -175,7 +181,13 @@ func TestNewChange(t *testing.T) {
 	description := "test description"
 	targetObject := "test-object"
 
-	change := NewChange(targetName, description, targetObject, goodApplyFunc, goodRevertFunc)
+	change := Change{
+		TargetName:   targetName,
+		Description:  description,
+		TargetObject: targetObject,
+	}
+
+	change.AddFunctions(goodApplyFunc, goodRevertFunc)
 
 	if change.TargetName != targetName {
 		t.Errorf("TargetName = %v, expected %v", change.TargetName, targetName)
@@ -201,18 +213,30 @@ func TestChangeManager_Allow(t *testing.T) {
 	}
 }
 
-func TestChangeManager_Add(t *testing.T) {
+func TestChangeManager_AddChange(t *testing.T) {
 	cm := &ChangeManager{}
 	changeName := "test-change"
 	change := pendingChange()
 
-	cm.Add(changeName, change)
+	cm.AddChange(changeName, change)
 
 	if cm.Changes == nil {
 		t.Error("Changes map should be initialized")
 	}
 	if _, exists := cm.Changes[changeName]; !exists {
 		t.Error("Change should be added to the Changes map")
+	}
+}
+
+func TestChangeManager_AddFunctions(t *testing.T) {
+	change := noFuncsChange()
+	if change.applyFunc != nil || change.revertFunc != nil {
+		t.Error("Test is malformed: expected nil functions but got non-nil")
+	}
+
+	change.AddFunctions(goodApplyFunc, goodRevertFunc)
+	if change.applyFunc == nil || change.revertFunc == nil {
+		t.Error("Change functions should be updated")
 	}
 }
 

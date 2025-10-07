@@ -46,11 +46,16 @@ func (cm *ChangeManager) Allow() {
 	cm.Allowed = true
 }
 
-func (cm *ChangeManager) Add(changeName string, change Change) {
+func (cm *ChangeManager) AddChange(changeName string, change Change) {
 	if cm.Changes == nil {
 		cm.Changes = make(map[string]*Change)
 	}
 	cm.Changes[changeName] = &change
+}
+
+func (c *Change) AddFunctions(applyFunc ApplyFunc, revertFunc RevertFunc) {
+	c.applyFunc = applyFunc
+	c.revertFunc = revertFunc
 }
 
 // Apply the prepared function for the change. It will not apply the change if it is not allowed, or if it has already been applied and not reverted.
@@ -150,15 +155,4 @@ func (c *Change) precheck() error {
 		return fmt.Errorf("change has a previous error and can no longer be applied: %s", c.Error.Error())
 	}
 	return nil
-}
-
-// NewChange creates a new Change object.
-func NewChange(targetName string, description string, targetObject interface{}, applyFunc ApplyFunc, revertFunc RevertFunc) Change {
-	return Change{
-		TargetName:   targetName,
-		TargetObject: targetObject,
-		Description:  description,
-		applyFunc:    applyFunc,
-		revertFunc:   revertFunc,
-	}
 }
