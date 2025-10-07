@@ -26,13 +26,19 @@ type EvaluationSuite struct {
 
 	catalog *layer2.Catalog // The Catalog this evaluation suite references
 
-	payload interface{}    // payload is the data to be evaluated
-	loader  DataLoader     // loader is the function to load the payload
-	config  *config.Config // config is the global configuration for the plugin
+	payload       interface{}    // payload is the data to be evaluated
+	loader        DataLoader     // loader is the function to load the payload
+	changeManager *ChangeManager // changes is a list of changes made during the evaluation
+	config        *config.Config // config is the global configuration for the plugin
 
 	evalSuccesses int // successes is the number of successful evaluations
 	evalFailures  int // failures is the number of failed evaluations
 	evalWarnings  int // warnings is the number of evaluations that need review
+}
+
+// AddChangeManager sets up the change manager for the evaluation suite
+func (e *EvaluationSuite) AddChangeManager(cm *ChangeManager) {
+	e.changeManager = cm
 }
 
 // Execute is used to execute a list of EvaluationLog provided by a Plugin and customized by user config
@@ -41,6 +47,13 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 	if name == "" {
 		return EVAL_NAME_MISSING()
 	}
+
+	if e.config.Invasive && e.changeManager != nil {
+		e.changeManager.Allow()
+	} else if e.changeManager == nil {
+		e.changeManager = &ChangeManager{}
+	}
+
 	e.Name = name
 	e.StartTime = time.Now().String()
 	e.config.Logger.Trace("Starting evaluation", "name", e.Name, "time", e.StartTime)
@@ -84,7 +97,7 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 		} else if evaluation.Result != layer4.NotRun {
 			e.evalWarnings += 1
 		}
-		if e.CorruptedState {
+		if e.changeManager.BadState {
 			break
 		}
 	}
