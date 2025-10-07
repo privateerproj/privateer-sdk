@@ -39,6 +39,9 @@ type EvaluationSuite struct {
 // AddChangeManager sets up the change manager for the evaluation suite
 func (e *EvaluationSuite) AddChangeManager(cm *ChangeManager) {
 	e.changeManager = cm
+	if e.config.Invasive && e.changeManager != nil {
+		e.changeManager.Allow()
+	}
 }
 
 // Execute is used to execute a list of EvaluationLog provided by a Plugin and customized by user config
@@ -49,12 +52,6 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 	}
 	if e.config == nil {
 		return CONFIG_NOT_INITIALIZED()
-	}
-
-	if e.config.Invasive && e.changeManager != nil {
-		e.changeManager.Allow()
-	} else if e.changeManager == nil {
-		e.changeManager = &ChangeManager{}
 	}
 
 	e.Name = name
