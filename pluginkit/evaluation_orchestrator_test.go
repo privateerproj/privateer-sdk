@@ -121,6 +121,7 @@ func TestMobilize(t *testing.T) {
 					Metadata: layer2.Metadata{
 						Id: strings.ReplaceAll(test.testName, " ", "-"),
 					},
+					ControlFamilies: []layer2.ControlFamily{{Id: "placeholder"}},
 				}
 				v.AddEvaluationSuite(examplePayload, convertEvalsToStepsMap(test.evals), catalog)
 
@@ -187,8 +188,20 @@ func runMobilizeTests(t *testing.T, test testingData, invasive bool, limitedConf
 
 	for _, suite := range v.Evaluation_Suites {
 		t.Run(suite.Name, func(tt *testing.T) {
-			if len(test.evals) != len(suite.EvaluationLog.Evaluations) {
-				tt.Errorf("Expected %v control evaluations, but got %v", len(test.evals), len(v.Evaluation_Suites))
+			// Count the number of controls in the catalog to verify we're evaluating them all
+			catalog, err := getTestCatalog()
+			if err != nil {
+				tt.Errorf("Failed to get test catalog: %v", err)
+				return
+			}
+
+			var controlCount int
+			for _, family := range catalog.ControlFamilies {
+				controlCount += len(family.Controls)
+			}
+
+			if controlCount != len(suite.EvaluationLog.Evaluations) {
+				tt.Errorf("Expected %v control evaluations (from catalog), but got %v", controlCount, len(suite.EvaluationLog.Evaluations))
 			}
 			if test.expectedResult != suite.Result {
 				tt.Errorf("Expected result to be %v, but got %v", test.expectedResult, suite.Result)

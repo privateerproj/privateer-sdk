@@ -53,23 +53,21 @@ func (e *EvaluationSuite) Evaluate(serviceName string) error {
 		return CONFIG_NOT_INITIALIZED()
 	}
 
-	e.Name = fmt.Sprintf("%s_%s", serviceName, e.CatalogId)
-	e.StartTime = time.Now().String()
-	e.config.Logger.Trace("Starting evaluation", "name", e.Name, "time", e.StartTime)
-
 	requirements, err := e.GetAssessmentRequirements()
 	if err != nil {
-		e.EndTime = time.Now().String()
-		return fmt.Errorf("failed to load assessment requirements from catalog: %w", err)
+		return BAD_ASSESSMENT_REQS(err)
 	}
 
 	evalLog, err := e.setupEvalLog(e.steps)
 	if err != nil {
-		e.EndTime = time.Now().String()
-		return fmt.Errorf("failed to setup evaluation log: %w", err)
+		return NO_EVAL_LOG(err)
 	}
 
+	e.Name = fmt.Sprintf("%s_%s", serviceName, e.CatalogId)
 	e.EvaluationLog = evalLog
+	e.StartTime = time.Now().String()
+
+	e.config.Logger.Trace("Starting evaluation", "name", e.Name, "time", e.StartTime)
 
 	for _, evaluation := range e.EvaluationLog.Evaluations {
 		evaluation.Evaluate(e.payload, e.config.Policy.Applicability)
@@ -142,7 +140,7 @@ func (e *EvaluationSuite) GetAssessmentRequirements() (map[string]*layer2.Assess
 	}
 
 	if len(requirements) == 0 {
-		return nil, fmt.Errorf("GetAssessmentRequirements: 0 requirements found")
+		return nil, NO_ASSESSMENT_REQS_PROVIDED()
 	}
 
 	return requirements, nil

@@ -23,6 +23,9 @@ var (
 	NO_ASSESSMENT_STEPS_PROVIDED = func() error {
 		return errors.New("assessment steps not provided")
 	}
+	NO_ASSESSMENT_REQS_PROVIDED = func() error {
+		return errors.New("assessment requirements not provided")
+	}
 )
 
 // Errors with parameters required
@@ -38,5 +41,11 @@ var (
 	}
 	BAD_CATALOG = func(pluginName string, errMsg string) error {
 		return fmt.Errorf("malformed data in catalog for %s: %s", pluginName, errMsg)
+	}
+	NO_EVAL_LOG = func(err error) error {
+		return fmt.Errorf("failed to setup evaluation log: %w", err)
+	}
+	BAD_ASSESSMENT_REQS = func(err error) error {
+		return fmt.Errorf("failed to load assessment requirements from catalog: %w", err)
 	}
 )
