@@ -63,9 +63,7 @@ func TestAddEvaluationSuite(t *testing.T) {
 		{
 			testName:       "Good Evaluation",
 			expectedResult: layer4.Passed,
-			evals: []*layer4.ControlEvaluation{
-				passingEvaluation(),
-			},
+			steps:          createPassingStepsMap(),
 		},
 	}
 	for _, test := range testData {
@@ -79,7 +77,7 @@ func TestAddEvaluationSuite(t *testing.T) {
 				PluginName: "test",
 			}
 			v.config = setBasicConfig()
-			v.AddEvaluationSuite(nil, test.evals, catalog)
+			v.AddEvaluationSuite(examplePayload, test.steps, catalog)
 			if len(v.possibleSuites) == 0 {
 				t.Error("Expected evaluation suites to be set")
 				return
@@ -88,11 +86,20 @@ func TestAddEvaluationSuite(t *testing.T) {
 				if suite.Name != "" {
 					t.Errorf("Expected pending evaluation suite name to be unset, but got %s", suite.Name)
 				}
-				if len(suite.EvaluationLog.Evaluations) != len(test.evals) {
-					t.Errorf("Expected control evaluations to match test data, but got %v", suite.EvaluationLog.Evaluations)
+				if suite.CatalogId != catalog.Metadata.Id {
+					t.Errorf("Expected catalog ID to match, but got %s instead of %s", suite.CatalogId, catalog.Metadata.Id)
+				}
+				if len(suite.steps) != len(test.steps) {
+					t.Errorf("Expected steps to match test data, but got %v", suite.steps)
 				}
 				if suite.config != v.config {
 					t.Errorf("Expected config to match simpleConfig but got %v", suite.config)
+				}
+				if suite.loader == nil {
+					t.Error("Expected loader to be set")
+				}
+				if suite.catalog != catalog {
+					t.Error("Expected catalog to be set correctly")
 				}
 			}
 		})
@@ -115,7 +122,7 @@ func TestMobilize(t *testing.T) {
 						Id: strings.ReplaceAll(test.testName, " ", "-"),
 					},
 				}
-				v.AddEvaluationSuite(examplePayload, test.evals, catalog)
+				v.AddEvaluationSuite(examplePayload, convertEvalsToStepsMap(test.evals), catalog)
 
 				// grab a count of the applicable evaluations when config is limited
 				err := v.Mobilize()
@@ -150,7 +157,7 @@ func runMobilizeTests(t *testing.T, test testingData, invasive bool, limitedConf
 	v.config = setBasicConfig()
 	v.config.Invasive = invasive
 
-	v.AddEvaluationSuite(examplePayload, test.evals, catalog)
+	v.AddEvaluationSuite(examplePayload, convertEvalsToStepsMap(test.evals), catalog)
 
 	// Nothing from our test data should be applicable right now, but they should be possible
 	err = v.Mobilize()

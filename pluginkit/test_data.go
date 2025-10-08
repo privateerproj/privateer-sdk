@@ -13,7 +13,8 @@ import (
 
 type testingData struct {
 	testName               string
-	steps                  []*layer4.AssessmentStep
+	evals                  []*layer4.ControlEvaluation // Keep for backward compatibility with other tests
+	steps                  map[string][]layer4.AssessmentStep
 	expectedEvalSuiteError error
 	expectedCorruption     bool
 	expectedResult         layer4.Result
@@ -136,6 +137,52 @@ func step_Fail(_ interface{}) (result layer4.Result, message string) {
 
 func step_NeedsReview(_ interface{}) (result layer4.Result, message string) {
 	return layer4.NeedsReview, "This step always needs review"
+}
+
+// Helper function to create test steps map for TestAddEvaluationSuite
+func createTestStepsMap() map[string][]layer4.AssessmentStep {
+	return map[string][]layer4.AssessmentStep{
+		"CCC.Core.C01.TR01": {step_Pass},
+		"CCC.Core.C01.TR02": {step_Pass, step_Fail},
+		"CCC.Core.C02.TR01": {step_NeedsReview},
+	}
+}
+
+// Helper function to create simple passing steps map
+func createPassingStepsMap() map[string][]layer4.AssessmentStep {
+	return map[string][]layer4.AssessmentStep{
+		"CCC.Core.C01.TR01": {step_Pass},
+	}
+}
+
+// Helper function to convert evaluations to steps map for testing
+// This is a simplified conversion for backward compatibility with existing tests
+func convertEvalsToStepsMap(evals []*layer4.ControlEvaluation) map[string][]layer4.AssessmentStep {
+	stepsMap := make(map[string][]layer4.AssessmentStep)
+
+	// For test compatibility, map some basic control IDs to requirement IDs
+	for i, eval := range evals {
+		requirementId := fmt.Sprintf("CCC.Core.C%02d.TR01", i+1)
+
+		// Extract steps from the evaluation if possible
+		if len(eval.AssessmentLogs) > 0 {
+			stepsMap[requirementId] = eval.AssessmentLogs[0].Steps
+		} else {
+			// Fallback based on control ID
+			switch eval.Control.EntryId {
+			case "good-evaluation":
+				stepsMap[requirementId] = []layer4.AssessmentStep{step_Pass}
+			case "bad-evaluation":
+				stepsMap[requirementId] = []layer4.AssessmentStep{step_Pass, step_Fail}
+			case "needs-review-evaluation":
+				stepsMap[requirementId] = []layer4.AssessmentStep{step_NeedsReview}
+			default:
+				stepsMap[requirementId] = []layer4.AssessmentStep{step_Pass}
+			}
+		}
+	}
+
+	return stepsMap
 }
 
 var mobilizeTestData = []testingData{
