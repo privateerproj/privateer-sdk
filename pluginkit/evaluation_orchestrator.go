@@ -79,14 +79,18 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 
 	for _, catalog := range v.config.Policy.ControlCatalogs {
 		for _, suite := range v.possibleSuites {
+			if len(suite.catalog.ControlFamilies) == 0 {
+				return BAD_CATALOG(v.PluginName, "no control families provided")
+			}
+			if suite.CatalogId == "" {
+				return BAD_CATALOG(v.PluginName, "no catalog id provided")
+			}
 			if suite.CatalogId == catalog {
 				err := suite.Evaluate(v.ServiceName)
 				if err != nil {
 					v.config.Logger.Error(err.Error())
 				}
 				v.Evaluation_Suites = append(v.Evaluation_Suites, suite)
-			} else {
-				v.config.Logger.Trace(suite.CatalogId + catalog)
 			}
 		}
 	}

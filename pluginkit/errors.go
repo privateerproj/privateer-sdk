@@ -36,4 +36,7 @@ var (
 	BAD_LOADER = func(pluginName string, err error) error {
 		return fmt.Errorf("failed to load payload for %s: %s", pluginName, err)
 	}
+	BAD_CATALOG = func(pluginName string, errMsg string) error {
+		return fmt.Errorf("malformed data in catalog for %s: %s", pluginName, errMsg)
+	}
 )
