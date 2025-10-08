@@ -63,9 +63,7 @@ func TestAddEvaluationSuite(t *testing.T) {
 		{
 			testName:       "Good Evaluation",
 			expectedResult: layer4.Passed,
-			evals: []*layer4.ControlEvaluation{
-				passingEvaluation(),
-			},
+			steps:          createPassingStepsMap(),
 		},
 	}
 	for _, test := range testData {
@@ -79,7 +77,7 @@ func TestAddEvaluationSuite(t *testing.T) {
 				PluginName: "test",
 			}
 			v.config = setBasicConfig()
-			v.AddEvaluationSuite(nil, test.evals, catalog)
+			v.AddEvaluationSuite(examplePayload, test.steps, catalog)
 			if len(v.possibleSuites) == 0 {
 				t.Error("Expected evaluation suites to be set")
 				return
@@ -88,11 +86,20 @@ func TestAddEvaluationSuite(t *testing.T) {
 				if suite.Name != "" {
 					t.Errorf("Expected pending evaluation suite name to be unset, but got %s", suite.Name)
 				}
-				if len(suite.EvaluationLog.Evaluations) != len(test.evals) {
-					t.Errorf("Expected control evaluations to match test data, but got %v", suite.EvaluationLog.Evaluations)
+				if suite.CatalogId != catalog.Metadata.Id {
+					t.Errorf("Expected catalog ID to match, but got %s instead of %s", suite.CatalogId, catalog.Metadata.Id)
+				}
+				if len(suite.steps) != len(test.steps) {
+					t.Errorf("Expected steps to match test data, but got %v", suite.steps)
 				}
 				if suite.config != v.config {
 					t.Errorf("Expected config to match simpleConfig but got %v", suite.config)
+				}
+				if suite.loader == nil {
+					t.Error("Expected loader to be set")
+				}
+				if suite.catalog != catalog {
+					t.Error("Expected catalog to be set correctly")
 				}
 			}
 		})
@@ -114,8 +121,9 @@ func TestMobilize(t *testing.T) {
 					Metadata: layer2.Metadata{
 						Id: strings.ReplaceAll(test.testName, " ", "-"),
 					},
+					ControlFamilies: []layer2.ControlFamily{{Id: "placeholder"}},
 				}
-				v.AddEvaluationSuite(examplePayload, test.evals, catalog)
+				v.AddEvaluationSuite(examplePayload, convertEvalsToStepsMap(test.evals), catalog)
 
 				// grab a count of the applicable evaluations when config is limited
 				err := v.Mobilize()
@@ -150,7 +158,7 @@ func runMobilizeTests(t *testing.T, test testingData, invasive bool, limitedConf
 	v.config = setBasicConfig()
 	v.config.Invasive = invasive
 
-	v.AddEvaluationSuite(examplePayload, test.evals, catalog)
+	v.AddEvaluationSuite(examplePayload, convertEvalsToStepsMap(test.evals), catalog)
 
 	// Nothing from our test data should be applicable right now, but they should be possible
 	err = v.Mobilize()
@@ -180,8 +188,20 @@ func runMobilizeTests(t *testing.T, test testingData, invasive bool, limitedConf
 
 	for _, suite := range v.Evaluation_Suites {
 		t.Run(suite.Name, func(tt *testing.T) {
-			if len(test.evals) != len(suite.EvaluationLog.Evaluations) {
-				tt.Errorf("Expected %v control evaluations, but got %v", len(test.evals), len(v.Evaluation_Suites))
+			// Count the number of controls in the catalog to verify we're evaluating them all
+			catalog, err := getTestCatalog()
+			if err != nil {
+				tt.Errorf("Failed to get test catalog: %v", err)
+				return
+			}
+
+			var controlCount int
+			for _, family := range catalog.ControlFamilies {
+				controlCount += len(family.Controls)
+			}
+
+			if controlCount != len(suite.EvaluationLog.Evaluations) {
+				tt.Errorf("Expected %v control evaluations (from catalog), but got %v", controlCount, len(suite.EvaluationLog.Evaluations))
 			}
 			if test.expectedResult != suite.Result {
 				tt.Errorf("Expected result to be %v, but got %v", test.expectedResult, suite.Result)

@@ -20,13 +20,16 @@ var (
 	CONFIG_NOT_INITIALIZED = func() error {
 		return errors.New("configuration not initialized")
 	}
+	NO_ASSESSMENT_STEPS_PROVIDED = func() error {
+		return errors.New("assessment steps not provided")
+	}
+	NO_ASSESSMENT_REQS_PROVIDED = func() error {
+		return errors.New("assessment requirements not provided")
+	}
 )
 
 // Errors with parameters required
 var (
-	VESSEL_NAMES_NOT_SET = func(serviceName, pluginName string) error {
-		return fmt.Errorf("expected service and plugin names to be set. ServiceName='%s' PluginName='%s'", serviceName, pluginName)
-	}
 	EVALUATION_ORCHESTRATOR_NAMES_NOT_SET = func(serviceName, pluginName string) error {
 		return fmt.Errorf("expected service and plugin names to be set. ServiceName='%s' PluginName='%s'", serviceName, pluginName)
 	}
@@ -35,5 +38,14 @@ var (
 	}
 	BAD_LOADER = func(pluginName string, err error) error {
 		return fmt.Errorf("failed to load payload for %s: %s", pluginName, err)
+	}
+	BAD_CATALOG = func(pluginName string, errMsg string) error {
+		return fmt.Errorf("malformed data in catalog for %s: %s", pluginName, errMsg)
+	}
+	NO_EVAL_LOG = func(err error) error {
+		return fmt.Errorf("failed to setup evaluation log: %w", err)
+	}
+	BAD_ASSESSMENT_REQS = func(err error) error {
+		return fmt.Errorf("failed to load assessment requirements from catalog: %w", err)
 	}
 )

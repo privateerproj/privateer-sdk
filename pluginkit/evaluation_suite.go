@@ -11,12 +11,13 @@ import (
 
 type TestSet func() (result layer4.ControlEvaluation)
 
-// TestSuite is a struct that contains the results of all EvaluationLog, organized by name
+// EvaluationSuite is a struct that contains the results of all EvaluationLog executions
+// Exported fields will be used in the final YAML or JSON output documents
 type EvaluationSuite struct {
 	Name   string        // Name is the name of the suite
 	Result layer4.Result // Result is Passed if all evaluations in the suite passed
 
-	CatalogId string `yaml:"catalog-id"` // CatalogId associates this suite with an catalog
+	CatalogId string `yaml:"catalog-id"` // CatalogId associates this suite with a catalog
 	StartTime string `yaml:"start-time"` // StartTime is the time the plugin started
 	EndTime   string `yaml:"end-time"`   // EndTime is the time the plugin ended
 
@@ -24,12 +25,13 @@ type EvaluationSuite struct {
 
 	EvaluationLog layer4.EvaluationLog `yaml:"control-evaluations"` // EvaluationLog is a slice of evaluations to be executed
 
-	catalog *layer2.Catalog // The Catalog this evaluation suite references
+	config *config.Config // config is the global configuration
 
-	payload       interface{}    // payload is the data to be evaluated
-	loader        DataLoader     // loader is the function to load the payload
-	changeManager *ChangeManager // changes is a list of changes made during the evaluation
-	config        *config.Config // config is the global configuration for the plugin
+	payload       interface{}                        // payload is the data to be evaluated
+	loader        DataLoader                         // loader is the function to load the payload
+	changeManager *ChangeManager                     // changes is a list of changes made during the evaluation
+	catalog       *layer2.Catalog                    // The Catalog this evaluation suite references
+	steps         map[string][]layer4.AssessmentStep // steps is a map of control IDs to their assessment steps
 
 	evalSuccesses int // successes is the number of successful evaluations
 	evalFailures  int // failures is the number of failed evaluations
@@ -46,23 +48,26 @@ func (e *EvaluationSuite) AddChangeManager(cm *ChangeManager) {
 
 // Execute is used to execute a list of EvaluationLog provided by a Plugin and customized by user config
 // Name is an arbitrary string that will be used to identify the EvaluationSuite
-func (e *EvaluationSuite) Evaluate(name string) error {
-	if name == "" {
-		return EVAL_NAME_MISSING()
-	}
+func (e *EvaluationSuite) Evaluate(serviceName string) error {
 	if e.config == nil {
 		return CONFIG_NOT_INITIALIZED()
 	}
 
-	e.Name = name
-	e.StartTime = time.Now().String()
-	e.config.Logger.Trace("Starting evaluation", "name", e.Name, "time", e.StartTime)
-
 	requirements, err := e.GetAssessmentRequirements()
 	if err != nil {
-		e.EndTime = time.Now().String()
-		return fmt.Errorf("failed to load assessment requirements from catalog: %w", err)
+		return BAD_ASSESSMENT_REQS(err)
 	}
+
+	evalLog, err := e.setupEvalLog(e.steps)
+	if err != nil {
+		return NO_EVAL_LOG(err)
+	}
+
+	e.Name = fmt.Sprintf("%s_%s", serviceName, e.CatalogId)
+	e.EvaluationLog = evalLog
+	e.StartTime = time.Now().String()
+
+	e.config.Logger.Trace("Starting evaluation", "name", e.Name, "time", e.StartTime)
 
 	for _, evaluation := range e.EvaluationLog.Evaluations {
 		evaluation.Evaluate(e.payload, e.config.Policy.Applicability)
@@ -102,7 +107,7 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 		}
 	}
 
-	output := fmt.Sprintf("> %s: %v Passed, %v Warnings, %v Failed", e.Name, e.evalSuccesses, e.evalWarnings, e.evalFailures)
+	output := fmt.Sprintf("> %s: %v Passed, %v Warnings, %v Failed, %v Possible", e.Name, e.evalSuccesses, e.evalWarnings, e.evalFailures, len(evalLog.Evaluations))
 
 	e.EndTime = time.Now().String()
 
@@ -135,8 +140,47 @@ func (e *EvaluationSuite) GetAssessmentRequirements() (map[string]*layer2.Assess
 	}
 
 	if len(requirements) == 0 {
-		return nil, fmt.Errorf("GetAssessmentRequirements: 0 requirements found")
+		return nil, NO_ASSESSMENT_REQS_PROVIDED()
 	}
 
 	return requirements, nil
+}
+
+func (e *EvaluationSuite) setupEvalLog(steps map[string][]layer4.AssessmentStep) (evalLog layer4.EvaluationLog, err error) {
+	if len(steps) == 0 {
+		return evalLog, NO_ASSESSMENT_STEPS_PROVIDED()
+	}
+	for _, family := range e.catalog.ControlFamilies {
+		for _, control := range family.Controls {
+			var assessmentLogs []*layer4.AssessmentLog
+			for _, requirement := range control.AssessmentRequirements {
+				queuedLog := layer4.AssessmentLog{
+					Requirement: layer4.Mapping{
+						ReferenceId: e.CatalogId,
+						EntryId:     requirement.Id,
+					},
+					Steps:         steps[requirement.Id],
+					Applicability: requirement.Applicability,
+					Description:   control.Objective,
+				}
+				_, ok := steps[requirement.Id]
+				if !ok {
+					queuedLog.Result = layer4.Unknown
+				}
+
+				assessmentLogs = append(assessmentLogs, &queuedLog)
+			}
+			evaluation := layer4.ControlEvaluation{
+				Name:           control.Title,
+				AssessmentLogs: assessmentLogs,
+				Control: layer4.Mapping{
+					ReferenceId: e.CatalogId,
+					EntryId:     control.Id,
+				},
+			}
+			evalLog.Evaluations = append(evalLog.Evaluations, &evaluation)
+		}
+	}
+
+	return evalLog, nil
 }

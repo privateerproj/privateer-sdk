@@ -33,19 +33,14 @@ func TestEvaluate(t *testing.T) {
 			}
 			suite.config = setBasicConfig()
 
-			err = suite.Evaluate("")
-			if err == nil || err.Error() != EVAL_NAME_MISSING().Error() {
-				t.Errorf("Expected '%s', but got '%v'", EVAL_NAME_MISSING(), err)
-			}
-
 			err = suite.Evaluate("arbitrarySuiteName")
 			if err != nil && test.expectedEvalSuiteError != nil && err.Error() != test.expectedEvalSuiteError.Error() {
 				t.Errorf("Expected %s, but got %s", test.expectedEvalSuiteError, err)
 			} else if err != nil && test.expectedEvalSuiteError == nil {
 				// For now, we expect an error about missing assessment requirements when catalog is empty
 				// This is expected behavior with the current implementation
-				expectedMessage := "Failed to load assessment requirements from catalog"
-				if !strings.Contains(err.Error(), expectedMessage) {
+				expectedMessage := NO_ASSESSMENT_STEPS_PROVIDED()
+				if !strings.Contains(err.Error(), expectedMessage.Error()) {
 					t.Errorf("Expected error containing '%s', but got '%v'", expectedMessage, err)
 				}
 			}

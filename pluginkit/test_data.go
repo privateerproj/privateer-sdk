@@ -13,7 +13,8 @@ import (
 
 type testingData struct {
 	testName               string
-	evals                  []*layer4.ControlEvaluation
+	evals                  []*layer4.ControlEvaluation // Keep for backward compatibility with other tests
+	steps                  map[string][]layer4.AssessmentStep
 	expectedEvalSuiteError error
 	expectedCorruption     bool
 	expectedResult         layer4.Result
@@ -103,7 +104,7 @@ func needsReviewEvaluation() (evaluation *layer4.ControlEvaluation) {
 	return
 }
 
-var requestedApplicability = []string{"valid-applicability-1", "valid-applicability-2"}
+var requestedApplicability = []string{"tlp-green", "tlp-amber"}
 var requestedCatalogs = []string{"catalog1", "catalog2", "catalog3"}
 
 func setBasicConfig() *config.Config {
@@ -136,6 +137,84 @@ func step_Fail(_ interface{}) (result layer4.Result, message string) {
 
 func step_NeedsReview(_ interface{}) (result layer4.Result, message string) {
 	return layer4.NeedsReview, "This step always needs review"
+}
+
+// Helper function to create simple passing steps map
+func createPassingStepsMap() map[string][]layer4.AssessmentStep {
+	return map[string][]layer4.AssessmentStep{
+		"CCC.Core.C01.TR01": {step_Pass},
+	}
+}
+
+// Helper function to get all requirement IDs from the test catalog
+func getAllRequirementIds() ([]string, error) {
+	catalog, err := getTestCatalog()
+	if err != nil {
+		return nil, err
+	}
+
+	var requirementIds []string
+	for _, family := range catalog.ControlFamilies {
+		for _, control := range family.Controls {
+			for _, requirement := range control.AssessmentRequirements {
+				requirementIds = append(requirementIds, requirement.Id)
+			}
+		}
+	}
+	return requirementIds, nil
+}
+
+// Helper function to convert evaluations to steps map for testing
+// This is a simplified conversion for backward compatibility with existing tests
+func convertEvalsToStepsMap(evals []*layer4.ControlEvaluation) map[string][]layer4.AssessmentStep {
+	stepsMap := make(map[string][]layer4.AssessmentStep)
+
+	// Get all requirement IDs from the actual test catalog
+	requirementIds, err := getAllRequirementIds()
+	if err != nil {
+		// Fallback to a basic set if catalog loading fails
+		requirementIds = []string{"CCC.Core.C01.TR01"}
+	}
+
+	// Determine the steps to use based on the evaluation type
+	var primarySteps []layer4.AssessmentStep
+	if len(evals) > 0 {
+		switch evals[0].Control.EntryId {
+		case "good-evaluation":
+			primarySteps = []layer4.AssessmentStep{step_Pass}
+		case "bad-evaluation":
+			primarySteps = []layer4.AssessmentStep{step_Pass, step_Fail}
+		case "needs-review-evaluation":
+			primarySteps = []layer4.AssessmentStep{step_NeedsReview}
+		default:
+			primarySteps = []layer4.AssessmentStep{step_Pass}
+		}
+	} else {
+		primarySteps = []layer4.AssessmentStep{step_Pass}
+	}
+
+	// Apply the pattern based on the number of evaluations
+	for i, requirementId := range requirementIds {
+		if len(evals) > 1 && i < len(evals) {
+			// For multiple evaluations, use each evaluation's specific pattern
+			eval := evals[i]
+			switch eval.Control.EntryId {
+			case "good-evaluation":
+				stepsMap[requirementId] = []layer4.AssessmentStep{step_Pass}
+			case "bad-evaluation":
+				stepsMap[requirementId] = []layer4.AssessmentStep{step_Pass, step_Fail}
+			case "needs-review-evaluation":
+				stepsMap[requirementId] = []layer4.AssessmentStep{step_NeedsReview}
+			default:
+				stepsMap[requirementId] = []layer4.AssessmentStep{step_Pass}
+			}
+		} else {
+			// For single evaluation or remaining requirements, use the primary pattern
+			stepsMap[requirementId] = primarySteps
+		}
+	}
+
+	return stepsMap
 }
 
 var mobilizeTestData = []testingData{
