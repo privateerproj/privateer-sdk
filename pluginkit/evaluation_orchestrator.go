@@ -34,16 +34,17 @@ func (v *EvaluationOrchestrator) AddRequiredVars(vars []string) {
 	v.requiredVars = vars
 }
 
-func (v *EvaluationOrchestrator) AddEvaluationSuite(loader DataLoader, evaluations []*layer4.ControlEvaluation, catalog *layer2.Catalog) {
+func (v *EvaluationOrchestrator) AddEvaluationSuite(loader DataLoader, steps map[string][]layer4.AssessmentStep, catalog *layer2.Catalog) {
 	if catalog == nil {
 		return
 	}
 	suite := EvaluationSuite{
-		CatalogId:     catalog.Metadata.Id,
-		EvaluationLog: layer4.EvaluationLog{Evaluations: evaluations},
-		catalog:       catalog,
+		CatalogId: catalog.Metadata.Id,
+		catalog:   catalog,
+		steps:     steps,
+		config:    v.config,
 	}
-	suite.config = v.config
+
 	if loader != nil {
 		suite.loader = loader
 	} else {
@@ -79,13 +80,13 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 	for _, catalog := range v.config.Policy.ControlCatalogs {
 		for _, suite := range v.possibleSuites {
 			if suite.CatalogId == catalog {
-				suite.config = v.config
-				evalName := v.ServiceName + "_" + catalog
-				err := suite.Evaluate(evalName)
+				err := suite.Evaluate(v.ServiceName)
 				if err != nil {
 					v.config.Logger.Error(err.Error())
 				}
 				v.Evaluation_Suites = append(v.Evaluation_Suites, suite)
+			} else {
+				v.config.Logger.Trace(suite.CatalogId + catalog)
 			}
 		}
 	}
@@ -200,5 +201,10 @@ func (v *EvaluationOrchestrator) setupConfig() {
 	if v.config == nil {
 		c := config.NewConfig(v.requiredVars)
 		v.config = &c
+
+		// Update all existing suites to point to the new config
+		for _, suite := range v.possibleSuites {
+			suite.config = v.config
+		}
 	}
 }

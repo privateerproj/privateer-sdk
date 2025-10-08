@@ -13,7 +13,7 @@ import (
 
 type testingData struct {
 	testName               string
-	evals                  []*layer4.ControlEvaluation
+	steps                  []*layer4.AssessmentStep
 	expectedEvalSuiteError error
 	expectedCorruption     bool
 	expectedResult         layer4.Result
