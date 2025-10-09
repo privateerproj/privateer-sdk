@@ -9,7 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// GetCatalog reads all YAML catalog files in the data directory and returns the complete catalog data
+// GetPluginCatalog reads all YAML catalog files in the data directory and returns the complete catalog data
 // This is necessary when packaging the catalog files into a binary, which is not supported by the Gemara loader
 func GetPluginCatalog(dataDir string, files embed.FS) (catalog layer2.Catalog, err error) {
 	dir, err := files.ReadDir(dataDir)
