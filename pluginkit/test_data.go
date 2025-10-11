@@ -16,11 +16,8 @@ type testingData struct {
 	evals                  []*layer4.ControlEvaluation // Keep for backward compatibility with other tests
 	steps                  map[string][]layer4.AssessmentStep
 	expectedEvalSuiteError error
-	expectedCorruption     bool
 	expectedResult         layer4.Result
 }
-
-var testPayload = interface{}(PayloadTypeExample{CustomPayloadField: true})
 
 var testCatalog = &layer2.Catalog{
 	ControlFamilies: []layer2.ControlFamily{},
@@ -68,10 +65,6 @@ func getTestCatalogWithNoRequirements() *layer2.Catalog {
 			},
 		},
 	}
-}
-
-func examplePayload(_ *config.Config) (interface{}, error) {
-	return testPayload, nil
 }
 
 func passingEvaluation() (evaluation *layer4.ControlEvaluation) {
@@ -138,18 +131,6 @@ func setBasicConfig() *config.Config {
 	viper.Set("policy.catalogs", requestedCatalogs)
 	c := config.NewConfig(nil)
 	return &c
-}
-
-func setLimitedConfig() *config.Config {
-	viper.Set("service", "test-service")
-	viper.Set("services.test-service.policy.applicability", requestedApplicability[0])
-	viper.Set("policy.catalogs", requestedCatalogs[0])
-	c := config.NewConfig(nil)
-	return &c
-}
-
-type PayloadTypeExample struct {
-	CustomPayloadField bool
 }
 
 func step_Pass(data interface{}) (result layer4.Result, message string) {
@@ -319,69 +300,4 @@ func getTestEvaluateData() []testingData {
 			steps:          convertEvalsToStepsMap(nil),
 		},
 	}
-}
-
-var mobilizeTestData = []testingData{
-	{
-		testName:       "Pass Evaluation",
-		expectedResult: layer4.Passed,
-		evals: []*layer4.ControlEvaluation{
-			passingEvaluation(),
-		},
-	},
-	{
-		testName:       "Fail Evaluation",
-		expectedResult: layer4.Failed,
-		evals: []*layer4.ControlEvaluation{
-			failingEvaluation(),
-		},
-	},
-	{
-		testName:       "Needs Review Evaluation",
-		expectedResult: layer4.NeedsReview,
-		evals: []*layer4.ControlEvaluation{
-			needsReviewEvaluation(),
-		},
-	},
-	{
-		testName:       "Pass Pass Pass",
-		expectedResult: layer4.Passed,
-		evals: []*layer4.ControlEvaluation{
-			passingEvaluation(),
-			passingEvaluation(),
-			passingEvaluation(),
-		},
-	},
-	{
-		testName:       "Pass Then Fail",
-		expectedResult: layer4.Failed,
-		evals: []*layer4.ControlEvaluation{
-			passingEvaluation(),
-			failingEvaluation(),
-		},
-	},
-	{
-		testName:       "Pass Then Needs Review",
-		expectedResult: layer4.NeedsReview,
-		evals: []*layer4.ControlEvaluation{
-			passingEvaluation(),
-			needsReviewEvaluation(),
-		},
-	},
-	{
-		testName:       "Needs Review Then Pass",
-		expectedResult: layer4.NeedsReview,
-		evals: []*layer4.ControlEvaluation{
-			needsReviewEvaluation(),
-			passingEvaluation(),
-		},
-	},
-	{
-		testName:       "Needs Review Then Fail",
-		expectedResult: layer4.Failed,
-		evals: []*layer4.ControlEvaluation{
-			needsReviewEvaluation(),
-			failingEvaluation(),
-		},
-	},
 }
