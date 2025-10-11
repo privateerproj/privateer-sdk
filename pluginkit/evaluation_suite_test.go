@@ -39,7 +39,7 @@ func TestEvaluate(t *testing.T) {
 			} else if err != nil && test.expectedEvalSuiteError == nil {
 				// For now, we expect an error about missing assessment requirements when catalog is empty
 				// This is expected behavior with the current implementation
-				expectedMessage := NO_ASSESSMENT_STEPS_PROVIDED()
+				expectedMessage := NO_ASSESSMENT_STEPS_PROVIDED("")
 				if !strings.Contains(err.Error(), expectedMessage.Error()) {
 					t.Errorf("Expected error containing '%s', but got '%v'", expectedMessage, err)
 				}

@@ -226,7 +226,7 @@ func (v *EvaluationOrchestrator) WriteResults() error {
 	}
 	err = v.writeResultsToFile(v.ServiceName, result, v.config.Output)
 	if err != nil {
-		return WRITE_FAILED(v.ServiceName, err.Error(), "wr50")
+		return WRITE_FAILED(v.ServiceName, err.Error(), "wr60")
 	}
 
 	return nil
