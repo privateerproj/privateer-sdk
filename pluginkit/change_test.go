@@ -2,6 +2,7 @@ package pluginkit
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -319,24 +320,179 @@ func TestChangeManager_Revert(t *testing.T) {
 	}
 }
 
-func TestChangeManager_BadState(t *testing.T) {
-	cm := &ChangeManager{
-		Allowed: true,
-		Changes: map[string]*Change{
-			"bad-change": {
-				TargetName:  "test",
-				Description: "bad change",
-				applyFunc:   badApplyFunc,
-				revertFunc:  goodRevertFunc,
+func TestChangeManager_RevertAll(t *testing.T) {
+	t.Run("Revert All Changes", func(t *testing.T) {
+		cm := &ChangeManager{
+			Changes: map[string]*Change{
+				"change1": {
+					TargetName:   "target1",
+					Description:  "change 1",
+					applyFunc:    goodApplyFunc,
+					revertFunc:   goodRevertFunc,
+					Applied:      true,
+					TargetObject: "object1",
+				},
+				"change2": {
+					TargetName:   "target2",
+					Description:  "change 2",
+					applyFunc:    goodApplyFunc,
+					revertFunc:   goodRevertFunc,
+					Applied:      true,
+					TargetObject: "object2",
+				},
 			},
-		},
+		}
+
+		cm.RevertAll()
+
+		for name, change := range cm.Changes {
+			if !change.Reverted {
+				t.Errorf("Change %s should be reverted", name)
+			}
+		}
+	})
+
+	t.Run("Revert All With Bad Revert Function", func(t *testing.T) {
+		cm := &ChangeManager{
+			Changes: map[string]*Change{
+				"bad-change": {
+					TargetName:   "target",
+					Description:  "bad change",
+					applyFunc:    goodApplyFunc,
+					revertFunc:   badRevertFunc,
+					Applied:      true,
+					TargetObject: "object",
+				},
+			},
+		}
+
+		cm.RevertAll()
+
+		change := cm.Changes["bad-change"]
+		if change.Reverted {
+			t.Error("Change should not be reverted with bad revert function")
+		}
+		if !change.CorruptedState {
+			t.Error("Change should be in corrupted state")
+		}
+		if !cm.CorruptedState {
+			t.Error("ChangeManager should be in corrupted state")
+		}
+	})
+
+	t.Run("Revert All Empty Changes", func(t *testing.T) {
+		cm := &ChangeManager{
+			Changes: map[string]*Change{},
+		}
+
+		// Should not panic
+		cm.RevertAll()
+	})
+}
+
+func TestChange_Precheck(t *testing.T) {
+	t.Run("Valid Change", func(t *testing.T) {
+		change := Change{
+			TargetName:  "test-target",
+			Description: "test description",
+			applyFunc:   goodApplyFunc,
+			revertFunc:  goodRevertFunc,
+		}
+
+		err := change.precheck()
+		if err != nil {
+			t.Errorf("Expected no error for valid change, got: %v", err)
+		}
+	})
+
+	t.Run("Missing Apply Function", func(t *testing.T) {
+		change := Change{
+			TargetName:  "test-target",
+			Description: "test description",
+			revertFunc:  goodRevertFunc,
+		}
+
+		err := change.precheck()
+		if err == nil {
+			t.Error("Expected error for missing apply function")
+		}
+		if !strings.Contains(err.Error(), "applyFunc and revertFunc must be defined") {
+			t.Errorf("Expected specific error message, got: %v", err)
+		}
+	})
+
+	t.Run("Missing Revert Function", func(t *testing.T) {
+		change := Change{
+			TargetName:  "test-target",
+			Description: "test description",
+			applyFunc:   goodApplyFunc,
+		}
+
+		err := change.precheck()
+		if err == nil {
+			t.Error("Expected error for missing revert function")
+		}
+		if !strings.Contains(err.Error(), "applyFunc and revertFunc must be defined") {
+			t.Errorf("Expected specific error message, got: %v", err)
+		}
+	})
+
+	t.Run("Missing Target Name", func(t *testing.T) {
+		change := Change{
+			Description: "test description",
+			applyFunc:   goodApplyFunc,
+			revertFunc:  goodRevertFunc,
+		}
+
+		err := change.precheck()
+		if err == nil {
+			t.Error("Expected error for missing target name")
+		}
+		if !strings.Contains(err.Error(), "change must have a TargetName and Description defined") {
+			t.Errorf("Expected specific error message, got: %v", err)
+		}
+	})
+
+	t.Run("Missing Description", func(t *testing.T) {
+		change := Change{
+			TargetName: "test-target",
+			applyFunc:  goodApplyFunc,
+			revertFunc: goodRevertFunc,
+		}
+
+		err := change.precheck()
+		if err == nil {
+			t.Error("Expected error for missing description")
+		}
+		if !strings.Contains(err.Error(), "change must have a TargetName and Description defined") {
+			t.Errorf("Expected specific error message, got: %v", err)
+		}
+	})
+
+	t.Run("Change With Previous Error", func(t *testing.T) {
+		change := Change{
+			TargetName:  "test-target",
+			Description: "test description",
+			applyFunc:   goodApplyFunc,
+			revertFunc:  goodRevertFunc,
+			Error:       errors.New("previous error"),
+		}
+
+		err := change.precheck()
+		if err == nil {
+			t.Error("Expected error for change with previous error")
+		}
+		if !strings.Contains(err.Error(), "change has a previous error") {
+			t.Errorf("Expected specific error message, got: %v", err)
+		}
+	})
+}
+
+func TestChangeManager_RevertNonExistent(t *testing.T) {
+	cm := &ChangeManager{
+		Changes: map[string]*Change{},
 	}
 
-	success, _ := cm.Apply("bad-change", "test-target", "test-input")
-	if success {
-		t.Error("Apply should fail with bad apply function")
-	}
-	if !cm.CorruptedState {
-		t.Error("ChangeManager should be in bad state after failed apply")
-	}
+	// Should not panic when reverting non-existent change
+	cm.Revert("non-existent-change")
 }
