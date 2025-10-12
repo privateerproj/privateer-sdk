@@ -50,17 +50,21 @@ func (e *EvaluationSuite) AddChangeManager(cm *ChangeManager) {
 // Name is an arbitrary string that will be used to identify the EvaluationSuite
 func (e *EvaluationSuite) Evaluate(serviceName string) error {
 	if e.config == nil {
-		return CONFIG_NOT_INITIALIZED()
+		return CONFIG_NOT_INITIALIZED("ev10")
 	}
 
 	requirements, err := e.GetAssessmentRequirements()
 	if err != nil {
-		return BAD_ASSESSMENT_REQS(err)
+		return BAD_ASSESSMENT_REQS(err, "ev20")
 	}
 
 	evalLog, err := e.setupEvalLog(e.steps)
 	if err != nil {
-		return NO_EVAL_LOG(err)
+		return BAD_EVAL_LOG(err, "ev30")
+	}
+
+	if len(evalLog.Evaluations) == 0 {
+		return EVAL_SUITE_CRASHED("ev40")
 	}
 
 	e.Name = fmt.Sprintf("%s_%s", serviceName, e.CatalogId)
@@ -114,7 +118,7 @@ func (e *EvaluationSuite) Evaluate(serviceName string) error {
 	if e.changeManager != nil {
 		e.changeManager.RevertAll()
 		if e.CorruptedState {
-			return CORRUPTION_FOUND()
+			return CORRUPTION_FOUND("ev40")
 		}
 	}
 
@@ -140,7 +144,7 @@ func (e *EvaluationSuite) GetAssessmentRequirements() (map[string]*layer2.Assess
 	}
 
 	if len(requirements) == 0 {
-		return nil, NO_ASSESSMENT_REQS_PROVIDED()
+		return nil, NO_ASSESSMENT_REQS_PROVIDED("ev50")
 	}
 
 	return requirements, nil
@@ -148,38 +152,66 @@ func (e *EvaluationSuite) GetAssessmentRequirements() (map[string]*layer2.Assess
 
 func (e *EvaluationSuite) setupEvalLog(steps map[string][]layer4.AssessmentStep) (evalLog layer4.EvaluationLog, err error) {
 	if len(steps) == 0 {
-		return evalLog, NO_ASSESSMENT_STEPS_PROVIDED()
+		return evalLog, NO_ASSESSMENT_STEPS_PROVIDED("sel10")
 	}
-	for _, family := range e.catalog.ControlFamilies {
-		for _, control := range family.Controls {
-			var assessmentLogs []*layer4.AssessmentLog
-			for _, requirement := range control.AssessmentRequirements {
-				queuedLog := layer4.AssessmentLog{
-					Requirement: layer4.Mapping{
-						ReferenceId: e.CatalogId,
-						EntryId:     requirement.Id,
-					},
-					Steps:         steps[requirement.Id],
-					Applicability: requirement.Applicability,
-					Description:   control.Objective,
-				}
-				_, ok := steps[requirement.Id]
-				if !ok {
-					queuedLog.Result = layer4.Unknown
-				}
 
-				assessmentLogs = append(assessmentLogs, &queuedLog)
+	// crash if reaching the end without a requirement
+	// use errMod to add level of detail
+	var controlsFound bool
+	var reqsFound bool
+
+	if len(e.catalog.ControlFamilies) == 0 {
+		return evalLog, EVAL_SUITE_CRASHED("sel20")
+	}
+
+	for _, family := range e.catalog.ControlFamilies {
+		if len(family.Controls) == 0 {
+			continue
+		}
+		controlsFound = true
+		for _, control := range family.Controls {
+			if len(control.AssessmentRequirements) == 0 {
+				continue
 			}
-			evaluation := layer4.ControlEvaluation{
-				Name:           control.Title,
-				AssessmentLogs: assessmentLogs,
+			reqsFound = true
+
+			// Create ControlEvaluation first
+			evaluation := &layer4.ControlEvaluation{
+				Name: control.Title,
 				Control: layer4.Mapping{
 					ReferenceId: e.CatalogId,
 					EntryId:     control.Id,
 				},
 			}
-			evalLog.Evaluations = append(evalLog.Evaluations, &evaluation)
+
+			for _, requirement := range control.AssessmentRequirements {
+				// Use AddAssessment instead of manual struct creation
+				assessment := evaluation.AddAssessment(
+					requirement.Id,            // requirementId
+					control.Objective,         // description
+					requirement.Applicability, // applicability
+					steps[requirement.Id],     // steps
+				)
+
+				// Handle case where no steps were found
+				if _, ok := steps[requirement.Id]; !ok {
+					assessment.Result = layer4.Unknown
+					if e.config != nil {
+						msg := fmt.Sprintf("requirement: %s, control %s+sel30", requirement.Id, control.Id)
+						err := NO_ASSESSMENT_STEPS_PROVIDED(msg)
+						e.config.Logger.Debug(err.Error())
+					}
+				}
+			}
+			evalLog.Evaluations = append(evalLog.Evaluations, evaluation)
 		}
+	}
+
+	if !controlsFound {
+		return evalLog, EVAL_SUITE_CRASHED("sel40")
+	}
+	if !reqsFound {
+		return evalLog, EVAL_SUITE_CRASHED("sel50")
 	}
 
 	return evalLog, nil

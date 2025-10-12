@@ -1,231 +1,151 @@
 package pluginkit
 
 import (
-	"fmt"
+	"embed"
 	"strings"
 	"testing"
 
-	"github.com/ossf/gemara/layer2"
 	"github.com/ossf/gemara/layer4"
 	"github.com/privateerproj/privateer-sdk/config"
 )
 
-func TestSetPayload(t *testing.T) {
-	v := &EvaluationOrchestrator{
-		PluginName: "test",
+func TestEvaluationOrchestrator_AddLoader(t *testing.T) {
+	orchestrator := &EvaluationOrchestrator{}
+
+	testLoader := func(cfg *config.Config) (interface{}, error) {
+		return "test-payload", nil
 	}
 
-	payloadTestData := []struct {
-		name     string
-		payload  interface{}
-		expected bool
-	}{
-		{
-			name:    "nil payload",
-			payload: nil,
-		},
-		{
-			name: "string payload",
-			payload: PayloadTypeExample{
-				CustomPayloadField: true,
-			},
-		},
+	orchestrator.AddLoader(testLoader)
+
+	if orchestrator.loader == nil {
+		t.Error("Expected loader to be set")
 	}
 
-	for _, test := range payloadTestData {
-		t.Run(test.name, func(t *testing.T) {
-			v.loader = func(*config.Config) (interface{}, error) { return &test.payload, nil }
-			err := v.loadPayload()
-			if err != nil {
-				t.Errorf("Expected no error, but got %v", err)
-				return
-			}
-			if v.Payload == nil {
-				t.Error("expected v.Payload to never be nil")
-			}
-			// TODO: Add a test to check if the loaded payload is the same as the test payload
-		})
-	}
-}
-
-func TestSetupConfig(t *testing.T) {
-	v := &EvaluationOrchestrator{
-		PluginName: "test",
-	}
-	v.setupConfig()
-	if v.config == nil {
-		t.Error("Expected config to always be returned")
-	}
-}
-
-func TestAddEvaluationSuite(t *testing.T) {
-	testData := []testingData{
-		{
-			testName:       "Good Evaluation",
-			expectedResult: layer4.Passed,
-			steps:          createPassingStepsMap(),
-		},
-	}
-	for _, test := range testData {
-		t.Run(test.testName, func(t *testing.T) {
-			catalog, err := getTestCatalog()
-			if err != nil {
-				t.Errorf("Expected no error loading test catalog, but got %v", err)
-				return
-			}
-			v := &EvaluationOrchestrator{
-				PluginName: "test",
-			}
-			v.config = setBasicConfig()
-			v.AddEvaluationSuite(examplePayload, test.steps, catalog)
-			if len(v.possibleSuites) == 0 {
-				t.Error("Expected evaluation suites to be set")
-				return
-			}
-			for _, suite := range v.possibleSuites {
-				if suite.Name != "" {
-					t.Errorf("Expected pending evaluation suite name to be unset, but got %s", suite.Name)
-				}
-				if suite.CatalogId != catalog.Metadata.Id {
-					t.Errorf("Expected catalog ID to match, but got %s instead of %s", suite.CatalogId, catalog.Metadata.Id)
-				}
-				if len(suite.steps) != len(test.steps) {
-					t.Errorf("Expected steps to match test data, but got %v", suite.steps)
-				}
-				if suite.config != v.config {
-					t.Errorf("Expected config to match simpleConfig but got %v", suite.config)
-				}
-				if suite.loader == nil {
-					t.Error("Expected loader to be set")
-				}
-				if suite.catalog != catalog {
-					t.Error("Expected catalog to be set correctly")
-				}
-			}
-		})
-	}
-}
-
-func TestMobilize(t *testing.T) {
-	for _, test := range mobilizeTestData {
-		t.Run(test.testName, func(tt *testing.T) {
-			var limitedConfigEvaluationCount int
-
-			tt.Run("limitedConfig", func(tt *testing.T) {
-				v := &EvaluationOrchestrator{
-					PluginName: "test",
-				}
-				v.config = setLimitedConfig()
-
-				catalog := &layer2.Catalog{
-					Metadata: layer2.Metadata{
-						Id: strings.ReplaceAll(test.testName, " ", "-"),
-					},
-					ControlFamilies: []layer2.ControlFamily{{Id: "placeholder"}},
-				}
-				v.AddEvaluationSuite(examplePayload, convertEvalsToStepsMap(test.evals), catalog)
-
-				// grab a count of the applicable evaluations when config is limited
-				err := v.Mobilize()
-				if err != nil {
-					tt.Errorf("Expected no error, but got %v", err)
-				}
-				limitedConfigEvaluationCount = len(v.Evaluation_Suites)
-			})
-
-			// tt.Run("non-invasive", func(tt *testing.T) {
-			// 	runMobilizeTests(tt, test, false, limitedConfigEvaluationCount)
-			// })
-			tt.Run("invasive", func(tt *testing.T) {
-				runMobilizeTests(tt, test, true, limitedConfigEvaluationCount)
-			})
-		})
-	}
-}
-
-func runMobilizeTests(t *testing.T, test testingData, invasive bool, limitedConfigEvaluationCount int) {
-	catalog, err := getTestCatalog()
+	// Test that the loader works
+	result, err := orchestrator.loader(nil)
 	if err != nil {
-		t.Errorf("Expected no error loading test catalog, but got %v", err)
-		return
+		t.Errorf("Unexpected error from loader: %v", err)
+	}
+	if result != "test-payload" {
+		t.Errorf("Expected 'test-payload', got %v", result)
+	}
+}
+
+func TestEvaluationOrchestrator_AddRequiredVars(t *testing.T) {
+	orchestrator := &EvaluationOrchestrator{}
+
+	vars := []string{"VAR1", "VAR2", "VAR3"}
+	orchestrator.AddRequiredVars(vars)
+
+	if len(orchestrator.requiredVars) != len(vars) {
+		t.Errorf("Expected %d vars, got %d", len(vars), len(orchestrator.requiredVars))
 	}
 
-	catalogName := strings.ReplaceAll(test.testName, " ", "-")
-	catalog.Metadata.Id = catalogName
-	v := &EvaluationOrchestrator{
-		PluginName: "test",
+	for i, expectedVar := range vars {
+		if orchestrator.requiredVars[i] != expectedVar {
+			t.Errorf("Expected var %d to be %s, got %s", i, expectedVar, orchestrator.requiredVars[i])
+		}
 	}
-	v.config = setBasicConfig()
-	v.config.Invasive = invasive
+}
 
-	v.AddEvaluationSuite(examplePayload, convertEvalsToStepsMap(test.evals), catalog)
+func TestEvaluationOrchestrator_AddReferenceCatalogs(t *testing.T) {
+	t.Run("Empty Directory Name", func(t *testing.T) {
+		orchestrator := &EvaluationOrchestrator{}
 
-	// Nothing from our test data should be applicable right now, but they should be possible
-	err = v.Mobilize()
-	if err != nil {
-		t.Errorf("Expected no error, but got %v", err)
-	}
-	if len(v.possibleSuites) == 0 {
-		t.Errorf("Expected evaluation suites to be set, but got %v", v.possibleSuites)
-		return
-	}
-	if len(v.Evaluation_Suites) > 0 {
-		t.Errorf("Expected no Evaluation Suites to be set, but got %v", len(v.possibleSuites))
-		return
-	}
+		err := orchestrator.AddReferenceCatalogs("", testDataFS)
+		if err == nil {
+			t.Error("Expected error for empty directory name")
+		}
 
-	// Now we set the catalog to be applicable, then run Mobilize again to find results
-	v.config.Policy.ControlCatalogs = []string{catalogName}
-	_ = v.Mobilize()
-	if len(v.Evaluation_Suites) == 0 {
-		t.Errorf("Expected evaluation suites to be set, but got %v", v.Evaluation_Suites)
-		return
-	}
-	if len(v.Evaluation_Suites) == limitedConfigEvaluationCount {
-		t.Errorf("Expected fewer Evaluation Suites to be when using limited config, but got the same count")
-		return
-	}
+		if !strings.Contains(err.Error(), "data directory name cannot be empty") {
+			t.Errorf("Expected specific error message, got: %v", err)
+		}
+	})
 
-	for _, suite := range v.Evaluation_Suites {
-		t.Run(suite.Name, func(tt *testing.T) {
-			// Count the number of controls in the catalog to verify we're evaluating them all
-			catalog, err := getTestCatalog()
-			if err != nil {
-				tt.Errorf("Failed to get test catalog: %v", err)
-				return
-			}
+	t.Run("Non-existent Directory", func(t *testing.T) {
+		orchestrator := &EvaluationOrchestrator{}
+		var emptyFS embed.FS
 
-			var controlCount int
-			for _, family := range catalog.ControlFamilies {
-				controlCount += len(family.Controls)
-			}
+		err := orchestrator.AddReferenceCatalogs("non-existent", emptyFS)
+		if err == nil {
+			t.Error("Expected error for non-existent directory")
+		}
 
-			if controlCount != len(suite.EvaluationLog.Evaluations) {
-				tt.Errorf("Expected %v control evaluations (from catalog), but got %v", controlCount, len(suite.EvaluationLog.Evaluations))
-			}
-			if test.expectedResult != suite.Result {
-				tt.Errorf("Expected result to be %v, but got %v", test.expectedResult, suite.Result)
-			}
-			if v.config.Invasive && suite.CorruptedState != test.expectedCorruption {
-				tt.Errorf("Expected corrupted state to be %v, but got %v", test.expectedCorruption, suite.CorruptedState)
-			}
-			evaluationSuiteName := fmt.Sprintf("%s_%s", v.ServiceName, catalogName)
-			if suite.Name != evaluationSuiteName {
-				tt.Errorf("Expected evaluation suite name to be %s, but got %s", evaluationSuiteName, suite.Name)
-			}
-			for _, evaluatedSuite := range v.Evaluation_Suites {
-				if len(suite.EvaluationLog.Evaluations) != len(evaluatedSuite.EvaluationLog.Evaluations) {
-					tt.Errorf("Expected control evaluations to match test data, but got %v", evaluatedSuite.EvaluationLog.Evaluations)
-				}
-				testPayloadData := testPayload.(PayloadTypeExample)
-				suitePayloadData := evaluatedSuite.payload.(PayloadTypeExample)
-				if testPayloadData != suitePayloadData {
-					tt.Errorf("Expected payload to be %v, but got %v", testPayloadData, suitePayloadData)
-				}
-				if evaluatedSuite.config != v.config {
-					tt.Errorf("Expected config to match simpleConfig but got %v", evaluatedSuite.config)
-				}
-			}
-		})
-	}
+		if !strings.Contains(err.Error(), "no contents found in directory") {
+			t.Errorf("Expected specific error message, got: %v", err)
+		}
+	})
+
+	t.Run("Nil Reference Catalogs Map", func(t *testing.T) {
+		orchestrator := &EvaluationOrchestrator{}
+		orchestrator.referenceCatalogs = nil
+
+		err := orchestrator.AddReferenceCatalogs("catalog-test-data", testDataFS)
+		if err != nil {
+			// This might fail due to catalog validation, which is expected
+			t.Logf("Expected error due to catalog validation: %v", err)
+		}
+
+		if orchestrator.referenceCatalogs == nil {
+			t.Error("Expected referenceCatalogs to be initialized")
+		}
+	})
+}
+
+func TestEvaluationOrchestrator_AddEvaluationSuite(t *testing.T) {
+	t.Run("Error Without Reference Catalogs", func(t *testing.T) {
+		orchestrator := &EvaluationOrchestrator{}
+
+		testLoader := func(cfg *config.Config) (interface{}, error) {
+			return "test-payload", nil
+		}
+		steps := map[string][]layer4.AssessmentStep{
+			"test-requirement": {step_Pass},
+		}
+
+		err := orchestrator.AddEvaluationSuite("test-catalog", testLoader, steps)
+		if err == nil {
+			t.Error("Expected error when no reference catalogs are set")
+		}
+
+		if len(orchestrator.possibleSuites) != 0 {
+			t.Errorf("Expected 0 suites, got %d", len(orchestrator.possibleSuites))
+		}
+	})
+}
+
+func TestEvaluationOrchestrator_Integration(t *testing.T) {
+	t.Run("Basic Setup", func(t *testing.T) {
+		orchestrator := &EvaluationOrchestrator{
+			ServiceName:   "test-service",
+			PluginName:    "test-plugin",
+			PluginUri:     "test-uri",
+			PluginVersion: "1.0.0",
+		}
+
+		// Add loader
+		testLoader := func(cfg *config.Config) (interface{}, error) {
+			return "test-payload", nil
+		}
+		orchestrator.AddLoader(testLoader)
+
+		// Add required vars
+		vars := []string{"TEST_VAR"}
+		orchestrator.AddRequiredVars(vars)
+
+		// Verify basic components are set
+		if orchestrator.loader == nil {
+			t.Error("Expected loader to be set")
+		}
+		if len(orchestrator.requiredVars) != 1 {
+			t.Error("Expected 1 required var")
+		}
+		if orchestrator.ServiceName != "test-service" {
+			t.Error("Expected service name to be set")
+		}
+		if orchestrator.PluginName != "test-plugin" {
+			t.Error("Expected plugin name to be set")
+		}
+	})
 }

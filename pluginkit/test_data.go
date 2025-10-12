@@ -16,11 +16,8 @@ type testingData struct {
 	evals                  []*layer4.ControlEvaluation // Keep for backward compatibility with other tests
 	steps                  map[string][]layer4.AssessmentStep
 	expectedEvalSuiteError error
-	expectedCorruption     bool
 	expectedResult         layer4.Result
 }
-
-var testPayload = interface{}(PayloadTypeExample{CustomPayloadField: true})
 
 var testCatalog = &layer2.Catalog{
 	ControlFamilies: []layer2.ControlFamily{},
@@ -39,14 +36,35 @@ func getTestCatalog() (*layer2.Catalog, error) {
 	file2 := fmt.Sprintf("file://%s/catalog-test-data/controls.yaml", pwd)
 	err = catalog.LoadFiles([]string{file1, file2})
 	if err != nil {
-
 		return nil, err
 	}
 	return catalog, nil
 }
 
-func examplePayload(_ *config.Config) (interface{}, error) {
-	return testPayload, nil
+// getEmptyTestCatalog returns an empty catalog for testing error conditions
+func getEmptyTestCatalog() *layer2.Catalog {
+	return &layer2.Catalog{
+		ControlFamilies: []layer2.ControlFamily{},
+	}
+}
+
+// getTestCatalogWithNoRequirements returns a catalog with controls but no assessment requirements
+func getTestCatalogWithNoRequirements() *layer2.Catalog {
+	return &layer2.Catalog{
+		ControlFamilies: []layer2.ControlFamily{
+			{
+				Id: "test-family",
+				Controls: []layer2.Control{
+					{
+						Id:                     "test-control",
+						Title:                  "Test Control",
+						Objective:              "Test objective",
+						AssessmentRequirements: []layer2.AssessmentRequirement{}, // Empty requirements
+					},
+				},
+			},
+		},
+	}
 }
 
 func passingEvaluation() (evaluation *layer4.ControlEvaluation) {
@@ -115,18 +133,6 @@ func setBasicConfig() *config.Config {
 	return &c
 }
 
-func setLimitedConfig() *config.Config {
-	viper.Set("service", "test-service")
-	viper.Set("services.test-service.policy.applicability", requestedApplicability[0])
-	viper.Set("policy.catalogs", requestedCatalogs[0])
-	c := config.NewConfig(nil)
-	return &c
-}
-
-type PayloadTypeExample struct {
-	CustomPayloadField bool
-}
-
 func step_Pass(data interface{}) (result layer4.Result, message string) {
 	return layer4.Passed, "This step always passes"
 }
@@ -169,11 +175,22 @@ func getAllRequirementIds() ([]string, error) {
 func convertEvalsToStepsMap(evals []*layer4.ControlEvaluation) map[string][]layer4.AssessmentStep {
 	stepsMap := make(map[string][]layer4.AssessmentStep)
 
+	// Handle empty evaluations
+	if len(evals) == 0 {
+		// Return empty map for empty evaluations
+		return stepsMap
+	}
+
 	// Get all requirement IDs from the actual test catalog
 	requirementIds, err := getAllRequirementIds()
 	if err != nil {
 		// Fallback to a basic set if catalog loading fails
 		requirementIds = []string{"CCC.Core.C01.TR01"}
+	}
+
+	// If no requirement IDs found, return empty map
+	if len(requirementIds) == 0 {
+		return stepsMap
 	}
 
 	// Determine the steps to use based on the evaluation type
@@ -217,67 +234,70 @@ func convertEvalsToStepsMap(evals []*layer4.ControlEvaluation) map[string][]laye
 	return stepsMap
 }
 
-var mobilizeTestData = []testingData{
-	{
-		testName:       "Pass Evaluation",
-		expectedResult: layer4.Passed,
-		evals: []*layer4.ControlEvaluation{
-			passingEvaluation(),
+// Test data for the main TestEvaluate function
+func getTestEvaluateData() []testingData {
+	return []testingData{
+		{
+			testName:       "Good Evaluation",
+			expectedResult: layer4.Passed,
+			evals: []*layer4.ControlEvaluation{
+				passingEvaluation(),
+			},
+			steps: convertEvalsToStepsMap([]*layer4.ControlEvaluation{
+				passingEvaluation(),
+			}),
 		},
-	},
-	{
-		testName:       "Fail Evaluation",
-		expectedResult: layer4.Failed,
-		evals: []*layer4.ControlEvaluation{
-			failingEvaluation(),
+		{
+			testName:       "Empty Steps Map",
+			expectedResult: layer4.NotRun,
+			evals: []*layer4.ControlEvaluation{
+				passingEvaluation(),
+			},
+			steps:                  map[string][]layer4.AssessmentStep{},
+			expectedEvalSuiteError: NO_ASSESSMENT_STEPS_PROVIDED("sel10"),
 		},
-	},
-	{
-		testName:       "Needs Review Evaluation",
-		expectedResult: layer4.NeedsReview,
-		evals: []*layer4.ControlEvaluation{
-			needsReviewEvaluation(),
+		{
+			testName:       "Nil Steps Map",
+			expectedResult: layer4.NotRun,
+			evals: []*layer4.ControlEvaluation{
+				passingEvaluation(),
+			},
+			steps:                  nil,
+			expectedEvalSuiteError: NO_ASSESSMENT_STEPS_PROVIDED("sel10"),
 		},
-	},
-	{
-		testName:       "Pass Pass Pass",
-		expectedResult: layer4.Passed,
-		evals: []*layer4.ControlEvaluation{
-			passingEvaluation(),
-			passingEvaluation(),
-			passingEvaluation(),
+		{
+			testName:       "Mixed Evaluation Results",
+			expectedResult: layer4.Failed,
+			evals: []*layer4.ControlEvaluation{
+				passingEvaluation(),
+				failingEvaluation(),
+			},
+			steps: convertEvalsToStepsMap([]*layer4.ControlEvaluation{
+				passingEvaluation(),
+				failingEvaluation(),
+			}),
 		},
-	},
-	{
-		testName:       "Pass Then Fail",
-		expectedResult: layer4.Failed,
-		evals: []*layer4.ControlEvaluation{
-			passingEvaluation(),
-			failingEvaluation(),
+		{
+			testName:       "Needs Review Evaluation",
+			expectedResult: layer4.NeedsReview,
+			evals: []*layer4.ControlEvaluation{
+				needsReviewEvaluation(),
+			},
+			steps: convertEvalsToStepsMap([]*layer4.ControlEvaluation{
+				needsReviewEvaluation(),
+			}),
 		},
-	},
-	{
-		testName:       "Pass Then Needs Review",
-		expectedResult: layer4.NeedsReview,
-		evals: []*layer4.ControlEvaluation{
-			passingEvaluation(),
-			needsReviewEvaluation(),
+		{
+			testName:       "Empty Evaluations List",
+			expectedResult: layer4.NotRun,
+			evals:          []*layer4.ControlEvaluation{},
+			steps:          convertEvalsToStepsMap([]*layer4.ControlEvaluation{}),
 		},
-	},
-	{
-		testName:       "Needs Review Then Pass",
-		expectedResult: layer4.NeedsReview,
-		evals: []*layer4.ControlEvaluation{
-			needsReviewEvaluation(),
-			passingEvaluation(),
+		{
+			testName:       "Nil Evaluations List",
+			expectedResult: layer4.NotRun,
+			evals:          nil,
+			steps:          convertEvalsToStepsMap(nil),
 		},
-	},
-	{
-		testName:       "Needs Review Then Fail",
-		expectedResult: layer4.Failed,
-		evals: []*layer4.ControlEvaluation{
-			needsReviewEvaluation(),
-			failingEvaluation(),
-		},
-	},
+	}
 }

@@ -31,7 +31,7 @@ func SetBase(cmd *cobra.Command) {
 	cmd.PersistentFlags().BoolP("silent", "", false, "Only show essential log information")
 	_ = viper.BindPFlag("silent", cmd.PersistentFlags().Lookup("silent"))
 
-	cmd.PersistentFlags().BoolP("write", "", true, "Keep all of the detailed result outputs in a file. Disabling does not disable log files.")
+	cmd.PersistentFlags().BoolP("write", "", true, "Keep all of the detailed result outputs in a file. Disabling does not disable log files")
 	_ = viper.BindPFlag("write", cmd.PersistentFlags().Lookup("write"))
 
 	cmd.PersistentFlags().BoolP("help", "h", false, "Give me a heading! Help for the specified command")
