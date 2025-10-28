@@ -280,4 +280,3 @@ func copyNonTemplateFile(templatePath, relativeFilepath, outputDir string, logge
 
 	return nil
 }
-
