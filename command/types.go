@@ -81,4 +81,3 @@ func NewPluginPkg(pluginName string, serviceName string) *PluginPkg {
 	plugin.queueCmd()
 	return plugin
 }
-
