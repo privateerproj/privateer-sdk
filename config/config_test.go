@@ -537,7 +537,7 @@ func TestSetupLoggingFilesAndDirectories(t *testing.T) {
 	         t.Error("Failed to clean up tmpDir")
 	     }
 	     return
-	 }
+	 }()
 
 	logFilePath := path.Join(tmpDir, "test", "service.log")
 
