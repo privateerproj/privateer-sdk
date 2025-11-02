@@ -108,4 +108,3 @@ func Contains(slice []*PluginPkg, search string) bool {
 	}
 	return false
 }
-
