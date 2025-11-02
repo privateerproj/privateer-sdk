@@ -531,7 +531,13 @@ func TestSetupLogging(t *testing.T) {
 
 func TestSetupLoggingFilesAndDirectories(t *testing.T) {
 	tmpDir := path.Join(os.TempDir(), "privateer-test")
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+	     err := os.RemoveAll(tmpDir)
+	     if err != nil {
+	         t.Error("Failed to clean up tmpDir")
+	     }
+	     return
+	 }
 
 	logFilePath := path.Join(tmpDir, "test", "service.log")
 
