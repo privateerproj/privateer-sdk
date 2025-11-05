@@ -1,7 +1,9 @@
 package pluginkit
 
 import (
+	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -15,35 +17,99 @@ import (
 
 // The evaluation orchestrator gets the plugin in position to execute the specified evaluation suites
 type EvaluationOrchestrator struct {
-	ServiceName       string `yaml:"service-name"`
-	PluginName        string `yaml:"plugin-name"`
-	Payload           interface{}
+	ServiceName       string             `yaml:"service-name"`
+	PluginName        string             `yaml:"plugin-name"`
+	PluginUri         string             `yaml:"plugin-uri"`
+	PluginVersion     string             `yaml:"plugin-version"`
+	Payload           any                `yaml:"payload,omitempty"`
 	Evaluation_Suites []*EvaluationSuite `yaml:"evaluation-suites"` // EvaluationSuite is a map of evaluations to their catalog names
 
-	possibleSuites []*EvaluationSuite
-	requiredVars   []string
-	config         *config.Config
-	loader         DataLoader
+	possibleSuites    []*EvaluationSuite
+	possibleControls  map[string][]*layer2.Control
+	referenceCatalogs map[string]*layer2.Catalog
+	requiredVars      []string
+	config            *config.Config
+	loader            DataLoader
 }
 
-type DataLoader func(*config.Config) (interface{}, error)
+type DataLoader func(*config.Config) (any, error)
 
-func NewEvaluationOrchestrator(pluginName string, loader DataLoader, requiredVars []string) *EvaluationOrchestrator {
-	v := &EvaluationOrchestrator{
-		PluginName:   pluginName,
-		requiredVars: requiredVars,
-		loader:       loader,
+func (v *EvaluationOrchestrator) AddLoader(loader DataLoader) {
+	v.loader = loader
+}
+
+func (v *EvaluationOrchestrator) AddRequiredVars(vars []string) {
+	v.requiredVars = vars
+}
+
+func (v *EvaluationOrchestrator) AddReferenceCatalogs(dataDir string, files embed.FS) error {
+	if v.referenceCatalogs == nil {
+		v.referenceCatalogs = make(map[string]*layer2.Catalog)
 	}
-	return v
+	if dataDir == "" {
+		return errors.New("data directory name cannot be empty")
+	}
+	catalogs, err := getPluginCatalogs(dataDir, files)
+	if err != nil {
+		return err
+	}
+	for _, catalog := range catalogs {
+		if catalog.Metadata.Id == "" {
+			return errors.New("catalog id cannot be empty")
+		}
+		if _, exists := v.referenceCatalogs[catalog.Metadata.Id]; exists {
+			return fmt.Errorf("duplicate catalog id found: %s", catalog.Metadata.Id)
+		}
+		v.referenceCatalogs[catalog.Metadata.Id] = catalog
+		v.addPossibleControls(catalog)
+	}
+	return nil
 }
 
-func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader DataLoader, evaluations []*layer4.ControlEvaluation, requirements map[string]*layer2.AssessmentRequirement) {
+func (v *EvaluationOrchestrator) addPossibleControls(catalog *layer2.Catalog) {
+	if v.possibleControls == nil {
+		v.possibleControls = make(map[string][]*layer2.Control)
+	}
+	for _, family := range catalog.ControlFamilies {
+		for i := range family.Controls {
+			control := &family.Controls[i]
+			if _, exists := v.possibleControls[control.Id]; !exists {
+				v.possibleControls[control.Id] = []*layer2.Control{control}
+			} else {
+				v.possibleControls[control.Id] = append(v.possibleControls[control.Id], control)
+			}
+		}
+	}
+}
+
+func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader DataLoader, steps map[string][]layer4.AssessmentStep) error {
+	if catalogId == "" {
+		return BAD_CATALOG(v.PluginName, "suite catalog id cannot be empty", "aos10")
+	}
+	if catalog, ok := v.referenceCatalogs[catalogId]; ok {
+		if len(catalog.ControlFamilies) == 0 {
+			return BAD_CATALOG(v.PluginName, "no control families provided", "aos20")
+		}
+		if catalog.Metadata.Id == "" {
+			return BAD_CATALOG(v.PluginName, "no id found in catalog metadata", "aos30")
+		}
+		v.addEvaluationSuite(catalog, loader, steps)
+		return nil
+	}
+	return BAD_CATALOG(v.PluginName, fmt.Sprintf("no reference catalog found with id '%s'", catalogId), "aos40")
+}
+
+func (v *EvaluationOrchestrator) addEvaluationSuite(catalog *layer2.Catalog, loader DataLoader, steps map[string][]layer4.AssessmentStep) {
+	importedControlFamilies := getImportedControlFamilies(catalog, v.referenceCatalogs)
+	catalog.ControlFamilies = append(catalog.ControlFamilies, importedControlFamilies...)
+
 	suite := EvaluationSuite{
-		CatalogId:          catalogId,
-		ControlEvaluations: evaluations,
-		requirements:       requirements,
+		CatalogId: catalog.Metadata.Id,
+		catalog:   catalog,
+		steps:     steps,
+		config:    v.config,
 	}
-	suite.config = v.config
+
 	if loader != nil {
 		suite.loader = loader
 	} else {
@@ -52,36 +118,71 @@ func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader Dat
 	v.possibleSuites = append(v.possibleSuites, &suite)
 }
 
+// getImportedControlFamilies creates a new control family entry for each imported catalog
+// and only includes controls from the imported catalog that are listed in the imports of the primary catalog
+func getImportedControlFamilies(catalog *layer2.Catalog, referenceCatalogs map[string]*layer2.Catalog) (importedFamilies []layer2.ControlFamily) {
+	if len(catalog.ImportedControls) == 0 {
+		return importedFamilies
+	}
+	for _, importEntry := range catalog.ImportedControls {
+		if refCatalog, ok := referenceCatalogs[importEntry.ReferenceId]; ok {
+			var importedControls []layer2.Control
+			for _, mapping := range importEntry.Entries {
+				if controls, exists := referenceCatalogs[importEntry.ReferenceId]; exists {
+					for _, family := range controls.ControlFamilies {
+						for i := range family.Controls {
+							control := &family.Controls[i]
+							if control.Id == mapping.ReferenceId {
+								importedControls = append(importedControls, *control)
+							}
+						}
+					}
+				}
+			}
+			if len(importedControls) > 0 {
+				family := layer2.ControlFamily{
+					Id:          fmt.Sprintf("imported-%s", refCatalog.Metadata.Id),
+					Title:       fmt.Sprintf("Imported Controls from %s", refCatalog.Metadata.Title),
+					Description: fmt.Sprintf("This control family contains controls imported from the %s catalog.", refCatalog.Metadata.Title),
+					Controls:    importedControls,
+				}
+				importedFamilies = append(importedFamilies, family)
+			}
+		}
+	}
+	return importedFamilies
+}
+
 func (v *EvaluationOrchestrator) Mobilize() error {
 	v.setupConfig()
 	if v.config.Error != nil {
-		return v.config.Error
+		return BAD_CONFIG(v.config.Error, "mob10")
 	}
+
+	if len(v.config.Policy.ControlCatalogs) == 0 {
+		return BAD_CONFIG(v.config.Error, "mob20")
+	}
+
 	err := v.loadPayload()
 	if err != nil {
-		return BAD_LOADER(v.PluginName, err)
-	}
-
-	v.config.Logger.Trace("Setting up evaluation orchestrator")
-
-	if len(v.possibleSuites) == 0 {
-		return NO_EVALUATION_SUITES()
+		return BAD_LOADER(v.PluginName, err, "mob30")
 	}
 
 	v.ServiceName = v.config.ServiceName
 
 	if v.PluginName == "" || v.ServiceName == "" {
-		return EVALUATION_ORCHESTRATOR_NAMES_NOT_SET(v.ServiceName, v.PluginName)
+		return EVALUATION_ORCHESTRATOR_NAMES_NOT_SET(v.ServiceName, v.PluginName, "mob40")
 	}
 
 	v.config.Logger.Trace("Mobilization beginning")
+	if len(v.possibleSuites) == 0 {
+		return NO_EVALUATION_SUITES("mob50")
+	}
 
 	for _, catalog := range v.config.Policy.ControlCatalogs {
 		for _, suite := range v.possibleSuites {
 			if suite.CatalogId == catalog {
-				suite.config = v.config
-				evalName := v.ServiceName + "_" + catalog
-				err := suite.Evaluate(evalName)
+				err := suite.Evaluate(v.ServiceName)
 				if err != nil {
 					v.config.Logger.Error(err.Error())
 				}
@@ -104,18 +205,35 @@ func (v *EvaluationOrchestrator) WriteResults() error {
 	switch v.config.Output {
 	case "json":
 		result, err = json.Marshal(v)
+		err = errMod(err, "wr10")
 	case "yaml":
 		result, err = yaml.Marshal(v)
+		err = errMod(err, "wr20")
+	case "sarif":
+		// Use PluginUri as artifactURI if available, otherwise use empty string
+		// (empty string means no PhysicalLocation will be set in SARIF)
+		artifactURI := ""
+		if v.PluginUri != "" {
+			artifactURI = v.PluginUri
+		}
+		for _, suite := range v.Evaluation_Suites {
+			sarifBytes, sarifErr := suite.EvaluationLog.ToSARIF(artifactURI)
+			if sarifErr != nil {
+				err = errMod(sarifErr, "wr25")
+				break
+			}
+			result = append(result, sarifBytes...)
+		}
 	default:
-		err = fmt.Errorf("output type '%s' is not supported. Supported types are 'json' and 'yaml'", v.config.Output)
+		err = fmt.Errorf("output type '%s' is not supported. Supported types are 'json', 'yaml', and 'sarif'", v.config.Output)
+		err = errMod(err, "wr30")
 	}
 	if err != nil {
-		return err
+		return WRITE_FAILED(v.PluginName, err.Error(), "wr40")
 	}
-
 	err = v.writeResultsToFile(v.ServiceName, result, v.config.Output)
 	if err != nil {
-		return err
+		return WRITE_FAILED(v.ServiceName, err.Error(), "wr60")
 	}
 
 	return nil
@@ -193,5 +311,10 @@ func (v *EvaluationOrchestrator) setupConfig() {
 	if v.config == nil {
 		c := config.NewConfig(v.requiredVars)
 		v.config = &c
+
+		// Update all existing suites to point to the new config
+		for _, suite := range v.possibleSuites {
+			suite.config = v.config
+		}
 	}
 }
