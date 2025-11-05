@@ -2,35 +2,62 @@
 package pluginkit
 
 import (
-	"errors"
 	"fmt"
 )
 
 // Errors with no parameters
 var (
-	CORRUPTION_FOUND = func() error {
-		return errors.New("target state may be corrupted! Halting to prevent futher damage. See logs for more information")
+	CORRUPTION_FOUND = func(mod string) error {
+		return errMod("target state may be corrupted! Halting to prevent futher damage. See logs for more information", mod)
 	}
-	NO_EVALUATION_SUITES = func() error {
-		return errors.New("no control evaluations provided by the plugin")
+	NO_EVALUATION_SUITES = func(mod string) error {
+		return errMod("no control evaluations provided by the plugin", mod)
 	}
-	EVAL_NAME_MISSING = func() error {
-		return errors.New("evaluationSuite name must not be empty")
+	EVAL_NAME_MISSING = func(mod string) error {
+		return errMod("evaluationSuite name must not be empty", mod)
+	}
+	CONFIG_NOT_INITIALIZED = func(mod string) error {
+		return errMod("configuration not initialized", mod)
+	}
+	NO_ASSESSMENT_STEPS_PROVIDED = func(mod string) error {
+		return errMod("assessment steps not provided", mod)
+	}
+	NO_ASSESSMENT_REQS_PROVIDED = func(mod string) error {
+		return errMod("assessment requirements not provided", mod)
+	}
+	EVAL_SUITE_CRASHED = func(mod string) error {
+		return errMod("evaluation suite crashed", mod)
 	}
 )
 
 // Errors with parameters required
 var (
-	VESSEL_NAMES_NOT_SET = func(serviceName, pluginName string) error {
-		return fmt.Errorf("expected service and plugin names to be set. ServiceName='%s' PluginName='%s'", serviceName, pluginName)
+	EVALUATION_ORCHESTRATOR_NAMES_NOT_SET = func(serviceName, pluginName string, mod string) error {
+		return errMod(fmt.Errorf("expected service and plugin names to be set. ServiceName='%s' PluginName='%s'", serviceName, pluginName), mod)
 	}
-	EVALUATION_ORCHESTRATOR_NAMES_NOT_SET = func(serviceName, pluginName string) error {
-		return fmt.Errorf("expected service and plugin names to be set. ServiceName='%s' PluginName='%s'", serviceName, pluginName)
+	WRITE_FAILED = func(name, err string, mod string) error {
+		return errMod(fmt.Errorf("failed to write results for evaluation suite. name: %s, error: %s", name, err), mod)
 	}
-	WRITE_FAILED = func(name, err string) error {
-		return fmt.Errorf("failed to write results for evaluation suite. name: %s, error: %s", name, err)
+	BAD_LOADER = func(pluginName string, err error, mod string) error {
+		return errMod(fmt.Errorf("failed to load payload for %s: %s", pluginName, err), mod)
 	}
-	BAD_LOADER = func(pluginName string, err error) error {
-		return fmt.Errorf("failed to load payload for %s: %s", pluginName, err)
+	BAD_CATALOG = func(pluginName string, errMsg string, mod string) error {
+		return errMod(fmt.Errorf("malformed data in catalog for %s: %s", pluginName, errMsg), mod)
+	}
+	BAD_EVAL_LOG = func(err error, mod string) error {
+		return errMod(fmt.Errorf("failed to setup evaluation log: %w", err), mod)
+	}
+	BAD_ASSESSMENT_REQS = func(err error, mod string) error {
+		return errMod(fmt.Errorf("failed to load assessment requirements from catalog: %w", err), mod)
+	}
+	BAD_CONFIG = func(err error, mod string) error {
+		return errMod(fmt.Errorf("failed to setup config: %w", err), mod)
 	}
 )
+
+func errMod(err any, mod string) error {
+	if err != nil {
+		return fmt.Errorf("%+v+%s", err, mod)
+	}
+	return nil
+}

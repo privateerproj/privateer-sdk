@@ -3,7 +3,6 @@ package command
 import (
 	"testing"
 
-	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/privateerproj/privateer-sdk/pluginkit"
 )
 
@@ -12,16 +11,12 @@ var (
 	buildVersion       = "1.0.0"
 	buildGitCommitHash = "123"
 	buildTime          = "2020-01-01T00:00:00Z"
-
-	nilInterface = interface{}(nil)
 )
 
-func testingLoaderFunc(*config.Config) (interface{}, error) { return &nilInterface, nil }
-
 func TestNewPluginCommands(t *testing.T) {
-	requiredVars := []string{}
-	orchestrator := pluginkit.NewEvaluationOrchestrator(pluginName, testingLoaderFunc, requiredVars)
-
+	orchestrator := &pluginkit.EvaluationOrchestrator{
+		PluginName: pluginName,
+	}
 	cmd := NewPluginCommands(pluginName, buildVersion, buildGitCommitHash, buildTime, orchestrator)
 	if cmd.Use != pluginName {
 		t.Errorf("Expected cmd.Use to be %s, but got %s", pluginName, cmd.Use)

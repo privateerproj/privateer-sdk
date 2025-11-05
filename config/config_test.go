@@ -2,8 +2,12 @@ package config
 
 import (
 	"bytes"
+	"os"
+	"path"
+	"strings"
 	"testing"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/spf13/viper"
 )
 
@@ -482,5 +486,69 @@ func TestNewConfig(t *testing.T) {
 				t.Errorf("expected write to be '%t', but got '%t'", tt.expectedWrite, c.Write)
 			}
 		})
+	}
+}
+func TestDefaultWritePath(t *testing.T) {
+	path := defaultWritePath()
+
+	if path == "" {
+		t.Error("expected defaultWritePath to return a non-empty string")
+	}
+
+	if !strings.Contains(path, ".privateer") {
+		t.Error("expected path to contain '.privateer'")
+	}
+
+	if !strings.Contains(path, "logs") {
+		t.Error("expected path to contain 'logs'")
+	}
+}
+
+func TestPrintSanitizedVars(t *testing.T) {
+	logger := hclog.NewNullLogger()
+	vars := map[string]interface{}{
+		"token":    "secret-token",
+		"password": "my-password",
+		"username": "testuser",
+	}
+
+	printSanitizedVars(logger, vars)
+}
+
+func TestSetupLogging(t *testing.T) {
+	c := Config{
+		WriteDirectory: "/tmp/test",
+		Write:          false,
+		LogLevel:       "Error",
+	}
+
+	c.SetupLogging("test-service", false)
+
+	if c.Logger == nil {
+		t.Error("expected logger to be set")
+	}
+}
+
+func TestSetupLoggingFilesAndDirectories(t *testing.T) {
+	tmpDir := path.Join(os.TempDir(), "privateer-test")
+	defer func() {
+	     err := os.RemoveAll(tmpDir)
+	     if err != nil {
+	         t.Error("Failed to clean up tmpDir")
+	     }
+	 }()
+
+	logFilePath := path.Join(tmpDir, "test", "service.log")
+
+	config := Config{
+		WriteDirectory: tmpDir,
+		Write:          true,
+		LogLevel:       "Error",
+	}
+
+	writer := config.setupLoggingFilesAndDirectories(logFilePath)
+
+	if writer == nil {
+		t.Error("expected writer to be set")
 	}
 }

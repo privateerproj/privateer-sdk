@@ -239,4 +239,3 @@ func TestEvaluationOrchestrator_WriteResults_SARIF(t *testing.T) {
 		}
 	})
 }
-

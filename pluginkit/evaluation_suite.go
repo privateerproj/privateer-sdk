@@ -1,14 +1,9 @@
 package pluginkit
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
-	"path"
-	"strings"
 	"time"
 
-	"github.com/goccy/go-yaml"
 	"github.com/ossf/gemara/layer2"
 	"github.com/ossf/gemara/layer4"
 	"github.com/privateerproj/privateer-sdk/config"
@@ -16,54 +11,77 @@ import (
 
 type TestSet func() (result layer4.ControlEvaluation)
 
-// TestSuite is a struct that contains the results of all ControlEvaluations, organized by name
+// EvaluationSuite is a struct that contains the results of all EvaluationLog executions
+// Exported fields will be used in the final YAML or JSON output documents
 type EvaluationSuite struct {
 	Name   string        // Name is the name of the suite
 	Result layer4.Result // Result is Passed if all evaluations in the suite passed
 
-	CatalogId string `yaml:"catalog-id"` // CatalogId associates this suite with an catalog
+	CatalogId string `yaml:"catalog-id"` // CatalogId associates this suite with a catalog
 	StartTime string `yaml:"start-time"` // StartTime is the time the plugin started
 	EndTime   string `yaml:"end-time"`   // EndTime is the time the plugin ended
 
-	CorruptedState bool `yaml:"corrupted-state"` // BadState is true if any testSet failed to revert at the end of the evaluation
+	CorruptedState bool `yaml:"corrupted-state"` // CorruptedState is true if any testSet failed to revert at the end of the evaluation
 
-	ControlEvaluations []*layer4.ControlEvaluation `yaml:"control-evaluations"` // ControlEvaluations is a slice of evaluations to be executed
+	EvaluationLog layer4.EvaluationLog `yaml:"control-evaluations"` // EvaluationLog is a slice of evaluations to be executed
 
-	//The plugin will pass us a list of the assessment requirements so that we can build our results, mainly used
-	//for populating the recommendation field.
-	requirements map[string]*layer2.AssessmentRequirement
+	config *config.Config // config is the global configuration
 
-	payload interface{}    // payload is the data to be evaluated
-	loader  DataLoader     // loader is the function to load the payload
-	config  *config.Config // config is the global configuration for the plugin
+	payload       interface{}                        // payload is the data to be evaluated
+	loader        DataLoader                         // loader is the function to load the payload
+	changeManager *ChangeManager                     // changes is a list of changes made during the evaluation
+	catalog       *layer2.Catalog                    // The Catalog this evaluation suite references
+	steps         map[string][]layer4.AssessmentStep // steps is a map of control IDs to their assessment steps
 
 	evalSuccesses int // successes is the number of successful evaluations
 	evalFailures  int // failures is the number of failed evaluations
 	evalWarnings  int // warnings is the number of evaluations that need review
 }
 
-// Execute is used to execute a list of ControlEvaluations provided by a Plugin and customized by user config
-// Name is an arbitrary string that will be used to identify the EvaluationSuite
-func (e *EvaluationSuite) Evaluate(name string) error {
-	if name == "" {
-		return EVAL_NAME_MISSING()
+// AddChangeManager sets up the change manager for the evaluation suite
+func (e *EvaluationSuite) AddChangeManager(cm *ChangeManager) {
+	if e.config.Invasive && cm != nil {
+		e.changeManager = cm
+		e.changeManager.Allow()
 	}
-	e.Name = name
+}
+
+// Execute is used to execute a list of EvaluationLog provided by a Plugin and customized by user config
+// Name is an arbitrary string that will be used to identify the EvaluationSuite
+func (e *EvaluationSuite) Evaluate(serviceName string) error {
+	if e.config == nil {
+		return CONFIG_NOT_INITIALIZED("ev10")
+	}
+
+	requirements, err := e.GetAssessmentRequirements()
+	if err != nil {
+		return BAD_ASSESSMENT_REQS(err, "ev20")
+	}
+
+	evalLog, err := e.setupEvalLog(e.steps)
+	if err != nil {
+		return BAD_EVAL_LOG(err, "ev30")
+	}
+
+	if len(evalLog.Evaluations) == 0 {
+		return EVAL_SUITE_CRASHED("ev40")
+	}
+
+	e.Name = fmt.Sprintf("%s_%s", serviceName, e.CatalogId)
+	e.EvaluationLog = evalLog
 	e.StartTime = time.Now().String()
+
 	e.config.Logger.Trace("Starting evaluation", "name", e.Name, "time", e.StartTime)
-	for _, evaluation := range e.ControlEvaluations {
-		evaluation.Evaluate(e.payload, e.config.Policy.Applicability, e.config.Invasive)
-		evaluation.Cleanup()
-		if !e.CorruptedState {
-			e.CorruptedState = evaluation.CorruptedState
-		}
+
+	for _, evaluation := range e.EvaluationLog.Evaluations {
+		evaluation.Evaluate(e.payload, e.config.Policy.Applicability)
 
 		// Make sure the evaluation result is updated based on the complete assessment results
 		e.Result = layer4.UpdateAggregateResult(e.Result, evaluation.Result)
 
 		// Log each assessment result as a separate line
 		for _, assessment := range evaluation.AssessmentLogs {
-			message := fmt.Sprintf("%s: %s", assessment.RequirementId, assessment.Message)
+			message := fmt.Sprintf("%s: %s", assessment.Requirement.EntryId, assessment.Message)
 			// switch case the code below
 			switch assessment.Result {
 			case layer4.Passed:
@@ -76,9 +94,8 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 				e.config.Logger.Error(message)
 			}
 
-			//populate the assessment reccomendation off of the requirement list passed in (if passed)
-			if len(e.requirements) > 0 && e.requirements[assessment.RequirementId] != nil {
-				assessment.Recommendation = e.requirements[assessment.RequirementId].Recommendation
+			if len(requirements) > 0 && requirements[assessment.Requirement.EntryId] != nil {
+				assessment.Recommendation = requirements[assessment.Requirement.EntryId].Recommendation
 			}
 		}
 
@@ -89,18 +106,22 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 		} else if evaluation.Result != layer4.NotRun {
 			e.evalWarnings += 1
 		}
-		if e.CorruptedState {
+		if e.changeManager != nil && e.changeManager.CorruptedState {
 			break
 		}
 	}
 
-	e.cleanup()
+	output := fmt.Sprintf("> %s: %v Passed, %v Warnings, %v Failed, %v Possible", e.Name, e.evalSuccesses, e.evalWarnings, e.evalFailures, len(evalLog.Evaluations))
+
 	e.EndTime = time.Now().String()
 
-	output := fmt.Sprintf("> %s: %v Passed, %v Warnings, %v Failed", e.Name, e.evalSuccesses, e.evalWarnings, e.evalFailures)
-	if e.CorruptedState {
-		return CORRUPTION_FOUND()
+	if e.changeManager != nil {
+		e.changeManager.RevertAll()
+		if e.CorruptedState {
+			return CORRUPTION_FOUND("ev40")
+		}
 	}
+
 	switch e.Result {
 	case layer4.Passed:
 		e.config.Logger.Info(output)
@@ -112,82 +133,86 @@ func (e *EvaluationSuite) Evaluate(name string) error {
 	return nil
 }
 
-func (e *EvaluationSuite) WriteControlEvaluations(serviceName string, output string) error {
-	if e.Name == "" || serviceName == "" {
-		return fmt.Errorf("EvaluationSuite name and service name must be provided before attempting to write results: EvaluationSuite='%s' service='%s'", e.Name, serviceName)
-	}
-
-	var err error
-	var result []byte
-	switch output {
-	case "json":
-		result, err = json.Marshal(e)
-	case "yaml":
-		result, err = yaml.Marshal(e)
-	default:
-		err = fmt.Errorf("output type '%s' is not supported. Supported types are 'json' and 'yaml'", output)
-	}
-	if err != nil {
-		return err
-	}
-
-	err = e.writeControlEvaluationsToFile(serviceName, result, output)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (e *EvaluationSuite) writeControlEvaluationsToFile(serviceName string, result []byte, extension string) error {
-	if !strings.Contains(extension, ".") {
-		extension = fmt.Sprintf(".%s", extension)
-	}
-	dir := path.Join(e.config.WriteDirectory, serviceName)
-	filename := fmt.Sprintf("%s%s", e.Name, extension)
-	filepath := path.Join(dir, filename)
-
-	e.config.Logger.Trace("Writing results", "filepath", filepath)
-
-	// Create log file and directory if it doesn't exist
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		err = os.MkdirAll(dir, os.ModePerm)
-		if err != nil {
-			e.config.Logger.Error("Error creating directory", "directory", dir)
-			return err
-		}
-		e.config.Logger.Warn("write directory for this plugin created for results, but should have been created when initializing logs", "directory", dir)
-	}
-
-	_, err := os.Create(filepath)
-	if err != nil {
-		e.config.Logger.Error("Error creating file", "filepath", filepath)
-		return err
-	}
-
-	file, err := os.OpenFile(filepath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
-	if err != nil {
-		e.config.Logger.Error("Error opening file", "filepath", filepath)
-		return err
-	}
-	defer func() {
-		_ = file.Close()
-	}()
-
-	_, err = file.Write(result)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (e *EvaluationSuite) cleanup() (passed bool) {
-	for _, result := range e.ControlEvaluations {
-		result.Cleanup()
-		if result.CorruptedState {
-			e.CorruptedState = result.CorruptedState
+func (e *EvaluationSuite) GetAssessmentRequirements() (map[string]*layer2.AssessmentRequirement, error) {
+	requirements := make(map[string]*layer2.AssessmentRequirement)
+	for _, family := range e.catalog.ControlFamilies {
+		for _, control := range family.Controls {
+			for _, requirement := range control.AssessmentRequirements {
+				requirements[requirement.Id] = &requirement
+			}
 		}
 	}
-	return !e.CorruptedState
+
+	if len(requirements) == 0 {
+		return nil, NO_ASSESSMENT_REQS_PROVIDED("ev50")
+	}
+
+	return requirements, nil
+}
+
+func (e *EvaluationSuite) setupEvalLog(steps map[string][]layer4.AssessmentStep) (evalLog layer4.EvaluationLog, err error) {
+	if len(steps) == 0 {
+		return evalLog, NO_ASSESSMENT_STEPS_PROVIDED("sel10")
+	}
+
+	// crash if reaching the end without a requirement
+	// use errMod to add level of detail
+	var controlsFound bool
+	var reqsFound bool
+
+	if len(e.catalog.ControlFamilies) == 0 {
+		return evalLog, EVAL_SUITE_CRASHED("sel20")
+	}
+
+	for _, family := range e.catalog.ControlFamilies {
+		if len(family.Controls) == 0 {
+			continue
+		}
+		controlsFound = true
+		for _, control := range family.Controls {
+			if len(control.AssessmentRequirements) == 0 {
+				continue
+			}
+			reqsFound = true
+
+			// Create ControlEvaluation first
+			evaluation := &layer4.ControlEvaluation{
+				Name: control.Title,
+				Control: layer4.Mapping{
+					ReferenceId: e.CatalogId,
+					EntryId:     control.Id,
+				},
+			}
+
+			for _, requirement := range control.AssessmentRequirements {
+				// Use AddAssessment instead of manual struct creation
+				assessment := evaluation.AddAssessment(
+					requirement.Id,            // requirementId
+					control.Objective,         // description
+					requirement.Applicability, // applicability
+					steps[requirement.Id],     // steps
+				)
+
+				// Handle case where no steps were found
+				if _, ok := steps[requirement.Id]; !ok {
+					assessment.Result = layer4.Unknown
+					if e.config != nil {
+						msg := fmt.Sprintf("requirement: %s, control %s+sel30", requirement.Id, control.Id)
+						err := NO_ASSESSMENT_STEPS_PROVIDED(msg)
+						e.config.Logger.Debug(err.Error())
+					}
+				}
+			}
+			evalLog.Evaluations = append(evalLog.Evaluations, evaluation)
+		}
+	}
+
+	if !controlsFound {
+		return evalLog, EVAL_SUITE_CRASHED("sel40")
+	}
+	if !reqsFound {
+		return evalLog, EVAL_SUITE_CRASHED("sel50")
+	}
+
+	return evalLog, nil
 }
