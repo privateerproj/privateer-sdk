@@ -210,15 +210,22 @@ func (v *EvaluationOrchestrator) WriteResults() error {
 		result, err = yaml.Marshal(v)
 		err = errMod(err, "wr20")
 	case "sarif":
+		// Use PluginUri as artifactURI if available, otherwise use empty string
+		// (empty string means no PhysicalLocation will be set in SARIF)
+		artifactURI := ""
+		if v.PluginUri != "" {
+			artifactURI = v.PluginUri
+		}
 		for _, suite := range v.Evaluation_Suites {
-			sarifBytes, err := suite.EvaluationLog.ToSARIF()
-			if err != nil {
+			sarifBytes, sarifErr := suite.EvaluationLog.ToSARIF(artifactURI)
+			if sarifErr != nil {
+				err = errMod(sarifErr, "wr25")
 				break
 			}
 			result = append(result, sarifBytes...)
 		}
 	default:
-		err = fmt.Errorf("output type '%s' is not supported. Supported types are 'json' and 'yaml'", v.config.Output)
+		err = fmt.Errorf("output type '%s' is not supported. Supported types are 'json', 'yaml', and 'sarif'", v.config.Output)
 		err = errMod(err, "wr30")
 	}
 	if err != nil {

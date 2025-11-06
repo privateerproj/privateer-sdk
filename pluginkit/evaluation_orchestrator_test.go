@@ -2,6 +2,7 @@ package pluginkit
 
 import (
 	"embed"
+	"os"
 	"strings"
 	"testing"
 
@@ -146,6 +147,95 @@ func TestEvaluationOrchestrator_Integration(t *testing.T) {
 		}
 		if orchestrator.PluginName != "test-plugin" {
 			t.Error("Expected plugin name to be set")
+		}
+	})
+}
+
+func createTestEvalLog() layer4.EvaluationLog {
+	return layer4.EvaluationLog{
+		Evaluations: []*layer4.ControlEvaluation{
+			passingEvaluation(),
+		},
+		Metadata: layer4.Metadata{
+			Author: layer4.Author{
+				Name:    "test-plugin",
+				Uri:     "https://github.com/test/repo",
+				Version: "1.0.0",
+			},
+		},
+	}
+}
+
+func TestEvaluationOrchestrator_WriteResults_SARIF(t *testing.T) {
+	t.Run("SARIF output with PluginUri", func(t *testing.T) {
+		tmpDir, err := os.MkdirTemp("", "test-sarif-")
+		if err != nil {
+			t.Fatalf("Failed to create temp directory: %v", err)
+		}
+		defer func() {
+			_ = os.RemoveAll(tmpDir)
+		}()
+
+		cfg := setBasicConfig()
+		cfg.Output = "sarif"
+		cfg.Write = true
+		cfg.WriteDirectory = tmpDir
+
+		orchestrator := &EvaluationOrchestrator{
+			ServiceName:   "test-service",
+			PluginName:    "test-plugin",
+			PluginUri:     "https://github.com/test/repo",
+			PluginVersion: "1.0.0",
+			config:        cfg,
+		}
+
+		suite := &EvaluationSuite{
+			CatalogId:     "test-catalog",
+			EvaluationLog: createTestEvalLog(),
+			config:        cfg,
+		}
+
+		orchestrator.Evaluation_Suites = []*EvaluationSuite{suite}
+
+		err = orchestrator.WriteResults()
+		if err != nil {
+			t.Errorf("WriteResults failed: %v", err)
+		}
+	})
+
+	t.Run("SARIF output without PluginUri", func(t *testing.T) {
+		tmpDir, err := os.MkdirTemp("", "test-sarif-")
+		if err != nil {
+			t.Fatalf("Failed to create temp directory: %v", err)
+		}
+		defer func() {
+			_ = os.RemoveAll(tmpDir)
+		}()
+
+		cfg := setBasicConfig()
+		cfg.Output = "sarif"
+		cfg.Write = true
+		cfg.WriteDirectory = tmpDir
+
+		orchestrator := &EvaluationOrchestrator{
+			ServiceName:   "test-service",
+			PluginName:    "test-plugin",
+			PluginUri:     "",
+			PluginVersion: "1.0.0",
+			config:        cfg,
+		}
+
+		suite := &EvaluationSuite{
+			CatalogId:     "test-catalog",
+			EvaluationLog: createTestEvalLog(),
+			config:        cfg,
+		}
+
+		orchestrator.Evaluation_Suites = []*EvaluationSuite{suite}
+
+		err = orchestrator.WriteResults()
+		if err != nil {
+			t.Errorf("WriteResults failed: %v", err)
 		}
 	})
 }
