@@ -186,6 +186,14 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 				if err != nil {
 					v.config.Logger.Error(err.Error())
 				}
+				// Set plugin metadata in EvaluationLog for SARIF generation
+				suite.EvaluationLog.Metadata = layer4.Metadata{
+					Author: layer4.Author{
+						Name:    v.PluginName,
+						Uri:     v.PluginUri,
+						Version: v.PluginVersion,
+					},
+				}
 				v.Evaluation_Suites = append(v.Evaluation_Suites, suite)
 			}
 		}
