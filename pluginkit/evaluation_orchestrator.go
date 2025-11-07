@@ -220,7 +220,6 @@ func (v *EvaluationOrchestrator) WriteResults() error {
 	case "sarif":
 		// Use empty string for artifactURI - repository-level assessments don't have specific file paths
 		// (empty string means no PhysicalLocation will be set in SARIF, avoiding URI scheme mismatch errors)
-		artifactURI := ""
 		for _, suite := range v.Evaluation_Suites {
 			sarifBytes, sarifErr := suite.EvaluationLog.ToSARIF(artifactURI)
 			if sarifErr != nil {
