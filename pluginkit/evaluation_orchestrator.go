@@ -218,14 +218,10 @@ func (v *EvaluationOrchestrator) WriteResults() error {
 		result, err = yaml.Marshal(v)
 		err = errMod(err, "wr20")
 	case "sarif":
-		// Use PluginUri as artifactURI if available, otherwise use empty string
-		// (empty string means no PhysicalLocation will be set in SARIF)
-		artifactURI := ""
-		if v.PluginUri != "" {
-			artifactURI = v.PluginUri
-		}
+		// Use empty string for artifactURI - repository-level assessments don't have specific file paths
+		// (empty string means no PhysicalLocation will be set in SARIF, avoiding URI scheme mismatch errors)
 		for _, suite := range v.Evaluation_Suites {
-			sarifBytes, sarifErr := suite.EvaluationLog.ToSARIF(artifactURI)
+			sarifBytes, sarifErr := suite.EvaluationLog.ToSARIF("")
 			if sarifErr != nil {
 				err = errMod(sarifErr, "wr25")
 				break
