@@ -218,10 +218,12 @@ func (v *EvaluationOrchestrator) WriteResults() error {
 		result, err = yaml.Marshal(v)
 		err = errMod(err, "wr20")
 	case "sarif":
-		// Use empty string for artifactURI - repository-level assessments don't have specific file paths
-		// (empty string means no PhysicalLocation will be set in SARIF, avoiding URI scheme mismatch errors)
+		// Use "README.md" as artifactURI for repository-level assessments
+		// GitHub Code Scanning requires PhysicalLocation, and "README.md" is a common file path
+		// that satisfies this requirement (as recommended in gemara's ToSARIF documentation)
+		artifactURI := "README.md"
 		for _, suite := range v.Evaluation_Suites {
-			sarifBytes, sarifErr := suite.EvaluationLog.ToSARIF("")
+			sarifBytes, sarifErr := suite.EvaluationLog.ToSARIF(artifactURI)
 			if sarifErr != nil {
 				err = errMod(sarifErr, "wr25")
 				break
