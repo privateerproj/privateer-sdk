@@ -223,7 +223,7 @@ func (v *EvaluationOrchestrator) WriteResults() error {
 		// that satisfies this requirement (as recommended in gemara's ToSARIF documentation)
 		artifactURI := "README.md"
 		for _, suite := range v.Evaluation_Suites {
-			sarifBytes, sarifErr := suite.EvaluationLog.ToSARIF(artifactURI)
+			sarifBytes, sarifErr := suite.EvaluationLog.ToSARIF(artifactURI, suite.catalog)
 			if sarifErr != nil {
 				err = errMod(sarifErr, "wr25")
 				break
