@@ -221,9 +221,8 @@ func (v *EvaluationOrchestrator) WriteResults() error {
 		// Use "README.md" as artifactURI for repository-level assessments
 		// GitHub Code Scanning requires PhysicalLocation, and "README.md" is a common file path
 		// that satisfies this requirement (as recommended in gemara's ToSARIF documentation)
-		artifactURI := "README.md"
 		for _, suite := range v.Evaluation_Suites {
-			sarifBytes, sarifErr := suite.EvaluationLog.ToSARIF(artifactURI, suite.catalog)
+			sarifBytes, sarifErr := suite.EvaluationLog.ToSARIF("", suite.catalog)
 			if sarifErr != nil {
 				err = errMod(sarifErr, "wr25")
 				break
