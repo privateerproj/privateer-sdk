@@ -15,7 +15,7 @@ import (
 	"github.com/privateerproj/privateer-sdk/config"
 )
 
-// The evaluation orchestrator gets the plugin in position to execute the specified evaluation suites
+// EvaluationOrchestrator gets the plugin in position to execute the specified evaluation suites.
 type EvaluationOrchestrator struct {
 	ServiceName       string             `yaml:"service-name"`
 	PluginName        string             `yaml:"plugin-name"`
@@ -32,16 +32,20 @@ type EvaluationOrchestrator struct {
 	loader            DataLoader
 }
 
+// DataLoader is a function type for loading plugin data from configuration.
 type DataLoader func(*config.Config) (any, error)
 
+// AddLoader sets the data loader function for the orchestrator.
 func (v *EvaluationOrchestrator) AddLoader(loader DataLoader) {
 	v.loader = loader
 }
 
+// AddRequiredVars sets the required configuration variables for the orchestrator.
 func (v *EvaluationOrchestrator) AddRequiredVars(vars []string) {
 	v.requiredVars = vars
 }
 
+// AddReferenceCatalogs loads reference catalogs from the embedded file system.
 func (v *EvaluationOrchestrator) AddReferenceCatalogs(dataDir string, files embed.FS) error {
 	if v.referenceCatalogs == nil {
 		v.referenceCatalogs = make(map[string]*layer2.Catalog)
@@ -82,6 +86,7 @@ func (v *EvaluationOrchestrator) addPossibleControls(catalog *layer2.Catalog) {
 	}
 }
 
+// AddEvaluationSuite adds an evaluation suite for the given catalog ID.
 func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader DataLoader, steps map[string][]layer4.AssessmentStep) error {
 	if catalogId == "" {
 		return BAD_CATALOG(v.PluginName, "suite catalog id cannot be empty", "aos10")
@@ -119,7 +124,7 @@ func (v *EvaluationOrchestrator) addEvaluationSuite(catalog *layer2.Catalog, loa
 }
 
 // getImportedControlFamilies creates a new control family entry for each imported catalog
-// and only includes controls from the imported catalog that are listed in the imports of the primary catalog
+// and only includes controls from the imported catalog that are listed in the imports of the primary catalog.
 func getImportedControlFamilies(catalog *layer2.Catalog, referenceCatalogs map[string]*layer2.Catalog) (importedFamilies []layer2.ControlFamily) {
 	if len(catalog.ImportedControls) == 0 {
 		return importedFamilies
@@ -153,6 +158,7 @@ func getImportedControlFamilies(catalog *layer2.Catalog, referenceCatalogs map[s
 	return importedFamilies
 }
 
+// Mobilize initializes the orchestrator and executes all evaluation suites.
 func (v *EvaluationOrchestrator) Mobilize() error {
 	v.setupConfig()
 	if v.config.Error != nil {
@@ -206,6 +212,7 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 	return v.WriteResults()
 }
 
+// WriteResults writes the evaluation results to files in the configured output format.
 func (v *EvaluationOrchestrator) WriteResults() error {
 
 	var err error
@@ -287,7 +294,7 @@ func (v *EvaluationOrchestrator) writeResultsToFile(serviceName string, result [
 	return nil
 }
 
-// SetPayload allows the user to pass data to be referenced in assessments
+// loadPayload loads the payload data to be referenced in assessments.
 func (v *EvaluationOrchestrator) loadPayload() (err error) {
 	payload := new(interface{})
 	if v.loader != nil {

@@ -1,11 +1,13 @@
-// errors.go contains error definitions to streamline testing and log management
+// Package pluginkit provides the core plugin kit functionality for building Privateer plugins.
+//
+// This file contains error definitions to streamline testing and log management.
 package pluginkit
 
 import (
 	"fmt"
 )
 
-// Errors with no parameters
+// Error functions that require no parameters.
 var (
 	CORRUPTION_FOUND = func(mod string) error {
 		return errMod("target state may be corrupted! Halting to prevent futher damage. See logs for more information", mod)
@@ -30,7 +32,7 @@ var (
 	}
 )
 
-// Errors with parameters required
+// Error functions that require parameters.
 var (
 	EVALUATION_ORCHESTRATOR_NAMES_NOT_SET = func(serviceName, pluginName string, mod string) error {
 		return errMod(fmt.Errorf("expected service and plugin names to be set. ServiceName='%s' PluginName='%s'", serviceName, pluginName), mod)

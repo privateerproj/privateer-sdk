@@ -1,3 +1,4 @@
+// Package command provides command-line interface functionality for Privateer plugins.
 package command
 
 // Wontfix: Logging in this file has unexpected behavior related to the WriteDirectory and loglevel values.
@@ -11,7 +12,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-// SetBase sets the base flags for all commands
+// SetBase sets the base flags for all commands.
 func SetBase(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringP("config", "c", defaultConfigPath(), "Configuration File, JSON or YAML")
 	_ = viper.BindPFlag("config", cmd.PersistentFlags().Lookup("config"))
@@ -37,6 +38,7 @@ func SetBase(cmd *cobra.Command) {
 	cmd.PersistentFlags().BoolP("help", "h", false, "Give me a heading! Help for the specified command")
 }
 
+// ReadConfig reads the configuration file specified in the config flag.
 func ReadConfig() {
 	viper.SetConfigFile(viper.GetString("config"))
 	viper.AutomaticEnv()

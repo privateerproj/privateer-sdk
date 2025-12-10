@@ -11,17 +11,17 @@ import (
 	"github.com/privateerproj/privateer-sdk/shared"
 )
 
-// Exit codes
+// Exit codes for plugin execution results.
 const (
-	TestPass = iota
-	TestFail
-	Aborted
-	InternalError
-	BadUsage
-	NoTests
+	TestPass      = iota // TestPass indicates all tests passed.
+	TestFail             // TestFail indicates one or more tests failed.
+	Aborted              // Aborted indicates execution was aborted.
+	InternalError        // InternalError indicates an internal error occurred.
+	BadUsage             // BadUsage indicates incorrect command usage.
+	NoTests              // NoTests indicates no tests were found to run.
 )
 
-// Run executes all plugins with handling for the command line
+// Run executes all plugins with handling for the command line.
 func Run(logger hclog.Logger, getPlugins func() []*PluginPkg) (exitCode int) {
 	logger.Trace(fmt.Sprintf(
 		"Using bin: %s", viper.GetString("binaries-path")))
@@ -89,9 +89,9 @@ func closeClient(pluginPkg *PluginPkg, serviceName string, client *hcplugin.Clie
 	client.Kill()
 }
 
-// newClient client handles the lifecycle of a plugin application
+// newClient handles the lifecycle of a plugin application.
 // Plugin hosts should use one Client for each plugin executable
-// (this is different from the client that manages gRPC)
+// (this is different from the client that manages gRPC).
 func newClient(cmd *exec.Cmd, logger hclog.Logger) *hcplugin.Client {
 	var pluginMap = map[string]hcplugin.Plugin{
 		shared.PluginName: &shared.Plugin{},
