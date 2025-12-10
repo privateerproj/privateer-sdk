@@ -13,10 +13,10 @@ const (
 	letterIdxMax    = 63 / letterIndexBits   // # of letter indices fitting in 63 bits
 )
 
-// src is a global variable that generates a new seed for the random number generator
+// src is a global variable that generates a new seed for the random number generator.
 var src = rand.NewSource(time.Now().UnixNano())
 
-// RandomString generates a pseudo-random number of characters of length n
+// RandomString generates a pseudo-random string of characters of length n.
 func RandomString(n int) string {
 	bytes := make([]byte, n)
 	// A src.Int63() generates 63 random bits, enough for letterIdxMax characters!

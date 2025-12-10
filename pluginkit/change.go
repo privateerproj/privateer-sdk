@@ -1,15 +1,17 @@
+// Package pluginkit provides the core plugin kit functionality for building Privateer plugins.
 package pluginkit
 
 import (
 	"fmt"
 )
 
-// Prepared function to apply the change
+// ApplyFunc is a prepared function to apply a change.
 type ApplyFunc func(interface{}) (interface{}, error)
 
-// Prepared function to revert the change after it has been applied
+// RevertFunc is a prepared function to revert a change after it has been applied.
 type RevertFunc func(interface{}) error
 
+// ChangeManager manages changes that can be applied and reverted during evaluation.
 type ChangeManager struct {
 	// Changes is a map of change names to Change objects, so that multiple changes can be tracked and reused.
 	Changes map[string]*Change `yaml:"changes"`
@@ -41,11 +43,12 @@ type Change struct {
 	CorruptedState bool `yaml:"bad-state,omitempty"`
 }
 
-// Allow marks the change as allowed to be applied.
+// Allow marks changes as allowed to be applied.
 func (cm *ChangeManager) Allow() {
 	cm.Allowed = true
 }
 
+// AddChange adds a change to the change manager.
 func (cm *ChangeManager) AddChange(changeName string, change Change) {
 	if cm.Changes == nil {
 		cm.Changes = make(map[string]*Change)
@@ -53,12 +56,14 @@ func (cm *ChangeManager) AddChange(changeName string, change Change) {
 	cm.Changes[changeName] = &change
 }
 
+// AddFunctions sets the apply and revert functions for a change.
 func (c *Change) AddFunctions(applyFunc ApplyFunc, revertFunc RevertFunc) {
 	c.applyFunc = applyFunc
 	c.revertFunc = revertFunc
 }
 
-// Apply the prepared function for the change. It will not apply the change if it is not allowed, or if it has already been applied and not reverted.
+// Apply executes the prepared function for the change.
+// It will not apply the change if it is not allowed, or if it has already been applied and not reverted.
 func (cm *ChangeManager) Apply(changeName string, targetName string, changeInput any) (success bool, target any) {
 	if !cm.Allowed {
 		return false, nil
@@ -74,6 +79,7 @@ func (cm *ChangeManager) Apply(changeName string, targetName string, changeInput
 	return success, target
 }
 
+// Revert reverts a specific change by name.
 func (cm *ChangeManager) Revert(changeName string) {
 	change, exists := cm.Changes[changeName]
 	if !exists {
@@ -85,6 +91,7 @@ func (cm *ChangeManager) Revert(changeName string) {
 	}
 }
 
+// RevertAll reverts all changes managed by the change manager.
 func (cm *ChangeManager) RevertAll() {
 	for _, change := range cm.Changes {
 		change.revert(change.TargetObject)
@@ -94,7 +101,8 @@ func (cm *ChangeManager) RevertAll() {
 	}
 }
 
-// Apply the prepared function for the change. It will not apply the change if it has already been applied and not reverted.
+// apply executes the prepared function for the change.
+// It will not apply the change if it has already been applied and not reverted.
 // It will also not apply the change if it is not allowed.
 func (c *Change) apply(targetName string, changeInput any) (success bool, target any) {
 	err := c.precheck()
@@ -121,7 +129,8 @@ func (c *Change) apply(targetName string, changeInput any) (success bool, target
 	return true, c.TargetObject
 }
 
-// Revert the change by executing the revert function. It does nothing if it has not been applied.
+// revert reverts the change by executing the revert function.
+// It does nothing if it has not been applied.
 func (c *Change) revert(data interface{}) {
 	if !c.Applied {
 		return

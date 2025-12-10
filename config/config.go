@@ -1,3 +1,4 @@
+// Package config provides configuration management for Privateer plugins.
 package config
 
 import (
@@ -18,6 +19,7 @@ import (
 
 var allowedOutputTypes = []string{"json", "yaml", "sarif"}
 
+// Config holds the configuration for a plugin execution.
 type Config struct {
 	ServiceName    string // Must be unique in the config file or logs will be overwritten
 	LogLevel       string
@@ -31,12 +33,14 @@ type Config struct {
 	Error          error
 }
 
+// Policy defines the control catalogs and applicability settings for a plugin.
+// TODO: We will want to replace this with a Gemara layer3 object now that those are ready.
 type Policy struct {
-	// TODO: We will want to replace this with a Gemara layer3 object now that those are ready
 	ControlCatalogs []string
 	Applicability   []string
 }
 
+// NewConfig creates a new Config instance from viper configuration.
 func NewConfig(requiredVars []string) Config {
 	var errString string
 
@@ -165,6 +169,7 @@ func defaultWritePath() string {
 	return filepath.Join(home, ".privateer", "logs", dirName)
 }
 
+// SetupLogging configures logging for the plugin with the given name and format.
 func (c *Config) SetupLogging(name string, jsonFormat bool) {
 	var logFilePath string
 	logFile := name + ".log"

@@ -9,10 +9,11 @@ import (
 	"github.com/privateerproj/privateer-sdk/config"
 )
 
+// TestSet is a function type that returns a control evaluation result.
 type TestSet func() (result layer4.ControlEvaluation)
 
-// EvaluationSuite is a struct that contains the results of all EvaluationLog executions
-// Exported fields will be used in the final YAML or JSON output documents
+// EvaluationSuite contains the results of all EvaluationLog executions.
+// Exported fields will be used in the final YAML or JSON output documents.
 type EvaluationSuite struct {
 	Name   string        // Name is the name of the suite
 	Result layer4.Result // Result is Passed if all evaluations in the suite passed
@@ -38,7 +39,7 @@ type EvaluationSuite struct {
 	evalWarnings  int // warnings is the number of evaluations that need review
 }
 
-// AddChangeManager sets up the change manager for the evaluation suite
+// AddChangeManager sets up the change manager for the evaluation suite.
 func (e *EvaluationSuite) AddChangeManager(cm *ChangeManager) {
 	if e.config.Invasive && cm != nil {
 		e.changeManager = cm
@@ -46,8 +47,8 @@ func (e *EvaluationSuite) AddChangeManager(cm *ChangeManager) {
 	}
 }
 
-// Execute is used to execute a list of EvaluationLog provided by a Plugin and customized by user config
-// Name is an arbitrary string that will be used to identify the EvaluationSuite
+// Evaluate executes a list of EvaluationLog provided by a Plugin and customized by user config.
+// Name is an arbitrary string that will be used to identify the EvaluationSuite.
 func (e *EvaluationSuite) Evaluate(serviceName string) error {
 	if e.config == nil {
 		return CONFIG_NOT_INITIALIZED("ev10")
@@ -133,6 +134,7 @@ func (e *EvaluationSuite) Evaluate(serviceName string) error {
 	return nil
 }
 
+// GetAssessmentRequirements retrieves all assessment requirements from the catalog.
 func (e *EvaluationSuite) GetAssessmentRequirements() (map[string]*layer2.AssessmentRequirement, error) {
 	requirements := make(map[string]*layer2.AssessmentRequirement)
 	for _, family := range e.catalog.ControlFamilies {

@@ -11,14 +11,14 @@ import (
 	"github.com/spf13/viper"
 )
 
-// PluginError retains an error object and the name of the pack that generated it
+// PluginError retains an error object and the name of the pack that generated it.
 type PluginError struct {
 	Plugin string
 	Err    error
 }
 
 // PluginErrors holds a list of errors and an Error() method
-// so it adheres to the standard Error interface
+// so it adheres to the standard Error interface.
 type PluginErrors struct {
 	Errors []PluginError
 }
@@ -27,6 +27,7 @@ func (e *PluginErrors) Error() string {
 	return fmt.Sprintf("Service Pack Errors: %v", e.Errors)
 }
 
+// PluginPkg represents a plugin package with its metadata and execution state.
 type PluginPkg struct {
 	Name          string
 	Path          string
@@ -68,6 +69,7 @@ func (p *PluginPkg) queueCmd() {
 	}
 }
 
+// NewPluginPkg creates a new PluginPkg instance for the given plugin and service names.
 func NewPluginPkg(pluginName string, serviceName string) *PluginPkg {
 	plugin := &PluginPkg{
 		Name: pluginName,

@@ -7,10 +7,10 @@ import (
 	hcplugin "github.com/hashicorp/go-plugin"
 )
 
-// PluginName overwritten to be used by Privateer Core sally.go: rpcClient.Dispense(plugin.PluginName)
+// PluginName is used by Privateer Core sally.go: rpcClient.Dispense(plugin.PluginName).
 const PluginName = "plugin"
 
-// handshakeConfigs are used to just do a basic handshake between
+// handshakeConfig is used to just do a basic handshake between
 // a hcplugin and host. If the handshake fails, a user friendly error is shown.
 // This prevents users from executing bad hcplugins or executing a hcplugin
 // directly. It is a UX feature, not a security feature.
@@ -18,7 +18,7 @@ var handshakeConfig = GetHandshakeConfig()
 
 // ServeOpts are the configurations to serve a plugin.
 type ServeOpts struct {
-	//Interface implementation
+	// Plugin is the interface implementation.
 	Plugin Pluginer
 
 	// Logger is the logger that go-plugin will use.
@@ -46,7 +46,8 @@ func Serve(pluginName string, opts *ServeOpts) {
 	log.Printf("Successfully completed plugin: %s", pluginName)
 }
 
-// GetHandshakeConfig provides handshake config details. It is used by core and service packs.
+// GetHandshakeConfig provides handshake config details.
+// It is used by core and service packs.
 func GetHandshakeConfig() hcplugin.HandshakeConfig {
 	return hcplugin.HandshakeConfig{
 		ProtocolVersion:  1,

@@ -11,15 +11,18 @@ import (
 	"github.com/spf13/viper"
 )
 
+// Plugin represents a Privateer plugin instance.
 type Plugin struct{}
 
+// ActiveEvaluationOrchestrator is the currently active evaluation orchestrator.
 var ActiveEvaluationOrchestrator *pluginkit.EvaluationOrchestrator
 
-// Start will be called by Privateer via gRPC
+// Start will be called by Privateer via gRPC.
 func (p *Plugin) Start() error {
 	return ActiveEvaluationOrchestrator.Mobilize()
 }
 
+// NewPluginCommands creates a new cobra command for the plugin with version and orchestrator support.
 func NewPluginCommands(pluginName, buildVersion, buildGitCommitHash, buildTime string, orchestrator *pluginkit.EvaluationOrchestrator) *cobra.Command {
 
 	ActiveEvaluationOrchestrator = orchestrator

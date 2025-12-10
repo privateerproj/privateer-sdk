@@ -19,6 +19,7 @@ import (
 	"github.com/privateerproj/privateer-sdk/utils"
 )
 
+// CatalogData extends layer2.Catalog with additional fields for plugin generation.
 type CatalogData struct {
 	layer2.Catalog
 	ServiceName             string
@@ -27,12 +28,13 @@ type CatalogData struct {
 	StrippedName            string
 }
 
+// Req represents an assessment requirement with an ID and text description.
 type Req struct {
 	Id   string
 	Text string
 }
 
-// GeneratePlugin generates a plugin from a catalog file
+// GeneratePlugin generates a plugin from a catalog file.
 func GeneratePlugin(logger hclog.Logger, templatesDir, sourcePath, outputDir, serviceName string) error {
 	data := CatalogData{}
 	data.ServiceName = serviceName
@@ -75,7 +77,7 @@ func GeneratePlugin(logger hclog.Logger, templatesDir, sourcePath, outputDir, se
 	return nil
 }
 
-// SetupTemplatingEnvironment validates and sets up the environment for plugin generation
+// SetupTemplatingEnvironment validates and sets up the environment for plugin generation.
 func SetupTemplatingEnvironment(logger hclog.Logger) (templatesDir, sourcePath, outputDir, serviceName string, err error) {
 	sourcePath = viper.GetString("source-path")
 	if sourcePath == "" {

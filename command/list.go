@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Writer interface for output operations
+// Writer is an interface for output operations that supports writing and flushing.
 type Writer interface {
 	io.Writer
 	Flush() error
@@ -51,7 +51,7 @@ func GetListCmd(writer Writer) *cobra.Command {
 	return listCmd
 }
 
-// getRequestedPlugins returns a list of plugin names requested in the config
+// getRequestedPlugins returns a list of plugin names requested in the config.
 func getRequestedPlugins() (requestedPluginPackages []*PluginPkg) {
 	services := viper.GetStringMap("services")
 	for serviceName := range services {
@@ -63,7 +63,7 @@ func getRequestedPlugins() (requestedPluginPackages []*PluginPkg) {
 	return requestedPluginPackages
 }
 
-// getAvailablePlugins returns a list of plugins found in the binaries path
+// getAvailablePlugins returns a list of plugins found in the binaries path.
 func getAvailablePlugins() (availablePluginPackages []*PluginPkg) {
 	pluginPaths, _ := hcplugin.Discover("*", viper.GetString("binaries-path"))
 	for _, pluginPath := range pluginPaths {
@@ -79,7 +79,7 @@ func getAvailablePlugins() (availablePluginPackages []*PluginPkg) {
 
 var allPlugins []*PluginPkg
 
-// GetPlugins returns a combined list of all plugins (requested and available)
+// GetPlugins returns a combined list of all plugins (requested and available).
 func GetPlugins() []*PluginPkg {
 	if allPlugins != nil {
 		return allPlugins
@@ -99,7 +99,7 @@ func GetPlugins() []*PluginPkg {
 	return output
 }
 
-// Contains checks if a plugin with the given name exists in the slice
+// Contains checks if a plugin with the given name exists in the slice.
 func Contains(slice []*PluginPkg, search string) bool {
 	for _, plugin := range slice {
 		if plugin.Name == search {

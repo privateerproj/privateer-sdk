@@ -14,9 +14,9 @@ import (
 // Then we just need some parent object that contains map of catalogs by Id
 // and figure out where we need to pass that around
 
-// GetPluginCatalog reads all YAML catalog files in the data directory and returns the complete catalog data
-// This is necessary when packaging the catalog files into a binary, which is not supported by the Gemara loader
-// If a catalog imports another, both should be in the same directory
+// getPluginCatalogs reads all YAML catalog files in the data directory and returns the complete catalog data.
+// This is necessary when packaging the catalog files into a binary, which is not supported by the Gemara loader.
+// If a catalog imports another, both should be in the same directory.
 func getPluginCatalogs(dataDir string, files embed.FS) (catalogs []*layer2.Catalog, err error) {
 	dir, err := files.ReadDir(dataDir)
 	// Check if files are in the right place
@@ -37,7 +37,7 @@ func getPluginCatalogs(dataDir string, files embed.FS) (catalogs []*layer2.Catal
 	return catalogs, nil // just returns the last catalog for now
 }
 
-// ReadYAMLFile reads a single YAML file and returns the control family data
+// readYAMLFile reads a single YAML file and returns the control family data.
 func readYAMLFile(filePath string, files embed.FS) (*layer2.Catalog, error) {
 	data, err := files.ReadFile(filePath)
 	if err != nil {
