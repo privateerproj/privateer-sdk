@@ -3,12 +3,12 @@ module github.com/privateerproj/privateer-sdk
 go 1.25.1
 
 require (
-	github.com/go-git/go-git/v5 v5.16.3
-	github.com/goccy/go-yaml v1.18.0
+	github.com/go-git/go-git/v5 v5.16.4
+	github.com/goccy/go-yaml v1.19.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.7.0
 	github.com/ossf/gemara v0.15.2
-	github.com/spf13/cobra v1.10.1
+	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	gopkg.in/yaml.v3 v3.0.1
 )
