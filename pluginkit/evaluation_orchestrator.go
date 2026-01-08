@@ -9,9 +9,9 @@ import (
 	"path"
 	"strings"
 
+	"github.com/gemaraproj/go-gemara"
+	"github.com/gemaraproj/go-gemara/sarif"
 	"github.com/goccy/go-yaml"
-	"github.com/ossf/gemara/layer2"
-	"github.com/ossf/gemara/layer4"
 	"github.com/privateerproj/privateer-sdk/config"
 )
 
@@ -25,8 +25,8 @@ type EvaluationOrchestrator struct {
 	Evaluation_Suites []*EvaluationSuite `yaml:"evaluation-suites"` // EvaluationSuite is a map of evaluations to their catalog names
 
 	possibleSuites    []*EvaluationSuite
-	possibleControls  map[string][]*layer2.Control
-	referenceCatalogs map[string]*layer2.Catalog
+	possibleControls  map[string][]*gemara.Control
+	referenceCatalogs map[string]*gemara.Catalog
 	requiredVars      []string
 	config            *config.Config
 	loader            DataLoader
@@ -48,7 +48,7 @@ func (v *EvaluationOrchestrator) AddRequiredVars(vars []string) {
 // AddReferenceCatalogs loads reference catalogs from the embedded file system.
 func (v *EvaluationOrchestrator) AddReferenceCatalogs(dataDir string, files embed.FS) error {
 	if v.referenceCatalogs == nil {
-		v.referenceCatalogs = make(map[string]*layer2.Catalog)
+		v.referenceCatalogs = make(map[string]*gemara.Catalog)
 	}
 	if dataDir == "" {
 		return errors.New("data directory name cannot be empty")
@@ -70,30 +70,28 @@ func (v *EvaluationOrchestrator) AddReferenceCatalogs(dataDir string, files embe
 	return nil
 }
 
-func (v *EvaluationOrchestrator) addPossibleControls(catalog *layer2.Catalog) {
+func (v *EvaluationOrchestrator) addPossibleControls(catalog *gemara.Catalog) {
 	if v.possibleControls == nil {
-		v.possibleControls = make(map[string][]*layer2.Control)
+		v.possibleControls = make(map[string][]*gemara.Control)
 	}
-	for _, family := range catalog.ControlFamilies {
-		for i := range family.Controls {
-			control := &family.Controls[i]
-			if _, exists := v.possibleControls[control.Id]; !exists {
-				v.possibleControls[control.Id] = []*layer2.Control{control}
-			} else {
-				v.possibleControls[control.Id] = append(v.possibleControls[control.Id], control)
-			}
+	for i := range catalog.Controls {
+		control := &catalog.Controls[i]
+		if _, exists := v.possibleControls[control.Id]; !exists {
+			v.possibleControls[control.Id] = []*gemara.Control{control}
+		} else {
+			v.possibleControls[control.Id] = append(v.possibleControls[control.Id], control)
 		}
 	}
 }
 
 // AddEvaluationSuite adds an evaluation suite for the given catalog ID.
-func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader DataLoader, steps map[string][]layer4.AssessmentStep) error {
+func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader DataLoader, steps map[string][]gemara.AssessmentStep) error {
 	if catalogId == "" {
 		return BAD_CATALOG(v.PluginName, "suite catalog id cannot be empty", "aos10")
 	}
 	if catalog, ok := v.referenceCatalogs[catalogId]; ok {
-		if len(catalog.ControlFamilies) == 0 {
-			return BAD_CATALOG(v.PluginName, "no control families provided", "aos20")
+		if len(catalog.Controls) == 0 {
+			return BAD_CATALOG(v.PluginName, "no controls provided", "aos20")
 		}
 		if catalog.Metadata.Id == "" {
 			return BAD_CATALOG(v.PluginName, "no id found in catalog metadata", "aos30")
@@ -104,9 +102,9 @@ func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader Dat
 	return BAD_CATALOG(v.PluginName, fmt.Sprintf("no reference catalog found with id '%s'", catalogId), "aos40")
 }
 
-func (v *EvaluationOrchestrator) addEvaluationSuite(catalog *layer2.Catalog, loader DataLoader, steps map[string][]layer4.AssessmentStep) {
+func (v *EvaluationOrchestrator) addEvaluationSuite(catalog *gemara.Catalog, loader DataLoader, steps map[string][]gemara.AssessmentStep) {
 	importedControlFamilies := getImportedControlFamilies(catalog, v.referenceCatalogs)
-	catalog.ControlFamilies = append(catalog.ControlFamilies, importedControlFamilies...)
+	catalog.Controls = append(catalog.Controls, importedControlFamilies...)
 
 	suite := EvaluationSuite{
 		CatalogId: catalog.Metadata.Id,
@@ -125,37 +123,25 @@ func (v *EvaluationOrchestrator) addEvaluationSuite(catalog *layer2.Catalog, loa
 
 // getImportedControlFamilies creates a new control family entry for each imported catalog
 // and only includes controls from the imported catalog that are listed in the imports of the primary catalog.
-func getImportedControlFamilies(catalog *layer2.Catalog, referenceCatalogs map[string]*layer2.Catalog) (importedFamilies []layer2.ControlFamily) {
+func getImportedControlFamilies(catalog *gemara.Catalog, referenceCatalogs map[string]*gemara.Catalog) (importedControls []gemara.Control) {
 	if len(catalog.ImportedControls) == 0 {
-		return importedFamilies
+		return importedControls
 	}
 	for _, importEntry := range catalog.ImportedControls {
-		if refCatalog, ok := referenceCatalogs[importEntry.ReferenceId]; ok {
-			var importedControls []layer2.Control
+		// hacked this up, not sure about it yet
+		if _, ok := referenceCatalogs[importEntry.ReferenceId]; ok {
 			for _, mapping := range importEntry.Entries {
-				if controls, exists := referenceCatalogs[importEntry.ReferenceId]; exists {
-					for _, family := range controls.ControlFamilies {
-						for i := range family.Controls {
-							control := &family.Controls[i]
-							if control.Id == mapping.ReferenceId {
-								importedControls = append(importedControls, *control)
-							}
+				if catalog, exists := referenceCatalogs[importEntry.ReferenceId]; exists {
+					for _, control := range catalog.Controls {
+						if control.Id == mapping.ReferenceId {
+							importedControls = append(importedControls, control)
 						}
 					}
 				}
 			}
-			if len(importedControls) > 0 {
-				family := layer2.ControlFamily{
-					Id:          fmt.Sprintf("imported-%s", refCatalog.Metadata.Id),
-					Title:       fmt.Sprintf("Imported Controls from %s", refCatalog.Metadata.Title),
-					Description: fmt.Sprintf("This control family contains controls imported from the %s catalog.", refCatalog.Metadata.Title),
-					Controls:    importedControls,
-				}
-				importedFamilies = append(importedFamilies, family)
-			}
 		}
 	}
-	return importedFamilies
+	return importedControls
 }
 
 // Mobilize initializes the orchestrator and executes all evaluation suites.
@@ -193,8 +179,8 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 					v.config.Logger.Error(err.Error())
 				}
 				// Set plugin metadata in EvaluationLog for SARIF generation
-				suite.EvaluationLog.Metadata = layer4.Metadata{
-					Author: layer4.Author{
+				suite.EvaluationLog.Metadata = gemara.Metadata{
+					Author: gemara.Actor{
 						Name:    v.PluginName,
 						Uri:     v.PluginUri,
 						Version: v.PluginVersion,
@@ -225,11 +211,8 @@ func (v *EvaluationOrchestrator) WriteResults() error {
 		result, err = yaml.Marshal(v)
 		err = errMod(err, "wr20")
 	case "sarif":
-		// Use "README.md" as artifactURI for repository-level assessments
-		// GitHub Code Scanning requires PhysicalLocation, and "README.md" is a common file path
-		// that satisfies this requirement (as recommended in gemara's ToSARIF documentation)
 		for _, suite := range v.Evaluation_Suites {
-			sarifBytes, sarifErr := suite.EvaluationLog.ToSARIF("", suite.catalog)
+			sarifBytes, sarifErr := sarif.FromEvaluationLog(suite.EvaluationLog, "", suite.catalog)
 			if sarifErr != nil {
 				err = errMod(sarifErr, "wr25")
 				break
