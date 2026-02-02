@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ossf/gemara/layer4"
+	"github.com/gemaraproj/go-gemara"
 )
 
 func TestEvaluate(t *testing.T) {
@@ -20,7 +20,7 @@ func TestEvaluate(t *testing.T) {
 
 			suite := &EvaluationSuite{
 				Name:          test.testName,
-				EvaluationLog: layer4.EvaluationLog{Evaluations: test.evals},
+				EvaluationLog: gemara.EvaluationLog{Evaluations: test.evals},
 				catalog:       catalog,
 				steps:         test.steps,
 			}
@@ -194,7 +194,7 @@ func TestSetupEvalLog(t *testing.T) {
 			catalog: catalog,
 		}
 
-		steps := map[string][]layer4.AssessmentStep{}
+		steps := map[string][]gemara.AssessmentStep{}
 		evalLog, err := suite.setupEvalLog(steps)
 		if err == nil {
 			t.Error("Expected error for empty steps map, but got none")

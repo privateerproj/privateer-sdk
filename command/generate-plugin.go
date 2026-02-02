@@ -15,13 +15,13 @@ import (
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
 
-	"github.com/ossf/gemara/layer2"
+	"github.com/gemaraproj/go-gemara"
 	"github.com/privateerproj/privateer-sdk/utils"
 )
 
-// CatalogData extends layer2.Catalog with additional fields for plugin generation.
+// CatalogData extends gemara.ControlCatalog with additional fields for plugin generation.
 type CatalogData struct {
-	layer2.Catalog
+	gemara.ControlCatalog
 	ServiceName             string
 	Requirements            []Req
 	ApplicabilityCategories []string
@@ -69,7 +69,7 @@ func GeneratePlugin(logger hclog.Logger, templatesDir, sourcePath, outputDir, se
 		return fmt.Errorf("error walking through templates directory: %w", err)
 	}
 
-	err = writeCatalogFile(&data.Catalog, outputDir)
+	err = writeCatalogFile(&data.ControlCatalog, outputDir)
 	if err != nil {
 		return fmt.Errorf("failed to write catalog to file: %w", err)
 	}
@@ -189,19 +189,17 @@ func generateFileFromTemplate(data CatalogData, templatePath, templatesDir, outp
 }
 
 func (c *CatalogData) getAssessmentRequirements() error {
-	for _, family := range c.ControlFamilies {
-		for _, control := range family.Controls {
-			for _, requirement := range control.AssessmentRequirements {
-				req := Req{
-					Id:   requirement.Id,
-					Text: requirement.Text,
-				}
-				c.Requirements = append(c.Requirements, req)
-				// Add applicability categories if unique
-				for _, a := range requirement.Applicability {
-					if !utils.StringSliceContains(c.ApplicabilityCategories, a) {
-						c.ApplicabilityCategories = append(c.ApplicabilityCategories, a)
-					}
+	for _, control := range c.Controls {
+		for _, requirement := range control.AssessmentRequirements {
+			req := Req{
+				Id:   requirement.Id,
+				Text: requirement.Text,
+			}
+			c.Requirements = append(c.Requirements, req)
+			// Add applicability categories if unique
+			for _, a := range requirement.Applicability {
+				if !utils.StringSliceContains(c.ApplicabilityCategories, a) {
+					c.ApplicabilityCategories = append(c.ApplicabilityCategories, a)
 				}
 			}
 		}
@@ -212,7 +210,7 @@ func (c *CatalogData) getAssessmentRequirements() error {
 	return nil
 }
 
-func writeCatalogFile(catalog *layer2.Catalog, outputDir string) error {
+func writeCatalogFile(catalog *gemara.ControlCatalog, outputDir string) error {
 	var b bytes.Buffer
 	yamlEncoder := yaml.NewEncoder(&b)
 	yamlEncoder.SetIndent(2) // this is the line that sets the indentation

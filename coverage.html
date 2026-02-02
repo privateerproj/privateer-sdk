@@ -838,8 +838,8 @@ import (
         "strings"
 
         "github.com/goccy/go-yaml"
-        "github.com/ossf/gemara/layer2"
-        "github.com/ossf/gemara/layer4"
+        "github.com/gemaraproj/go-gemara"
+        "github.com/gemaraproj/go-gemara"
         "github.com/privateerproj/privateer-sdk/config"
 )
 
@@ -853,8 +853,8 @@ type EvaluationOrchestrator struct {
         Evaluation_Suites []*EvaluationSuite `yaml:"evaluation-suites"` // EvaluationSuite is a map of evaluations to their catalog names
 
         possibleSuites    []*EvaluationSuite
-        possibleControls  map[string][]*layer2.Control
-        referenceCatalogs map[string]*layer2.Catalog
+        possibleControls  map[string][]*gemara.Control
+        referenceCatalogs map[string]*gemara.ControlCatalog
         requiredVars      []string
         config            *config.Config
         loader            DataLoader
@@ -872,7 +872,7 @@ func (v *EvaluationOrchestrator) AddRequiredVars(vars []string) <span class="cov
 
 func (v *EvaluationOrchestrator) AddReferenceCatalogs(dataDir string, files embed.FS) error <span class="cov10" title="3">{
         if v.referenceCatalogs == nil </span><span class="cov10" title="3">{
-                v.referenceCatalogs = make(map[string]*layer2.Catalog)
+                v.referenceCatalogs = make(map[string]*gemara.ControlCatalog)
         }</span>
         <span class="cov10" title="3">if dataDir == "" </span><span class="cov1" title="1">{
                 return errors.New("data directory name cannot be empty")
@@ -894,15 +894,15 @@ func (v *EvaluationOrchestrator) AddReferenceCatalogs(dataDir string, files embe
         <span class="cov0" title="0">return nil</span>
 }
 
-func (v *EvaluationOrchestrator) addPossibleControls(catalog *layer2.Catalog) <span class="cov0" title="0">{
+func (v *EvaluationOrchestrator) addPossibleControls(catalog *gemara.ControlCatalog) <span class="cov0" title="0">{
         if v.possibleControls == nil </span><span class="cov0" title="0">{
-                v.possibleControls = make(map[string][]*layer2.Control)
+                v.possibleControls = make(map[string][]*gemara.Control)
         }</span>
-        <span class="cov0" title="0">for _, family := range catalog.ControlFamilies </span><span class="cov0" title="0">{
+        <span class="cov0" title="0">for _, family := range catalog.Families </span><span class="cov0" title="0">{
                 for i := range family.Controls </span><span class="cov0" title="0">{
                         control := &amp;family.Controls[i]
                         if _, exists := v.possibleControls[control.Id]; !exists </span><span class="cov0" title="0">{
-                                v.possibleControls[control.Id] = []*layer2.Control{control}
+                                v.possibleControls[control.Id] = []*gemara.Control{control}
                         }</span> else<span class="cov0" title="0"> {
                                 v.possibleControls[control.Id] = append(v.possibleControls[control.Id], control)
                         }</span>
@@ -910,12 +910,12 @@ func (v *EvaluationOrchestrator) addPossibleControls(catalog *layer2.Catalog) <s
         }
 }
 
-func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader DataLoader, steps map[string][]layer4.AssessmentStep) error <span class="cov1" title="1">{
+func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader DataLoader, steps map[string][]gemara.AssessmentStep) error <span class="cov1" title="1">{
         if catalogId == "" </span><span class="cov0" title="0">{
                 return BAD_CATALOG(v.PluginName, "suite catalog id cannot be empty", "aos10")
         }</span>
         <span class="cov1" title="1">if catalog, ok := v.referenceCatalogs[catalogId]; ok </span><span class="cov0" title="0">{
-                if len(catalog.ControlFamilies) == 0 </span><span class="cov0" title="0">{
+                if len(catalog.) == 0 </span><span class="cov0" title="0">{
                         return BAD_CATALOG(v.PluginName, "no control families provided", "aos20")
                 }</span>
                 <span class="cov0" title="0">if catalog.Metadata.Id == "" </span><span class="cov0" title="0">{
@@ -927,9 +927,9 @@ func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader Dat
         <span class="cov1" title="1">return BAD_CATALOG(v.PluginName, fmt.Sprintf("no reference catalog found with id '%s'", catalogId), "aos40")</span>
 }
 
-func (v *EvaluationOrchestrator) addEvaluationSuite(catalog *layer2.Catalog, loader DataLoader, steps map[string][]layer4.AssessmentStep) <span class="cov0" title="0">{
+func (v *EvaluationOrchestrator) addEvaluationSuite(catalog *gemara.ControlCatalog, loader DataLoader, steps map[string][]gemara.AssessmentStep) <span class="cov0" title="0">{
         importedControlFamilies := getImportedControlFamilies(catalog, v.referenceCatalogs)
-        catalog.ControlFamilies = append(catalog.ControlFamilies, importedControlFamilies...)
+        catalog.Families = append(catalog.Families, importedControlFamilies...)
 
         suite := EvaluationSuite{
                 CatalogId: catalog.Metadata.Id,
@@ -948,16 +948,16 @@ func (v *EvaluationOrchestrator) addEvaluationSuite(catalog *layer2.Catalog, loa
 
 // getImportedControlFamilies creates a new control family entry for each imported catalog
 // and only includes controls from the imported catalog that are listed in the imports of the primary catalog
-func getImportedControlFamilies(catalog *layer2.Catalog, referenceCatalogs map[string]*layer2.Catalog) (importedFamilies []layer2.ControlFamily) <span class="cov0" title="0">{
+func getImportedControlFamilies(catalog *gemara.ControlCatalog, referenceCatalogs map[string]*gemara.ControlCatalog) (importedFamilies []gemara.ControlFamily) <span class="cov0" title="0">{
         if len(catalog.ImportedControls) == 0 </span><span class="cov0" title="0">{
                 return importedFamilies
         }</span>
         <span class="cov0" title="0">for _, importEntry := range catalog.ImportedControls </span><span class="cov0" title="0">{
                 if refCatalog, ok := referenceCatalogs[importEntry.ReferenceId]; ok </span><span class="cov0" title="0">{
-                        var importedControls []layer2.Control
+                        var importedControls []gemara.Control
                         for _, mapping := range importEntry.Entries </span><span class="cov0" title="0">{
                                 if controls, exists := referenceCatalogs[importEntry.ReferenceId]; exists </span><span class="cov0" title="0">{
-                                        for _, family := range controls.ControlFamilies </span><span class="cov0" title="0">{
+                                        for _, family := range controls.Families </span><span class="cov0" title="0">{
                                                 for i := range family.Controls </span><span class="cov0" title="0">{
                                                         control := &amp;family.Controls[i]
                                                         if control.Id == mapping.ReferenceId </span><span class="cov0" title="0">{
@@ -968,10 +968,10 @@ func getImportedControlFamilies(catalog *layer2.Catalog, referenceCatalogs map[s
                                 }
                         }
                         <span class="cov0" title="0">if len(importedControls) &gt; 0 </span><span class="cov0" title="0">{
-                                family := layer2.ControlFamily{
+                                family := gemara.ControlFamily{
                                         Id:          fmt.Sprintf("imported-%s", refCatalog.Metadata.Id),
-                                        Title:       fmt.Sprintf("Imported Controls from %s", refCatalog.Metadata.Title),
-                                        Description: fmt.Sprintf("This control family contains controls imported from the %s catalog.", refCatalog.Metadata.Title),
+                                        Title:       fmt.Sprintf("Imported Controls from %s", refCatalog.Title),
+                                        Description: fmt.Sprintf("This control family contains controls imported from the %s catalog.", refCatalog.Title),
                                         Controls:    importedControls,
                                 }
                                 importedFamilies = append(importedFamilies, family)
@@ -1147,18 +1147,18 @@ import (
         "fmt"
         "time"
 
-        "github.com/ossf/gemara/layer2"
-        "github.com/ossf/gemara/layer4"
+        "github.com/gemaraproj/go-gemara"
+        "github.com/gemaraproj/go-gemara"
         "github.com/privateerproj/privateer-sdk/config"
 )
 
-type TestSet func() (result layer4.ControlEvaluation)
+type TestSet func() (result gemara.ControlEvaluation)
 
 // EvaluationSuite is a struct that contains the results of all EvaluationLog executions
 // Exported fields will be used in the final YAML or JSON output documents
 type EvaluationSuite struct {
         Name   string        // Name is the name of the suite
-        Result layer4.Result // Result is Passed if all evaluations in the suite passed
+        Result gemara.Result // Result is Passed if all evaluations in the suite passed
 
         CatalogId string `yaml:"catalog-id"` // CatalogId associates this suite with a catalog
         StartTime string `yaml:"start-time"` // StartTime is the time the plugin started
@@ -1166,15 +1166,15 @@ type EvaluationSuite struct {
 
         CorruptedState bool `yaml:"corrupted-state"` // CorruptedState is true if any testSet failed to revert at the end of the evaluation
 
-        EvaluationLog layer4.EvaluationLog `yaml:"control-evaluations"` // EvaluationLog is a slice of evaluations to be executed
+        EvaluationLog gemara.EvaluationLog `yaml:"control-evaluations"` // EvaluationLog is a slice of evaluations to be executed
 
         config *config.Config // config is the global configuration
 
         payload       interface{}                        // payload is the data to be evaluated
         loader        DataLoader                         // loader is the function to load the payload
         changeManager *ChangeManager                     // changes is a list of changes made during the evaluation
-        catalog       *layer2.Catalog                    // The Catalog this evaluation suite references
-        steps         map[string][]layer4.AssessmentStep // steps is a map of control IDs to their assessment steps
+        catalog       *gemara.ControlCatalog                    // The Catalog this evaluation suite references
+        steps         map[string][]gemara.AssessmentStep // steps is a map of control IDs to their assessment steps
 
         evalSuccesses int // successes is the number of successful evaluations
         evalFailures  int // failures is the number of failed evaluations
@@ -1220,20 +1220,20 @@ func (e *EvaluationSuite) Evaluate(serviceName string) error <span class="cov4" 
                 evaluation.Evaluate(e.payload, e.config.Policy.Applicability)
 
                 // Make sure the evaluation result is updated based on the complete assessment results
-                e.Result = layer4.UpdateAggregateResult(e.Result, evaluation.Result)
+                e.Result = gemara.UpdateAggregateResult(e.Result, evaluation.Result)
 
                 // Log each assessment result as a separate line
                 for _, assessment := range evaluation.AssessmentLogs </span><span class="cov8" title="205">{
                         message := fmt.Sprintf("%s: %s", assessment.Requirement.EntryId, assessment.Message)
                         // switch case the code below
                         switch assessment.Result </span>{
-                        case layer4.Passed:<span class="cov7" title="70">
+                        case gemara.Passed:<span class="cov7" title="70">
                                 e.config.Logger.Info(message)</span>
-                        case layer4.NeedsReview:<span class="cov6" title="36">
+                        case gemara.NeedsReview:<span class="cov6" title="36">
                                 e.config.Logger.Warn(message)</span>
-                        case layer4.Failed:<span class="cov1" title="1">
+                        case gemara.Failed:<span class="cov1" title="1">
                                 e.config.Logger.Error(message)</span>
-                        case layer4.Unknown:<span class="cov7" title="80">
+                        case gemara.Unknown:<span class="cov7" title="80">
                                 e.config.Logger.Error(message)</span>
                         }
 
@@ -1242,11 +1242,11 @@ func (e *EvaluationSuite) Evaluate(serviceName string) error <span class="cov4" 
                         }</span>
                 }
 
-                <span class="cov7" title="65">if evaluation.Result == layer4.Passed </span><span class="cov5" title="25">{
+                <span class="cov7" title="65">if evaluation.Result == gemara.Passed </span><span class="cov5" title="25">{
                         e.evalSuccesses += 1
-                }</span> else<span class="cov6" title="40"> if evaluation.Result == layer4.Failed </span><span class="cov5" title="27">{
+                }</span> else<span class="cov6" title="40"> if evaluation.Result == gemara.Failed </span><span class="cov5" title="27">{
                         e.evalFailures += 1
-                }</span> else<span class="cov4" title="13"> if evaluation.Result != layer4.NotRun </span><span class="cov4" title="13">{
+                }</span> else<span class="cov4" title="13"> if evaluation.Result != gemara.NotRun </span><span class="cov4" title="13">{
                         e.evalWarnings += 1
                 }</span>
                 <span class="cov7" title="65">if e.changeManager != nil &amp;&amp; e.changeManager.CorruptedState </span><span class="cov0" title="0">{
@@ -1266,9 +1266,9 @@ func (e *EvaluationSuite) Evaluate(serviceName string) error <span class="cov4" 
         }
 
         <span class="cov3" title="5">switch e.Result </span>{
-        case layer4.Passed:<span class="cov1" title="1">
+        case gemara.Passed:<span class="cov1" title="1">
                 e.config.Logger.Info(output)</span>
-        case layer4.NotRun:<span class="cov0" title="0">
+        case gemara.NotRun:<span class="cov0" title="0">
                 e.config.Logger.Trace(output)</span>
         default:<span class="cov3" title="4">
                 e.config.Logger.Error(output)</span>
@@ -1276,9 +1276,9 @@ func (e *EvaluationSuite) Evaluate(serviceName string) error <span class="cov4" 
         <span class="cov3" title="5">return nil</span>
 }
 
-func (e *EvaluationSuite) GetAssessmentRequirements() (map[string]*layer2.AssessmentRequirement, error) <span class="cov4" title="14">{
-        requirements := make(map[string]*layer2.AssessmentRequirement)
-        for _, family := range e.catalog.ControlFamilies </span><span class="cov6" title="32">{
+func (e *EvaluationSuite) GetAssessmentRequirements() (map[string]*gemara.AssessmentRequirement, error) <span class="cov4" title="14">{
+        requirements := make(map[string]*gemara.AssessmentRequirement)
+        for _, family := range e.catalog.Families </span><span class="cov6" title="32">{
                 for _, control := range family.Controls </span><span class="cov8" title="132">{
                         for _, requirement := range control.AssessmentRequirements </span><span class="cov10" title="410">{
                                 requirements[requirement.Id] = &amp;requirement
@@ -1293,7 +1293,7 @@ func (e *EvaluationSuite) GetAssessmentRequirements() (map[string]*layer2.Assess
         <span class="cov4" title="10">return requirements, nil</span>
 }
 
-func (e *EvaluationSuite) setupEvalLog(steps map[string][]layer4.AssessmentStep) (evalLog layer4.EvaluationLog, err error) <span class="cov4" title="14">{
+func (e *EvaluationSuite) setupEvalLog(steps map[string][]gemara.AssessmentStep) (evalLog gemara.EvaluationLog, err error) <span class="cov4" title="14">{
         if len(steps) == 0 </span><span class="cov3" title="6">{
                 return evalLog, NO_ASSESSMENT_STEPS_PROVIDED("sel10")
         }</span>
@@ -1303,11 +1303,11 @@ func (e *EvaluationSuite) setupEvalLog(steps map[string][]layer4.AssessmentStep)
         <span class="cov4" title="8">var controlsFound bool
         var reqsFound bool
 
-        if len(e.catalog.ControlFamilies) == 0 </span><span class="cov1" title="1">{
+        if len(e.catalog.Families) == 0 </span><span class="cov1" title="1">{
                 return evalLog, EVAL_SUITE_CRASHED("sel20")
         }</span>
 
-        <span class="cov3" title="7">for _, family := range e.catalog.ControlFamilies </span><span class="cov5" title="19">{
+        <span class="cov3" title="7">for _, family := range e.catalog.Families </span><span class="cov5" title="19">{
                 if len(family.Controls) == 0 </span><span class="cov0" title="0">{
                         continue</span>
                 }
@@ -1319,9 +1319,9 @@ func (e *EvaluationSuite) setupEvalLog(steps map[string][]layer4.AssessmentStep)
                         <span class="cov7" title="78">reqsFound = true
 
                         // Create ControlEvaluation first
-                        evaluation := &amp;layer4.ControlEvaluation{
+                        evaluation := &amp;gemara.ControlEvaluation{
                                 Name: control.Title,
-                                Control: layer4.Mapping{
+                                Control: gemara.Mapping{
                                         ReferenceId: e.CatalogId,
                                         EntryId:     control.Id,
                                 },
@@ -1338,7 +1338,7 @@ func (e *EvaluationSuite) setupEvalLog(steps map[string][]layer4.AssessmentStep)
 
                                 // Handle case where no steps were found
                                 if _, ok := steps[requirement.Id]; !ok </span><span class="cov8" title="120">{
-                                        assessment.Result = layer4.Unknown
+                                        assessment.Result = gemara.Unknown
                                         if e.config != nil </span><span class="cov7" title="80">{
                                                 msg := fmt.Sprintf("requirement: %s, control %s+sel30", requirement.Id, control.Id)
                                                 err := NO_ASSESSMENT_STEPS_PROVIDED(msg)
@@ -1368,19 +1368,19 @@ import (
         "fmt"
         "path"
 
-        "github.com/ossf/gemara/layer2"
+        "github.com/gemaraproj/go-gemara"
         "gopkg.in/yaml.v3"
 )
 
 // TODO: When loading the catalogs, queue them all up
-// expect one catalog per file, and give each one its own layer2.Catalog
+// expect one catalog per file, and give each one its own gemara.ControlCatalog
 // Then we just need some parent object that contains map of catalogs by Id
 // and figure out where we need to pass that around
 
 // GetPluginCatalog reads all YAML catalog files in the data directory and returns the complete catalog data
 // This is necessary when packaging the catalog files into a binary, which is not supported by the Gemara loader
 // If a catalog imports another, both should be in the same directory
-func getPluginCatalogs(dataDir string, files embed.FS) (catalogs []*layer2.Catalog, err error) <span class="cov8" title="6">{
+func getPluginCatalogs(dataDir string, files embed.FS) (catalogs []*gemara.ControlCatalog, err error) <span class="cov8" title="6">{
         dir, err := files.ReadDir(dataDir)
         // Check if files are in the right place
         if err != nil || len(dir) == 0 </span><span class="cov5" title="3">{
@@ -1401,13 +1401,13 @@ func getPluginCatalogs(dataDir string, files embed.FS) (catalogs []*layer2.Catal
 }
 
 // ReadYAMLFile reads a single YAML file and returns the control family data
-func readYAMLFile(filePath string, files embed.FS) (*layer2.Catalog, error) <span class="cov10" title="9">{
+func readYAMLFile(filePath string, files embed.FS) (*gemara.ControlCatalog, error) <span class="cov10" title="9">{
         data, err := files.ReadFile(filePath)
         if err != nil </span><span class="cov1" title="1">{
                 return nil, fmt.Errorf("failed to read file: %w", err)
         }</span>
 
-        <span class="cov9" title="8">var catalog layer2.Catalog
+        <span class="cov9" title="8">var catalog gemara.ControlCatalog
         if err := yaml.Unmarshal(data, &amp;catalog); err != nil </span><span class="cov0" title="0">{
                 return nil, fmt.Errorf("failed to unmarshal YAML: %w", err)
         }</span>
@@ -1422,8 +1422,8 @@ import (
         "fmt"
         "os"
 
-        "github.com/ossf/gemara/layer2"
-        "github.com/ossf/gemara/layer4"
+        "github.com/gemaraproj/go-gemara"
+        "github.com/gemaraproj/go-gemara"
         "github.com/spf13/viper"
 
         "github.com/privateerproj/privateer-sdk/config"
@@ -1431,21 +1431,21 @@ import (
 
 type testingData struct {
         testName               string
-        evals                  []*layer4.ControlEvaluation // Keep for backward compatibility with other tests
-        steps                  map[string][]layer4.AssessmentStep
+        evals                  []*gemara.ControlEvaluation // Keep for backward compatibility with other tests
+        steps                  map[string][]gemara.AssessmentStep
         expectedEvalSuiteError error
-        expectedResult         layer4.Result
+        expectedResult         gemara.Result
 }
 
-var testCatalog = &amp;layer2.Catalog{
-        ControlFamilies: []layer2.ControlFamily{},
+var testCatalog = &amp;gemara.ControlCatalog{
+        ControlFamilies: []gemara.ControlFamily{},
 }
 
-func getTestCatalog() (*layer2.Catalog, error) <span class="cov6" title="17">{
-        if len(testCatalog.ControlFamilies) &gt; 0 </span><span class="cov0" title="0">{
+func getTestCatalog() (*gemara.ControlCatalog, error) <span class="cov6" title="17">{
+        if len(testCatalog.Families) &gt; 0 </span><span class="cov0" title="0">{
                 return testCatalog, nil
         }</span>
-        <span class="cov6" title="17">catalog := &amp;layer2.Catalog{}
+        <span class="cov6" title="17">catalog := &amp;gemara.ControlCatalog{}
         pwd, err := os.Getwd()
         if err != nil </span><span class="cov0" title="0">{
                 return nil, fmt.Errorf("could not get working directory when retrieving catalog: %w", err)
@@ -1460,24 +1460,24 @@ func getTestCatalog() (*layer2.Catalog, error) <span class="cov6" title="17">{
 }
 
 // getEmptyTestCatalog returns an empty catalog for testing error conditions
-func getEmptyTestCatalog() *layer2.Catalog <span class="cov3" title="3">{
-        return &amp;layer2.Catalog{
-                ControlFamilies: []layer2.ControlFamily{},
+func getEmptyTestCatalog() *gemara.ControlCatalog <span class="cov3" title="3">{
+        return &amp;gemara.ControlCatalog{
+                ControlFamilies: []gemara.ControlFamily{},
         }
 }</span>
 
 // getTestCatalogWithNoRequirements returns a catalog with controls but no assessment requirements
-func getTestCatalogWithNoRequirements() *layer2.Catalog <span class="cov3" title="3">{
-        return &amp;layer2.Catalog{
-                ControlFamilies: []layer2.ControlFamily{
+func getTestCatalogWithNoRequirements() *gemara.ControlCatalog <span class="cov3" title="3">{
+        return &amp;gemara.ControlCatalog{
+                ControlFamilies: []gemara.ControlFamily{
                         {
                                 Id: "test-family",
-                                Controls: []layer2.Control{
+                                Controls: []gemara.Control{
                                         {
                                                 Id:                     "test-control",
                                                 Title:                  "Test Control",
                                                 Objective:              "Test objective",
-                                                AssessmentRequirements: []layer2.AssessmentRequirement{}, // Empty requirements
+                                                AssessmentRequirements: []gemara.AssessmentRequirement{}, // Empty requirements
                                         },
                                 },
                         },
@@ -1485,9 +1485,9 @@ func getTestCatalogWithNoRequirements() *layer2.Catalog <span class="cov3" title
         }
 }</span>
 
-func passingEvaluation() (evaluation *layer4.ControlEvaluation) <span class="cov4" title="6">{
-        evaluation = &amp;layer4.ControlEvaluation{
-                Control: layer4.Mapping{
+func passingEvaluation() (evaluation *gemara.ControlEvaluation) <span class="cov4" title="6">{
+        evaluation = &amp;gemara.ControlEvaluation{
+                Control: gemara.Mapping{
                         EntryId: "good-evaluation",
                 },
         }
@@ -1496,16 +1496,16 @@ func passingEvaluation() (evaluation *layer4.ControlEvaluation) <span class="cov
                 "assessment-good",
                 "this assessment should work fine",
                 requestedApplicability,
-                []layer4.AssessmentStep{
+                []gemara.AssessmentStep{
                         step_Pass,
                 },
         )
         return
 }</span>
 
-func failingEvaluation() (evaluation *layer4.ControlEvaluation) <span class="cov2" title="2">{
-        evaluation = &amp;layer4.ControlEvaluation{
-                Control: layer4.Mapping{
+func failingEvaluation() (evaluation *gemara.ControlEvaluation) <span class="cov2" title="2">{
+        evaluation = &amp;gemara.ControlEvaluation{
+                Control: gemara.Mapping{
                         EntryId: "bad-evaluation",
                 },
         }
@@ -1514,7 +1514,7 @@ func failingEvaluation() (evaluation *layer4.ControlEvaluation) <span class="cov
                 "assessment-bad",
                 "this assessment should fail",
                 requestedApplicability,
-                []layer4.AssessmentStep{
+                []gemara.AssessmentStep{
                         step_Pass,
                         step_Fail,
                 },
@@ -1522,9 +1522,9 @@ func failingEvaluation() (evaluation *layer4.ControlEvaluation) <span class="cov
         return
 }</span>
 
-func needsReviewEvaluation() (evaluation *layer4.ControlEvaluation) <span class="cov2" title="2">{
-        evaluation = &amp;layer4.ControlEvaluation{
-                Control: layer4.Mapping{
+func needsReviewEvaluation() (evaluation *gemara.ControlEvaluation) <span class="cov2" title="2">{
+        evaluation = &amp;gemara.ControlEvaluation{
+                Control: gemara.Mapping{
                         EntryId: "needs-review-evaluation",
                 },
         }
@@ -1533,7 +1533,7 @@ func needsReviewEvaluation() (evaluation *layer4.ControlEvaluation) <span class=
                 "assessment-review",
                 "this assessment should need review",
                 requestedApplicability,
-                []layer4.AssessmentStep{
+                []gemara.AssessmentStep{
                         step_NeedsReview,
                 },
         )
@@ -1551,21 +1551,21 @@ func setBasicConfig() *config.Config <span class="cov5" title="14">{
         return &amp;c
 }</span>
 
-func step_Pass(data interface{}) (result layer4.Result, message string) <span class="cov8" title="71">{
-        return layer4.Passed, "This step always passes"
+func step_Pass(data interface{}) (result gemara.Result, message string) <span class="cov8" title="71">{
+        return gemara.Passed, "This step always passes"
 }</span>
 
-func step_Fail(_ interface{}) (result layer4.Result, message string) <span class="cov1" title="1">{
-        return layer4.Failed, "This step always fails"
+func step_Fail(_ interface{}) (result gemara.Result, message string) <span class="cov1" title="1">{
+        return gemara.Failed, "This step always fails"
 }</span>
 
-func step_NeedsReview(_ interface{}) (result layer4.Result, message string) <span class="cov7" title="36">{
-        return layer4.NeedsReview, "This step always needs review"
+func step_NeedsReview(_ interface{}) (result gemara.Result, message string) <span class="cov7" title="36">{
+        return gemara.NeedsReview, "This step always needs review"
 }</span>
 
 // Helper function to create simple passing steps map
-func createPassingStepsMap() map[string][]layer4.AssessmentStep <span class="cov4" title="8">{
-        return map[string][]layer4.AssessmentStep{
+func createPassingStepsMap() map[string][]gemara.AssessmentStep <span class="cov4" title="8">{
+        return map[string][]gemara.AssessmentStep{
                 "CCC.Core.C01.TR01": {step_Pass},
         }
 }</span>
@@ -1578,7 +1578,7 @@ func getAllRequirementIds() ([]string, error) <span class="cov3" title="3">{
         }</span>
 
         <span class="cov3" title="3">var requirementIds []string
-        for _, family := range catalog.ControlFamilies </span><span class="cov5" title="9">{
+        for _, family := range catalog.Families </span><span class="cov5" title="9">{
                 for _, control := range family.Controls </span><span class="cov7" title="39">{
                         for _, requirement := range control.AssessmentRequirements </span><span class="cov10" title="123">{
                                 requirementIds = append(requirementIds, requirement.Id)
@@ -1590,8 +1590,8 @@ func getAllRequirementIds() ([]string, error) <span class="cov3" title="3">{
 
 // Helper function to convert evaluations to steps map for testing
 // This is a simplified conversion for backward compatibility with existing tests
-func convertEvalsToStepsMap(evals []*layer4.ControlEvaluation) map[string][]layer4.AssessmentStep <span class="cov4" title="5">{
-        stepsMap := make(map[string][]layer4.AssessmentStep)
+func convertEvalsToStepsMap(evals []*gemara.ControlEvaluation) map[string][]gemara.AssessmentStep <span class="cov4" title="5">{
+        stepsMap := make(map[string][]gemara.AssessmentStep)
 
         // Handle empty evaluations
         if len(evals) == 0 </span><span class="cov2" title="2">{
@@ -1612,20 +1612,20 @@ func convertEvalsToStepsMap(evals []*layer4.ControlEvaluation) map[string][]laye
         }</span>
 
         // Determine the steps to use based on the evaluation type
-        <span class="cov3" title="3">var primarySteps []layer4.AssessmentStep
+        <span class="cov3" title="3">var primarySteps []gemara.AssessmentStep
         if len(evals) &gt; 0 </span><span class="cov3" title="3">{
                 switch evals[0].Control.EntryId </span>{
                 case "good-evaluation":<span class="cov2" title="2">
-                        primarySteps = []layer4.AssessmentStep{step_Pass}</span>
+                        primarySteps = []gemara.AssessmentStep{step_Pass}</span>
                 case "bad-evaluation":<span class="cov0" title="0">
-                        primarySteps = []layer4.AssessmentStep{step_Pass, step_Fail}</span>
+                        primarySteps = []gemara.AssessmentStep{step_Pass, step_Fail}</span>
                 case "needs-review-evaluation":<span class="cov1" title="1">
-                        primarySteps = []layer4.AssessmentStep{step_NeedsReview}</span>
+                        primarySteps = []gemara.AssessmentStep{step_NeedsReview}</span>
                 default:<span class="cov0" title="0">
-                        primarySteps = []layer4.AssessmentStep{step_Pass}</span>
+                        primarySteps = []gemara.AssessmentStep{step_Pass}</span>
                 }
         } else<span class="cov0" title="0"> {
-                primarySteps = []layer4.AssessmentStep{step_Pass}
+                primarySteps = []gemara.AssessmentStep{step_Pass}
         }</span>
 
         // Apply the pattern based on the number of evaluations
@@ -1635,13 +1635,13 @@ func convertEvalsToStepsMap(evals []*layer4.ControlEvaluation) map[string][]laye
                         eval := evals[i]
                         switch eval.Control.EntryId </span>{
                         case "good-evaluation":<span class="cov1" title="1">
-                                stepsMap[requirementId] = []layer4.AssessmentStep{step_Pass}</span>
+                                stepsMap[requirementId] = []gemara.AssessmentStep{step_Pass}</span>
                         case "bad-evaluation":<span class="cov1" title="1">
-                                stepsMap[requirementId] = []layer4.AssessmentStep{step_Pass, step_Fail}</span>
+                                stepsMap[requirementId] = []gemara.AssessmentStep{step_Pass, step_Fail}</span>
                         case "needs-review-evaluation":<span class="cov0" title="0">
-                                stepsMap[requirementId] = []layer4.AssessmentStep{step_NeedsReview}</span>
+                                stepsMap[requirementId] = []gemara.AssessmentStep{step_NeedsReview}</span>
                         default:<span class="cov0" title="0">
-                                stepsMap[requirementId] = []layer4.AssessmentStep{step_Pass}</span>
+                                stepsMap[requirementId] = []gemara.AssessmentStep{step_Pass}</span>
                         }
                 } else<span class="cov9" title="121"> {
                         // For single evaluation or remaining requirements, use the primary pattern
@@ -1657,27 +1657,27 @@ func getTestEvaluateData() []testingData <span class="cov1" title="1">{
         return []testingData{
                 {
                         testName:       "Good Evaluation",
-                        expectedResult: layer4.Passed,
-                        evals: []*layer4.ControlEvaluation{
+                        expectedResult: gemara.Passed,
+                        evals: []*gemara.ControlEvaluation{
                                 passingEvaluation(),
                         },
-                        steps: convertEvalsToStepsMap([]*layer4.ControlEvaluation{
+                        steps: convertEvalsToStepsMap([]*gemara.ControlEvaluation{
                                 passingEvaluation(),
                         }),
                 },
                 {
                         testName:       "Empty Steps Map",
-                        expectedResult: layer4.NotRun,
-                        evals: []*layer4.ControlEvaluation{
+                        expectedResult: gemara.NotRun,
+                        evals: []*gemara.ControlEvaluation{
                                 passingEvaluation(),
                         },
-                        steps:                  map[string][]layer4.AssessmentStep{},
+                        steps:                  map[string][]gemara.AssessmentStep{},
                         expectedEvalSuiteError: NO_ASSESSMENT_STEPS_PROVIDED("sel10"),
                 },
                 {
                         testName:       "Nil Steps Map",
-                        expectedResult: layer4.NotRun,
-                        evals: []*layer4.ControlEvaluation{
+                        expectedResult: gemara.NotRun,
+                        evals: []*gemara.ControlEvaluation{
                                 passingEvaluation(),
                         },
                         steps:                  nil,
@@ -1685,35 +1685,35 @@ func getTestEvaluateData() []testingData <span class="cov1" title="1">{
                 },
                 {
                         testName:       "Mixed Evaluation Results",
-                        expectedResult: layer4.Failed,
-                        evals: []*layer4.ControlEvaluation{
+                        expectedResult: gemara.Failed,
+                        evals: []*gemara.ControlEvaluation{
                                 passingEvaluation(),
                                 failingEvaluation(),
                         },
-                        steps: convertEvalsToStepsMap([]*layer4.ControlEvaluation{
+                        steps: convertEvalsToStepsMap([]*gemara.ControlEvaluation{
                                 passingEvaluation(),
                                 failingEvaluation(),
                         }),
                 },
                 {
                         testName:       "Needs Review Evaluation",
-                        expectedResult: layer4.NeedsReview,
-                        evals: []*layer4.ControlEvaluation{
+                        expectedResult: gemara.NeedsReview,
+                        evals: []*gemara.ControlEvaluation{
                                 needsReviewEvaluation(),
                         },
-                        steps: convertEvalsToStepsMap([]*layer4.ControlEvaluation{
+                        steps: convertEvalsToStepsMap([]*gemara.ControlEvaluation{
                                 needsReviewEvaluation(),
                         }),
                 },
                 {
                         testName:       "Empty Evaluations List",
-                        expectedResult: layer4.NotRun,
-                        evals:          []*layer4.ControlEvaluation{},
-                        steps:          convertEvalsToStepsMap([]*layer4.ControlEvaluation{}),
+                        expectedResult: gemara.NotRun,
+                        evals:          []*gemara.ControlEvaluation{},
+                        steps:          convertEvalsToStepsMap([]*gemara.ControlEvaluation{}),
                 },
                 {
                         testName:       "Nil Evaluations List",
-                        expectedResult: layer4.NotRun,
+                        expectedResult: gemara.NotRun,
                         evals:          nil,
                         steps:          convertEvalsToStepsMap(nil),
                 },
