@@ -159,7 +159,7 @@ func (e *EvaluationSuite) setupEvalLog(steps map[string][]gemara.AssessmentStep)
 	var controlsFound bool
 	var reqsFound bool
 
-	if len(e.catalog.Families) == 0 {
+	if len(e.catalog.Controls) == 0 {
 		return evalLog, EVAL_SUITE_CRASHED("sel20")
 	}
 

@@ -61,6 +61,27 @@ func getTestCatalogWithNoRequirements() *gemara.ControlCatalog {
 	}
 }
 
+// getTestCatalogWithRequirements returns a catalog with controls and assessment requirements for tests that need a valid catalog.
+func getTestCatalogWithRequirements() *gemara.ControlCatalog {
+	return &gemara.ControlCatalog{
+		Metadata: gemara.Metadata{Id: "CCC.ObjStor"},
+		Controls: []gemara.Control{
+			{
+				Id:        "CCC.Core.C01",
+				Title:     "Encrypt Data for Transmission",
+				Objective: "Ensure that all communications are encrypted in transit.",
+				AssessmentRequirements: []gemara.AssessmentRequirement{
+					{
+						Id:           "CCC.Core.C01.TR01",
+						Text:         "When a port is exposed for non-SSH network traffic, all traffic MUST include a TLS handshake.",
+						Applicability: requestedApplicability,
+					},
+				},
+			},
+		},
+	}
+}
+
 func passingEvaluation() (evaluation *gemara.ControlEvaluation) {
 	evaluation = &gemara.ControlEvaluation{
 		Control: gemara.EntryMapping{
@@ -146,12 +167,10 @@ func createPassingStepsMap() map[string][]gemara.AssessmentStep {
 	}
 }
 
-// Helper function to get all requirement IDs from the test catalog
+// Helper function to get all requirement IDs from the test catalog.
+// Uses getTestCatalogWithRequirements() so steps built for tests match the fixture catalog.
 func getAllRequirementIds() ([]string, error) {
-	catalog, err := getTestCatalog()
-	if err != nil {
-		return nil, err
-	}
+	catalog := getTestCatalogWithRequirements()
 
 	var requirementIds []string
 	for _, control := range catalog.Controls {

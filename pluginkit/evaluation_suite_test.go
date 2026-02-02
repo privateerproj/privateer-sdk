@@ -12,11 +12,8 @@ func TestEvaluate(t *testing.T) {
 
 	for _, test := range testData {
 		t.Run(test.testName, func(t *testing.T) {
-			// Create a minimal catalog to avoid nil pointer panic
-			catalog, err := getTestCatalog()
-			if err != nil {
-				t.Fatal("Failed to load test catalog")
-			}
+			// Use catalog with requirements so flow reaches setupEvalLog and expected errors (e.g. sel10) or success
+			catalog := getTestCatalogWithRequirements()
 
 			suite := &EvaluationSuite{
 				Name:          test.testName,
@@ -26,7 +23,7 @@ func TestEvaluate(t *testing.T) {
 			}
 			suite.config = setBasicConfig()
 
-			err = suite.Evaluate("arbitrarySuiteName")
+			err := suite.Evaluate("arbitrarySuiteName")
 			if err != nil && test.expectedEvalSuiteError != nil {
 				if !strings.Contains(err.Error(), test.expectedEvalSuiteError.Error()) {
 					t.Errorf("Expected error containing '%s', but got '%v'", test.expectedEvalSuiteError, err)
@@ -83,10 +80,7 @@ func TestEvaluateWithEmptyCatalog(t *testing.T) {
 
 func TestEvaluateWithNilConfig(t *testing.T) {
 	t.Run("Nil Config", func(t *testing.T) {
-		catalog, err := getTestCatalog()
-		if err != nil {
-			t.Fatal("Failed to load test catalog")
-		}
+		catalog := getTestCatalogWithRequirements()
 
 		suite := &EvaluationSuite{
 			Name:    "Nil Config Test",
@@ -95,7 +89,7 @@ func TestEvaluateWithNilConfig(t *testing.T) {
 		}
 		// Don't set config - leave it nil
 
-		err = suite.Evaluate("testService")
+		err := suite.Evaluate("testService")
 		if err == nil {
 			t.Error("Expected error for nil config, but got none")
 		}
@@ -107,10 +101,7 @@ func TestEvaluateWithNilConfig(t *testing.T) {
 
 func TestGetAssessmentRequirements(t *testing.T) {
 	t.Run("Valid Catalog", func(t *testing.T) {
-		catalog, err := getTestCatalog()
-		if err != nil {
-			t.Fatal("Failed to load test catalog")
-		}
+		catalog := getTestCatalogWithRequirements()
 
 		suite := &EvaluationSuite{
 			catalog: catalog,
@@ -165,10 +156,7 @@ func TestGetAssessmentRequirements(t *testing.T) {
 
 func TestSetupEvalLog(t *testing.T) {
 	t.Run("Valid Steps Map", func(t *testing.T) {
-		catalog, err := getTestCatalog()
-		if err != nil {
-			t.Fatal("Failed to load test catalog")
-		}
+		catalog := getTestCatalogWithRequirements()
 
 		suite := &EvaluationSuite{
 			catalog: catalog,
@@ -185,10 +173,7 @@ func TestSetupEvalLog(t *testing.T) {
 	})
 
 	t.Run("Empty Steps Map", func(t *testing.T) {
-		catalog, err := getTestCatalog()
-		if err != nil {
-			t.Fatal("Failed to load test catalog")
-		}
+		catalog := getTestCatalogWithRequirements()
 
 		suite := &EvaluationSuite{
 			catalog: catalog,
@@ -208,10 +193,7 @@ func TestSetupEvalLog(t *testing.T) {
 	})
 
 	t.Run("Nil Steps Map", func(t *testing.T) {
-		catalog, err := getTestCatalog()
-		if err != nil {
-			t.Fatal("Failed to load test catalog")
-		}
+		catalog := getTestCatalogWithRequirements()
 
 		suite := &EvaluationSuite{
 			catalog: catalog,
@@ -327,10 +309,7 @@ func TestAddChangeManager(t *testing.T) {
 
 func TestEvaluationSuiteIntegration(t *testing.T) {
 	t.Run("Complete Evaluation Flow", func(t *testing.T) {
-		catalog, err := getTestCatalog()
-		if err != nil {
-			t.Fatal("Failed to load test catalog")
-		}
+		catalog := getTestCatalogWithRequirements()
 
 		suite := &EvaluationSuite{
 			Name:    "Integration Test",
@@ -339,7 +318,7 @@ func TestEvaluationSuiteIntegration(t *testing.T) {
 		}
 		suite.config = setBasicConfig()
 
-		err = suite.Evaluate("integrationTest")
+		err := suite.Evaluate("integrationTest")
 		if err != nil {
 			t.Errorf("Unexpected error in integration test: %v", err)
 		}
@@ -357,10 +336,7 @@ func TestEvaluationSuiteIntegration(t *testing.T) {
 	})
 
 	t.Run("Evaluation With Change Manager", func(t *testing.T) {
-		catalog, err := getTestCatalog()
-		if err != nil {
-			t.Fatal("Failed to load test catalog")
-		}
+		catalog := getTestCatalogWithRequirements()
 
 		suite := &EvaluationSuite{
 			Name:    "Change Manager Test",
@@ -373,7 +349,7 @@ func TestEvaluationSuiteIntegration(t *testing.T) {
 		changeManager := &ChangeManager{}
 		suite.AddChangeManager(changeManager)
 
-		err = suite.Evaluate("changeManagerTest")
+		err := suite.Evaluate("changeManagerTest")
 		if err != nil {
 			t.Errorf("Unexpected error in change manager test: %v", err)
 		}
