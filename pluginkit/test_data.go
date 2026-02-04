@@ -1,9 +1,6 @@
 package pluginkit
 
 import (
-	"fmt"
-	"os"
-
 	"github.com/gemaraproj/go-gemara"
 	"github.com/spf13/viper"
 
