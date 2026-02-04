@@ -18,28 +18,6 @@ type testingData struct {
 	expectedResult         gemara.Result
 }
 
-var testCatalog = &gemara.ControlCatalog{
-	Controls: []gemara.Control{},
-}
-
-func getTestCatalog() (*gemara.ControlCatalog, error) {
-	if len(testCatalog.Controls) > 0 {
-		return testCatalog, nil
-	}
-	catalog := &gemara.ControlCatalog{}
-	pwd, err := os.Getwd()
-	if err != nil {
-		return nil, fmt.Errorf("could not get working directory when retrieving catalog: %w", err)
-	}
-	file1 := fmt.Sprintf("file://%s/catalog-test-data/metadata.yaml", pwd)
-	file2 := fmt.Sprintf("file://%s/catalog-test-data/controls.yaml", pwd)
-	err = catalog.LoadFiles([]string{file1, file2})
-	if err != nil {
-		return nil, err
-	}
-	return catalog, nil
-}
-
 // getEmptyTestCatalog returns an empty catalog for testing error conditions
 func getEmptyTestCatalog() *gemara.ControlCatalog {
 	return &gemara.ControlCatalog{
