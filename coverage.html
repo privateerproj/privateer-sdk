@@ -1551,15 +1551,15 @@ func setBasicConfig() *config.Config <span class="cov5" title="14">{
         return &amp;c
 }</span>
 
-func step_Pass(data interface{}) (result gemara.Result, message string) <span class="cov8" title="71">{
+func step_Pass(data interface{}) (result gemara.Result, message string, confidence gemara.ConfidenceLevel) <span class="cov8" title="71">{
         return gemara.Passed, "This step always passes"
 }</span>
 
-func step_Fail(_ interface{}) (result gemara.Result, message string) <span class="cov1" title="1">{
+func step_Fail(_ interface{}) (result gemara.Result, message string, confidence gemara.ConfidenceLevel) <span class="cov1" title="1">{
         return gemara.Failed, "This step always fails"
 }</span>
 
-func step_NeedsReview(_ interface{}) (result gemara.Result, message string) <span class="cov7" title="36">{
+func step_NeedsReview(_ interface{}) (result gemara.Result, message string, confidence gemara.ConfidenceLevel) <span class="cov7" title="36">{
         return gemara.NeedsReview, "This step always needs review"
 }</span>
 

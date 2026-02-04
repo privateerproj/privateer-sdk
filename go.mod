@@ -3,7 +3,7 @@ module github.com/privateerproj/privateer-sdk
 go 1.25.1
 
 require (
-	github.com/gemaraproj/go-gemara v0.15.2
+	github.com/gemaraproj/go-gemara v0.0.1
 	github.com/go-git/go-git/v5 v5.16.4
 	github.com/goccy/go-yaml v1.19.2
 	github.com/hashicorp/go-hclog v1.6.3
@@ -59,4 +59,4 @@ require (
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 )
 
-replace github.com/gemaraproj/go-gemara => ../../gemaraproj/go-gemara
+// replace github.com/gemaraproj/go-gemara => ../../gemaraproj/go-gemara
