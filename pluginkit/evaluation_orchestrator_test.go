@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ossf/gemara/layer4"
+	"github.com/gemaraproj/go-gemara"
 	"github.com/privateerproj/privateer-sdk/config"
 )
 
@@ -101,7 +101,7 @@ func TestEvaluationOrchestrator_AddEvaluationSuite(t *testing.T) {
 		testLoader := func(cfg *config.Config) (interface{}, error) {
 			return "test-payload", nil
 		}
-		steps := map[string][]layer4.AssessmentStep{
+		steps := map[string][]gemara.AssessmentStep{
 			"test-requirement": {step_Pass},
 		}
 
@@ -151,13 +151,13 @@ func TestEvaluationOrchestrator_Integration(t *testing.T) {
 	})
 }
 
-func createTestEvalLog() layer4.EvaluationLog {
-	return layer4.EvaluationLog{
-		Evaluations: []*layer4.ControlEvaluation{
+func createTestEvalLog() gemara.EvaluationLog {
+	return gemara.EvaluationLog{
+		Evaluations: []*gemara.ControlEvaluation{
 			passingEvaluation(),
 		},
-		Metadata: layer4.Metadata{
-			Author: layer4.Author{
+		Metadata: gemara.Metadata{
+			Author: gemara.Actor{
 				Name:    "test-plugin",
 				Uri:     "https://github.com/test/repo",
 				Version: "1.0.0",

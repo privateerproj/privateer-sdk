@@ -4,19 +4,18 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ossf/gemara/layer2"
-	"github.com/ossf/gemara/layer4"
+	"github.com/gemaraproj/go-gemara"
 	"github.com/privateerproj/privateer-sdk/config"
 )
 
 // TestSet is a function type that returns a control evaluation result.
-type TestSet func() (result layer4.ControlEvaluation)
+type TestSet func() (result gemara.ControlEvaluation)
 
 // EvaluationSuite contains the results of all EvaluationLog executions.
 // Exported fields will be used in the final YAML or JSON output documents.
 type EvaluationSuite struct {
 	Name   string        // Name is the name of the suite
-	Result layer4.Result // Result is Passed if all evaluations in the suite passed
+	Result gemara.Result // Result is Passed if all evaluations in the suite passed
 
 	CatalogId string `yaml:"catalog-id"` // CatalogId associates this suite with a catalog
 	StartTime string `yaml:"start-time"` // StartTime is the time the plugin started
@@ -24,15 +23,15 @@ type EvaluationSuite struct {
 
 	CorruptedState bool `yaml:"corrupted-state"` // CorruptedState is true if any testSet failed to revert at the end of the evaluation
 
-	EvaluationLog layer4.EvaluationLog `yaml:"control-evaluations"` // EvaluationLog is a slice of evaluations to be executed
+	EvaluationLog gemara.EvaluationLog `yaml:"control-evaluations"` // EvaluationLog is a slice of evaluations to be executed
 
 	config *config.Config // config is the global configuration
 
 	payload       interface{}                        // payload is the data to be evaluated
 	loader        DataLoader                         // loader is the function to load the payload
 	changeManager *ChangeManager                     // changes is a list of changes made during the evaluation
-	catalog       *layer2.Catalog                    // The Catalog this evaluation suite references
-	steps         map[string][]layer4.AssessmentStep // steps is a map of control IDs to their assessment steps
+	catalog       *gemara.ControlCatalog                    // The Catalog this evaluation suite references
+	steps         map[string][]gemara.AssessmentStep // steps is a map of control IDs to their assessment steps
 
 	evalSuccesses int // successes is the number of successful evaluations
 	evalFailures  int // failures is the number of failed evaluations
@@ -78,20 +77,20 @@ func (e *EvaluationSuite) Evaluate(serviceName string) error {
 		evaluation.Evaluate(e.payload, e.config.Policy.Applicability)
 
 		// Make sure the evaluation result is updated based on the complete assessment results
-		e.Result = layer4.UpdateAggregateResult(e.Result, evaluation.Result)
+		e.Result = gemara.UpdateAggregateResult(e.Result, evaluation.Result)
 
 		// Log each assessment result as a separate line
 		for _, assessment := range evaluation.AssessmentLogs {
 			message := fmt.Sprintf("%s: %s", assessment.Requirement.EntryId, assessment.Message)
 			// switch case the code below
 			switch assessment.Result {
-			case layer4.Passed:
+			case gemara.Passed:
 				e.config.Logger.Info(message)
-			case layer4.NeedsReview:
+			case gemara.NeedsReview:
 				e.config.Logger.Warn(message)
-			case layer4.Failed:
+			case gemara.Failed:
 				e.config.Logger.Error(message)
-			case layer4.Unknown:
+			case gemara.Unknown:
 				e.config.Logger.Error(message)
 			}
 
@@ -100,11 +99,11 @@ func (e *EvaluationSuite) Evaluate(serviceName string) error {
 			}
 		}
 
-		if evaluation.Result == layer4.Passed {
+		if evaluation.Result == gemara.Passed {
 			e.evalSuccesses += 1
-		} else if evaluation.Result == layer4.Failed {
+		} else if evaluation.Result == gemara.Failed {
 			e.evalFailures += 1
-		} else if evaluation.Result != layer4.NotRun {
+		} else if evaluation.Result != gemara.NotRun {
 			e.evalWarnings += 1
 		}
 		if e.changeManager != nil && e.changeManager.CorruptedState {
@@ -124,9 +123,9 @@ func (e *EvaluationSuite) Evaluate(serviceName string) error {
 	}
 
 	switch e.Result {
-	case layer4.Passed:
+	case gemara.Passed:
 		e.config.Logger.Info(output)
-	case layer4.NotRun:
+	case gemara.NotRun:
 		e.config.Logger.Trace(output)
 	default:
 		e.config.Logger.Error(output)
@@ -135,13 +134,11 @@ func (e *EvaluationSuite) Evaluate(serviceName string) error {
 }
 
 // GetAssessmentRequirements retrieves all assessment requirements from the catalog.
-func (e *EvaluationSuite) GetAssessmentRequirements() (map[string]*layer2.AssessmentRequirement, error) {
-	requirements := make(map[string]*layer2.AssessmentRequirement)
-	for _, family := range e.catalog.ControlFamilies {
-		for _, control := range family.Controls {
-			for _, requirement := range control.AssessmentRequirements {
-				requirements[requirement.Id] = &requirement
-			}
+func (e *EvaluationSuite) GetAssessmentRequirements() (map[string]*gemara.AssessmentRequirement, error) {
+	requirements := make(map[string]*gemara.AssessmentRequirement)
+	for _, control := range e.catalog.Controls {
+		for _, requirement := range control.AssessmentRequirements {
+			requirements[requirement.Id] = &requirement
 		}
 	}
 
@@ -152,7 +149,7 @@ func (e *EvaluationSuite) GetAssessmentRequirements() (map[string]*layer2.Assess
 	return requirements, nil
 }
 
-func (e *EvaluationSuite) setupEvalLog(steps map[string][]layer4.AssessmentStep) (evalLog layer4.EvaluationLog, err error) {
+func (e *EvaluationSuite) setupEvalLog(steps map[string][]gemara.AssessmentStep) (evalLog gemara.EvaluationLog, err error) {
 	if len(steps) == 0 {
 		return evalLog, NO_ASSESSMENT_STEPS_PROVIDED("sel10")
 	}
@@ -162,51 +159,46 @@ func (e *EvaluationSuite) setupEvalLog(steps map[string][]layer4.AssessmentStep)
 	var controlsFound bool
 	var reqsFound bool
 
-	if len(e.catalog.ControlFamilies) == 0 {
+	if len(e.catalog.Controls) == 0 {
 		return evalLog, EVAL_SUITE_CRASHED("sel20")
 	}
 
-	for _, family := range e.catalog.ControlFamilies {
-		if len(family.Controls) == 0 {
+	for _, control := range e.catalog.Controls {
+		controlsFound = true
+		if len(control.AssessmentRequirements) == 0 {
 			continue
 		}
-		controlsFound = true
-		for _, control := range family.Controls {
-			if len(control.AssessmentRequirements) == 0 {
-				continue
-			}
-			reqsFound = true
+		reqsFound = true
 
-			// Create ControlEvaluation first
-			evaluation := &layer4.ControlEvaluation{
-				Name: control.Title,
-				Control: layer4.Mapping{
-					ReferenceId: e.CatalogId,
-					EntryId:     control.Id,
-				},
-			}
+		// Create ControlEvaluation first
+		evaluation := &gemara.ControlEvaluation{
+			Name: control.Title,
+			Control: gemara.EntryMapping{
+				ReferenceId: e.CatalogId,
+				EntryId:     control.Id,
+			},
+		}
 
-			for _, requirement := range control.AssessmentRequirements {
-				// Use AddAssessment instead of manual struct creation
-				assessment := evaluation.AddAssessment(
-					requirement.Id,            // requirementId
-					control.Objective,         // description
-					requirement.Applicability, // applicability
-					steps[requirement.Id],     // steps
-				)
+		for _, requirement := range control.AssessmentRequirements {
+			// Use AddAssessment instead of manual struct creation
+			assessment := evaluation.AddAssessment(
+				requirement.Id,            // requirementId
+				control.Objective,         // description
+				requirement.Applicability, // applicability
+				steps[requirement.Id],     // steps
+			)
 
-				// Handle case where no steps were found
-				if _, ok := steps[requirement.Id]; !ok {
-					assessment.Result = layer4.Unknown
-					if e.config != nil {
-						msg := fmt.Sprintf("requirement: %s, control %s+sel30", requirement.Id, control.Id)
-						err := NO_ASSESSMENT_STEPS_PROVIDED(msg)
-						e.config.Logger.Debug(err.Error())
-					}
+			// Handle case where no steps were found
+			if _, ok := steps[requirement.Id]; !ok {
+				assessment.Result = gemara.Unknown
+				if e.config != nil {
+					msg := fmt.Sprintf("requirement: %s, control %s+sel30", requirement.Id, control.Id)
+					err := NO_ASSESSMENT_STEPS_PROVIDED(msg)
+					e.config.Logger.Debug(err.Error())
 				}
 			}
-			evalLog.Evaluations = append(evalLog.Evaluations, evaluation)
 		}
+		evalLog.Evaluations = append(evalLog.Evaluations, evaluation)
 	}
 
 	if !controlsFound {
