@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 
 	hclog "github.com/hashicorp/go-hclog"
@@ -102,6 +103,8 @@ func newClient(cmd *exec.Cmd, logger hclog.Logger) *hcplugin.Client {
 		Plugins:         pluginMap,
 		Cmd:             cmd,
 		Logger:          logger,
+		SyncStdout:      os.Stdout,
+		SyncStderr:      os.Stderr,
 	})
 }
 
