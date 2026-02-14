@@ -181,7 +181,7 @@ func (c *Config) SetupLogging(name string, jsonFormat bool) {
 		logFilePath = path.Join(c.WriteDirectory, name, logFile)
 	}
 
-	writer := io.Writer(os.Stdout)
+	writer := io.Writer(os.Stderr)
 	if c.Write {
 		writer = c.setupLoggingFilesAndDirectories(logFilePath)
 	}
@@ -209,6 +209,6 @@ func (c *Config) setupLoggingFilesAndDirectories(logFilePath string) io.Writer {
 		log.Panic(err) // TODO: handle this error better
 	}
 
-	writer := io.MultiWriter(logFileObj, os.Stdout)
+	writer := io.MultiWriter(logFileObj, os.Stderr)
 	return writer
 }
