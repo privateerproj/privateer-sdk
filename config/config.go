@@ -17,6 +17,8 @@ import (
 	"github.com/spf13/viper"
 )
 
+const defaultServiceName = "overview"
+
 var allowedOutputTypes = []string{"json", "yaml", "sarif"}
 
 // Config holds the configuration for a plugin execution.
@@ -128,7 +130,7 @@ func NewConfig(requiredVars []string) Config {
 		Error: err,
 	}
 	if serviceName == "" {
-		serviceName = "overview"
+		serviceName = defaultServiceName
 	}
 	config.SetupLogging(serviceName, output == "json")
 	printSanitizedVars(config.Logger, vars)
@@ -173,7 +175,7 @@ func defaultWritePath() string {
 func (c *Config) SetupLogging(name string, jsonFormat bool) {
 	var logFilePath string
 	logFile := name + ".log"
-	if name == "overview" {
+	if name == defaultServiceName {
 		// if this is not a plugin, do not nest within a directory
 		logFilePath = path.Join(c.WriteDirectory, logFile)
 	} else {
@@ -182,7 +184,7 @@ func (c *Config) SetupLogging(name string, jsonFormat bool) {
 	}
 
 	writer := io.Writer(os.Stderr)
-	if c.Write {
+	if c.Write && name != defaultServiceName {
 		writer = c.setupLoggingFilesAndDirectories(logFilePath)
 	}
 
