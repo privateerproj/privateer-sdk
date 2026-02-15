@@ -14,7 +14,7 @@ import (
 
 // SetBase sets the base flags for all commands.
 func SetBase(cmd *cobra.Command) {
-	cmd.PersistentFlags().StringP("config", "c", defaultConfigPath(), "Configuration File, JSON or YAML")
+	cmd.PersistentFlags().StringP("config", "c", "", "Configuration file, JSON or YAML (if omitted, falls back to ./config.yml then ~/.privateer/config.yml)")
 	_ = viper.BindPFlag("config", cmd.PersistentFlags().Lookup("config"))
 
 	cmd.PersistentFlags().StringP("write-directory", "w", "evaluation_results", "Directory to write evaluation results to")
@@ -38,20 +38,25 @@ func SetBase(cmd *cobra.Command) {
 	cmd.PersistentFlags().BoolP("help", "h", false, "Give me a heading! Help for the specified command")
 }
 
-// ReadConfig reads the configuration file specified in the config flag.
+// ReadConfig reads the configuration file. If --config is explicitly provided,
+// that exact path is used. Otherwise, it searches ./config.yml and ~/.privateer/config.yml.
 func ReadConfig() {
-	viper.SetConfigFile(viper.GetString("config"))
 	viper.AutomaticEnv()
+
+	configPath := viper.GetString("config")
+	if configPath != "" {
+		viper.SetConfigFile(configPath)
+	} else {
+		viper.SetConfigName("config")
+		viper.SetConfigType("yml")
+		viper.AddConfigPath(".")
+		home, err := os.UserHomeDir()
+		if err == nil {
+			viper.AddConfigPath(filepath.Join(home, ".privateer"))
+		}
+	}
 
 	if err := viper.ReadInConfig(); err != nil {
 		log.Print("[ERROR] " + err.Error())
 	}
-}
-
-func defaultConfigPath() string {
-	workDir, err := os.Getwd()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(workDir, "config.yml")
 }
