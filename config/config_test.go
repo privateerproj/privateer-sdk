@@ -529,6 +529,57 @@ func TestSetupLogging(t *testing.T) {
 	}
 }
 
+func TestSetupLoggingOverviewSkipsFileCreation(t *testing.T) {
+	tmpDir := path.Join(os.TempDir(), "privateer-test-overview")
+	defer func() {
+		if err := os.RemoveAll(tmpDir); err != nil {
+			t.Error("Failed to clean up tmpDir")
+		}
+	}()
+
+	c := Config{
+		WriteDirectory: tmpDir,
+		Write:          true,
+		LogLevel:       "Error",
+	}
+
+	c.SetupLogging(defaultServiceName, false)
+
+	if c.Logger == nil {
+		t.Error("expected logger to be set")
+	}
+
+	if _, err := os.Stat(tmpDir); !os.IsNotExist(err) {
+		t.Errorf("expected write directory %s to not be created for %s, but it exists", tmpDir, defaultServiceName)
+	}
+}
+
+func TestSetupLoggingPluginCreatesFiles(t *testing.T) {
+	tmpDir := path.Join(os.TempDir(), "privateer-test-plugin")
+	defer func() {
+		if err := os.RemoveAll(tmpDir); err != nil {
+			t.Error("Failed to clean up tmpDir")
+		}
+	}()
+
+	c := Config{
+		WriteDirectory: tmpDir,
+		Write:          true,
+		LogLevel:       "Error",
+	}
+
+	c.SetupLogging("my-plugin", false)
+
+	if c.Logger == nil {
+		t.Error("expected logger to be set")
+	}
+
+	logFilePath := path.Join(tmpDir, "my-plugin", "my-plugin.log")
+	if _, err := os.Stat(logFilePath); os.IsNotExist(err) {
+		t.Errorf("expected log file %s to be created for plugin, but it does not exist", logFilePath)
+	}
+}
+
 func TestSetupLoggingFilesAndDirectories(t *testing.T) {
 	tmpDir := path.Join(os.TempDir(), "privateer-test")
 	defer func() {
