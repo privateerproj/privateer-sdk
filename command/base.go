@@ -14,7 +14,7 @@ import (
 
 // SetBase sets the base flags for all commands.
 func SetBase(cmd *cobra.Command) {
-	cmd.PersistentFlags().StringP("config", "c", "", "Configuration file, JSON or YAML (searches ./config.yml then ~/.privateer/config.yml)")
+	cmd.PersistentFlags().StringP("config", "c", "", "Configuration file, JSON or YAML (if omitted, falls back to ./config.yml then ~/.privateer/config.yml)")
 	_ = viper.BindPFlag("config", cmd.PersistentFlags().Lookup("config"))
 
 	cmd.PersistentFlags().StringP("write-directory", "w", "evaluation_results", "Directory to write evaluation results to")
