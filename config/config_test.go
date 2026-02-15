@@ -531,7 +531,11 @@ func TestSetupLogging(t *testing.T) {
 
 func TestSetupLoggingOverviewSkipsFileCreation(t *testing.T) {
 	tmpDir := path.Join(os.TempDir(), "privateer-test-overview")
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		if err := os.RemoveAll(tmpDir); err != nil {
+			t.Error("Failed to clean up tmpDir")
+		}
+	}()
 
 	c := Config{
 		WriteDirectory: tmpDir,
@@ -552,7 +556,11 @@ func TestSetupLoggingOverviewSkipsFileCreation(t *testing.T) {
 
 func TestSetupLoggingPluginCreatesFiles(t *testing.T) {
 	tmpDir := path.Join(os.TempDir(), "privateer-test-plugin")
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		if err := os.RemoveAll(tmpDir); err != nil {
+			t.Error("Failed to clean up tmpDir")
+		}
+	}()
 
 	c := Config{
 		WriteDirectory: tmpDir,
