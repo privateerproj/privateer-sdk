@@ -1,0 +1,68 @@
+---
+title: Privateer SDK Self-Assessment
+metadata:
+  id: PrivProj.SDK
+  description: Threat catalog for Privateer SDK Self-Assessment
+  version: 2026.Feb.28
+  author:
+    id: pvtr-maintainers
+    name: Privateer Maintainer Group
+    type: Human
+  mapping-references:
+    - id: CCC
+      title: Common Cloud Controls Core
+      version: v2025.10
+      url: https://github.com/finos/common-cloud-controls/releases/download/v2025.10/CCC.Core_v2025.10.yaml
+      description: |
+        Foundational repository of reusable security controls, capabilities,
+        and threat models maintained by FINOS.
+
+capabilities:
+  - id: PrivProj.SDK.CP01
+    title: Go Package
+    description: Privateer SDK is a go package, version controlled and released via GitHub and distributed by pkg.go.dev
+  - id: PrivProj.SDK.CP02
+    title: Plugin Development Kit
+    description: Provides the foundational logic required for building the base of any Privateer plugin
+  - id: PrivProj.SDK.CP03
+    title: Shared Plugin Interfaces
+    description: Standardizes data structures across diverse plugin implementations
+  - id: PrivProj.SDK.CP04
+    title: Configuration Management
+    description: Manages plugin settings, environment variables, and configuration logic for Privateer (core) and plugins
+  - id: PrivProj.SDK.CP05
+    title: Evaluation Framework
+    description: Orchestrates assessment logic to ensure consistent machine-readable validation
+
+threats:
+  - id: PrivProj.SDK.TH01
+    title: Source Repository is Compromised
+    description: |
+      Access control failures on the source repository may result in distribution of compromised code,
+      which will then compromise all downstream users.
+    capabilities:
+      - reference-id: PrivProj.SDK
+        entries:
+          - reference-id: PrivProj.SDK.CP01
+          - reference-id: PrivProj.SDK.CP02
+  - id: PrivProj.SDK.TH02
+    title: Undetected Breaking Changes Disrupt Downstream Plugins
+    description: |
+      Syntactic or behavioral modifications to core interfaces or evaluation logic may disrupt 
+      compatibility for existing plugins, leading to silent validation failures or logic errors 
+      in security assessments.
+    capabilities:
+      - reference-id: PrivProj.SDK
+        entries:
+          - reference-id: PrivProj.SDK.CP02
+          - reference-id: PrivProj.SDK.CP03
+          - reference-id: PrivProj.SDK.CP05
+  - id: PrivProj.SDK.TH03
+    title: Supply Chain Contamination via Dependencies
+    description: |
+      The use of unvetted, unpinned, or compromised third-party Go modules can
+      introduce vulnerabilities or malicious logic into the SDK and derived plugins.
+    capabilities:
+      - reference-id: PrivProj.SDK
+        entries:
+          - reference-id: PrivProj.SDK.CP01
