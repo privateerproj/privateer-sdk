@@ -9,9 +9,9 @@ import (
 	"path"
 	"strings"
 
-	"github.com/goccy/go-yaml"
 	"github.com/gemaraproj/go-gemara"
 	"github.com/gemaraproj/go-gemara/gemaraconv"
+	"github.com/goccy/go-yaml"
 	"github.com/privateerproj/privateer-sdk/config"
 )
 
@@ -123,11 +123,11 @@ func (v *EvaluationOrchestrator) addEvaluationSuite(catalog *gemara.ControlCatal
 
 // getImportedControls returns controls from imported catalogs that are listed in the primary catalog's imports.
 func getImportedControls(catalog *gemara.ControlCatalog, referenceCatalogs map[string]*gemara.ControlCatalog) []gemara.Control {
-	if len(catalog.ImportedControls) == 0 {
+	if len(catalog.Imports.Controls) == 0 {
 		return nil
 	}
 	var result []gemara.Control
-	for _, importEntry := range catalog.ImportedControls {
+	for _, importEntry := range catalog.Imports.Controls {
 		refCatalog, ok := referenceCatalogs[importEntry.ReferenceId]
 		if !ok {
 			continue

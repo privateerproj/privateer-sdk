@@ -6,7 +6,7 @@ import (
 	"path"
 
 	"github.com/gemaraproj/go-gemara"
-	"gopkg.in/yaml.v3"
+	"github.com/goccy/go-yaml"
 )
 
 // TODO: When loading the catalogs, queue them all up
@@ -45,6 +45,8 @@ func readYAMLFile(filePath string, files embed.FS) (*gemara.ControlCatalog, erro
 	}
 
 	var catalog gemara.ControlCatalog
+	// Use goccy/go-yaml (not gopkg.in/yaml.v3) so gemara enum types like EntityType
+	// are unmarshaled via their UnmarshalYAML([]byte) methods.
 	if err := yaml.Unmarshal(data, &catalog); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal YAML: %w", err)
 	}
