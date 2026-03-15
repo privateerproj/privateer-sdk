@@ -6,26 +6,17 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/privateerproj/privateer-sdk/internal/install"
+	"github.com/privateerproj/privateer-sdk/internal/registry"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
-// PluginMetadata is the subset of registry plugin data needed for install.
-type PluginMetadata struct {
-	Name              string
-	Image             string
-	BinaryPathInImage string
-	DownloadURL       string
-}
-
-// GetInstallCmd returns the install command. Caller provides getPluginData (e.g. from registry)
-// and installFromURL (direct HTTP GET of the plugin binary). Plugin metadata must include a
-// "download" URL; no OCI or container runtime is required. writer is used for success/error output.
-func GetInstallCmd(
-	writer Writer,
-	getPluginData func(name string) (*PluginMetadata, error),
-	installFromURL func(downloadURL, destPath, binaryName string) error,
-) *cobra.Command {
+// GetInstallCmd returns the install command. It fetches plugin metadata from the registry
+// (PVTR_REGISTRY_URL env or default), resolves the download URL (from "download" field or
+// inferred from GitHub source+latest), and downloads the binary into the binaries path.
+// writer is used for success/error output.
+func GetInstallCmd(writer Writer) *cobra.Command {
 	return &cobra.Command{
 		Use:   "install [plugin-name]",
 		Short: "Install a vetted plugin from the registry.",
@@ -40,28 +31,42 @@ func GetInstallCmd(
 				return fmt.Errorf("plugin name must be in the form owner/repo (e.g. ossf/pvtr-github-repo-scanner)")
 			}
 
-			pd, err := getPluginData(nameArg)
+			client := registry.NewClient()
+			pd, err := client.GetPluginData(nameArg)
 			if err != nil {
 				return fmt.Errorf("plugin %q: %w", nameArg, err)
 			}
 
-			downloadURL := strings.TrimSpace(pd.DownloadURL)
-			if downloadURL == "" {
-				return fmt.Errorf("plugin %q has no download URL; add a \"download\" field to the plugin metadata", nameArg)
-			}
-
-			binariesPath := viper.GetString("binaries-path")
 			binaryName := filepath.Base(nameArg)
 			if binaryName == "" || binaryName == "." {
 				binaryName = strings.ReplaceAll(nameArg, "/", "-")
 			}
+
+			base := strings.TrimSpace(pd.DownloadURL)
+			if base == "" {
+				inferred, ok := install.InferGitHubReleaseBase(pd.Source, pd.Latest)
+				if !ok {
+					return fmt.Errorf("plugin %q has no download URL and source is not a GitHub repo; add a \"download\" field to the plugin metadata", nameArg)
+				}
+				base = inferred
+			} else {
+				base = strings.TrimSuffix(base, "/")
+			}
+
+			artifactFilename, err := install.InferArtifactFilename(binaryName)
+			if err != nil {
+				return fmt.Errorf("plugin %q: %w", nameArg, err)
+			}
+			downloadURL := base + "/" + artifactFilename
+
+			binariesPath := viper.GetString("binaries-path")
 			destPath := filepath.Join(binariesPath, binaryName)
 
 			if err := os.MkdirAll(binariesPath, 0755); err != nil {
 				return fmt.Errorf("create binaries directory %s: %w", binariesPath, err)
 			}
 
-			if err := installFromURL(downloadURL, destPath, binaryName); err != nil {
+			if err := install.FromURL(downloadURL, destPath, binaryName); err != nil {
 				return fmt.Errorf("install from URL %q: %w", downloadURL, err)
 			}
 
