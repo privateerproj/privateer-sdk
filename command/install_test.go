@@ -59,8 +59,8 @@ func TestInstallCmd_GetPluginDataError(t *testing.T) {
 	defer server.Close()
 
 	orig := os.Getenv("PVTR_REGISTRY_URL")
-	defer os.Setenv("PVTR_REGISTRY_URL", orig)
-	os.Setenv("PVTR_REGISTRY_URL", server.URL)
+	defer func() { _ = os.Setenv("PVTR_REGISTRY_URL", orig) }()
+	_ = os.Setenv("PVTR_REGISTRY_URL", server.URL)
 
 	resetViper()
 	dir := t.TempDir()
@@ -91,8 +91,8 @@ func TestInstallCmd_NoDownloadURL(t *testing.T) {
 	defer server.Close()
 
 	orig := os.Getenv("PVTR_REGISTRY_URL")
-	defer os.Setenv("PVTR_REGISTRY_URL", orig)
-	os.Setenv("PVTR_REGISTRY_URL", server.URL)
+	defer func() { _ = os.Setenv("PVTR_REGISTRY_URL", orig) }()
+	_ = os.Setenv("PVTR_REGISTRY_URL", server.URL)
 
 	resetViper()
 	dir := t.TempDir()
@@ -123,8 +123,8 @@ func TestInstallCmd_MkdirAllError(t *testing.T) {
 	defer server.Close()
 
 	orig := os.Getenv("PVTR_REGISTRY_URL")
-	defer os.Setenv("PVTR_REGISTRY_URL", orig)
-	os.Setenv("PVTR_REGISTRY_URL", server.URL)
+	defer func() { _ = os.Setenv("PVTR_REGISTRY_URL", orig) }()
+	_ = os.Setenv("PVTR_REGISTRY_URL", server.URL)
 
 	resetViper()
 	dir := t.TempDir()
@@ -187,8 +187,8 @@ func TestInstallCmd_Success(t *testing.T) {
 	defer server.Close()
 
 	orig := os.Getenv("PVTR_REGISTRY_URL")
-	defer os.Setenv("PVTR_REGISTRY_URL", orig)
-	os.Setenv("PVTR_REGISTRY_URL", server.URL)
+	defer func() { _ = os.Setenv("PVTR_REGISTRY_URL", orig) }()
+	_ = os.Setenv("PVTR_REGISTRY_URL", server.URL)
 
 	resetViper()
 	dir := t.TempDir()
@@ -251,8 +251,8 @@ func TestInstallCmd_BinaryNameFallback(t *testing.T) {
 	defer server.Close()
 
 	orig := os.Getenv("PVTR_REGISTRY_URL")
-	defer os.Setenv("PVTR_REGISTRY_URL", orig)
-	os.Setenv("PVTR_REGISTRY_URL", server.URL)
+	defer func() { _ = os.Setenv("PVTR_REGISTRY_URL", orig) }()
+	_ = os.Setenv("PVTR_REGISTRY_URL", server.URL)
 
 	resetViper()
 	dir := t.TempDir()
