@@ -10,8 +10,8 @@ import (
 
 func TestNewClient_DefaultBaseURL(t *testing.T) {
 	orig := os.Getenv("PVTR_REGISTRY_URL")
-	defer os.Setenv("PVTR_REGISTRY_URL", orig)
-	os.Unsetenv("PVTR_REGISTRY_URL")
+	defer func() { _ = os.Setenv("PVTR_REGISTRY_URL", orig) }()
+	_ = os.Unsetenv("PVTR_REGISTRY_URL")
 
 	c := NewClient()
 	if c.BaseURL != DefaultBaseURL {
@@ -24,8 +24,8 @@ func TestNewClient_DefaultBaseURL(t *testing.T) {
 
 func TestNewClient_EnvOverride(t *testing.T) {
 	orig := os.Getenv("PVTR_REGISTRY_URL")
-	defer os.Setenv("PVTR_REGISTRY_URL", orig)
-	os.Setenv("PVTR_REGISTRY_URL", "https://custom.example.com/registry")
+	defer func() { _ = os.Setenv("PVTR_REGISTRY_URL", orig) }()
+	_ = os.Setenv("PVTR_REGISTRY_URL", "https://custom.example.com/registry")
 
 	c := NewClient()
 	want := "https://custom.example.com/registry"
@@ -36,8 +36,8 @@ func TestNewClient_EnvOverride(t *testing.T) {
 
 func TestNewClient_TrimTrailingSlash(t *testing.T) {
 	orig := os.Getenv("PVTR_REGISTRY_URL")
-	defer os.Setenv("PVTR_REGISTRY_URL", orig)
-	os.Setenv("PVTR_REGISTRY_URL", "https://example.com/")
+	defer func() { _ = os.Setenv("PVTR_REGISTRY_URL", orig) }()
+	_ = os.Setenv("PVTR_REGISTRY_URL", "https://example.com/")
 
 	c := NewClient()
 	if c.BaseURL != "https://example.com" {

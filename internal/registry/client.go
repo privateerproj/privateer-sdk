@@ -72,7 +72,7 @@ func (c *Client) GetVettedList() (*VettedListResponse, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fetch vetted list: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("vetted list returned status %d", resp.StatusCode)
@@ -103,7 +103,7 @@ func (c *Client) GetPluginData(name string) (*PluginData, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fetch plugin data: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, fmt.Errorf("plugin %q not found in vetted registry", name)

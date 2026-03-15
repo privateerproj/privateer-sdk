@@ -122,7 +122,7 @@ func TestFetchVettedPlugins_InvalidJSON(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		w.Write([]byte("not json"))
+		_, _ = w.Write([]byte("not json"))
 	}))
 	defer server.Close()
 

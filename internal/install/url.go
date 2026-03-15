@@ -31,7 +31,7 @@ func FromURL(downloadURL, destPath, binaryName string) error {
 	if err != nil {
 		return fmt.Errorf("fetch %s: %w", downloadURL, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("download returned %d for %s", resp.StatusCode, downloadURL)
@@ -53,7 +53,7 @@ func writeRaw(r io.Reader, destPath string) error {
 	if err != nil {
 		return fmt.Errorf("create %s: %w", destPath, err)
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 	written, err := out.ReadFrom(r)
 	if err != nil {
 		_ = os.Remove(destPath)
@@ -73,8 +73,8 @@ func extractZip(r io.Reader, destPath, binaryName string) error {
 	if err != nil {
 		return fmt.Errorf("temp file: %w", err)
 	}
-	defer os.Remove(tmpFile.Name())
-	defer tmpFile.Close()
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
+	defer func() { _ = tmpFile.Close() }()
 	if _, err := io.Copy(tmpFile, r); err != nil {
 		return fmt.Errorf("read zip: %w", err)
 	}
@@ -108,12 +108,12 @@ func extractZip(r io.Reader, destPath, binaryName string) error {
 	if err != nil {
 		return err
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 	out, err := os.Create(destPath)
 	if err != nil {
 		return fmt.Errorf("create %s: %w", destPath, err)
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 	if _, err := io.Copy(out, rc); err != nil {
 		_ = os.Remove(destPath)
 		return err
@@ -127,7 +127,7 @@ func extractTarGz(r io.Reader, destPath, binaryName string) error {
 	if err != nil {
 		return fmt.Errorf("gzip: %w", err)
 	}
-	defer gzr.Close()
+	defer func() { _ = gzr.Close() }()
 	tr := tar.NewReader(gzr)
 	var found bool
 	for {
@@ -147,7 +147,7 @@ func extractTarGz(r io.Reader, destPath, binaryName string) error {
 			if err != nil {
 				return fmt.Errorf("create %s: %w", destPath, err)
 			}
-			defer out.Close()
+			defer func() { _ = out.Close() }()
 			if _, err := io.Copy(out, tr); err != nil {
 				_ = os.Remove(destPath)
 				return err
