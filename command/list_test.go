@@ -55,8 +55,8 @@ func TestFetchVettedPlugins_ObjectShape(t *testing.T) {
 	defer server.Close()
 
 	orig := os.Getenv("PVTR_REGISTRY_URL")
-	defer os.Setenv("PVTR_REGISTRY_URL", orig)
-	os.Setenv("PVTR_REGISTRY_URL", server.URL)
+	defer func() { _ = os.Setenv("PVTR_REGISTRY_URL", orig) }()
+	_ = os.Setenv("PVTR_REGISTRY_URL", server.URL)
 
 	list, err := fetchVettedPlugins()
 	if err != nil {
@@ -82,8 +82,8 @@ func TestFetchVettedPlugins_ArrayShape(t *testing.T) {
 	defer server.Close()
 
 	orig := os.Getenv("PVTR_REGISTRY_URL")
-	defer os.Setenv("PVTR_REGISTRY_URL", orig)
-	os.Setenv("PVTR_REGISTRY_URL", server.URL)
+	defer func() { _ = os.Setenv("PVTR_REGISTRY_URL", orig) }()
+	_ = os.Setenv("PVTR_REGISTRY_URL", server.URL)
 
 	list, err := fetchVettedPlugins()
 	if err != nil {
@@ -104,8 +104,8 @@ func TestFetchVettedPlugins_404(t *testing.T) {
 	defer server.Close()
 
 	orig := os.Getenv("PVTR_REGISTRY_URL")
-	defer os.Setenv("PVTR_REGISTRY_URL", orig)
-	os.Setenv("PVTR_REGISTRY_URL", server.URL)
+	defer func() { _ = os.Setenv("PVTR_REGISTRY_URL", orig) }()
+	_ = os.Setenv("PVTR_REGISTRY_URL", server.URL)
 
 	_, err := fetchVettedPlugins()
 	if err == nil {
@@ -127,8 +127,8 @@ func TestFetchVettedPlugins_InvalidJSON(t *testing.T) {
 	defer server.Close()
 
 	orig := os.Getenv("PVTR_REGISTRY_URL")
-	defer os.Setenv("PVTR_REGISTRY_URL", orig)
-	os.Setenv("PVTR_REGISTRY_URL", server.URL)
+	defer func() { _ = os.Setenv("PVTR_REGISTRY_URL", orig) }()
+	_ = os.Setenv("PVTR_REGISTRY_URL", server.URL)
 
 	_, err := fetchVettedPlugins()
 	if err == nil {
