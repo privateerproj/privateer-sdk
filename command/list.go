@@ -181,7 +181,7 @@ func fetchVettedPlugins() ([]vettedPlugin, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fetching vetted plugins: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("vetted plugins endpoint returned %d", resp.StatusCode)
 	}
