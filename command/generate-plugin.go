@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"html/template"
+	"text/template"
 	"io"
 	"os"
 	"path/filepath"
@@ -19,10 +19,20 @@ import (
 	"github.com/privateerproj/privateer-sdk/utils"
 )
 
+// PluginConfig holds the validated configuration for plugin generation.
+type PluginConfig struct {
+	TemplatesDir string
+	SourcePath   string
+	OutputDir    string
+	ServiceName  string
+	Organization string
+}
+
 // CatalogData extends gemara.ControlCatalog with additional fields for plugin generation.
 type CatalogData struct {
 	gemara.ControlCatalog
 	ServiceName             string
+	Organization            string
 	Requirements            []Req
 	ApplicabilityCategories []string
 	StrippedName            string
@@ -35,11 +45,12 @@ type Req struct {
 }
 
 // GeneratePlugin generates a plugin from a catalog file.
-func GeneratePlugin(logger hclog.Logger, templatesDir, sourcePath, outputDir, serviceName string) error {
+func GeneratePlugin(logger hclog.Logger, cfg PluginConfig) error {
 	data := CatalogData{}
-	data.ServiceName = serviceName
+	data.ServiceName = cfg.ServiceName
+	data.Organization = cfg.Organization
 
-	err := data.LoadFile("file://" + sourcePath)
+	err := data.LoadFile("file://" + cfg.SourcePath)
 	if err != nil {
 		return err
 	}
@@ -49,15 +60,15 @@ func GeneratePlugin(logger hclog.Logger, templatesDir, sourcePath, outputDir, se
 		return err
 	}
 
-	err = filepath.Walk(templatesDir,
+	err = filepath.Walk(cfg.TemplatesDir,
 		func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
 			if !info.IsDir() {
-				err = generateFileFromTemplate(data, path, templatesDir, outputDir, logger)
+				err = generateFileFromTemplate(data, path, cfg.TemplatesDir, cfg.OutputDir, logger)
 				if err != nil {
-					logger.Error(fmt.Sprintf("Failed while writing in dir '%s': %s", outputDir, err))
+					logger.Error(fmt.Sprintf("Failed while writing in dir '%s': %s", cfg.OutputDir, err))
 				}
 			} else if info.Name() == ".git" {
 				return filepath.SkipDir
@@ -69,7 +80,7 @@ func GeneratePlugin(logger hclog.Logger, templatesDir, sourcePath, outputDir, se
 		return fmt.Errorf("error walking through templates directory: %w", err)
 	}
 
-	err = writeCatalogFile(&data.ControlCatalog, outputDir)
+	err = writeCatalogFile(&data.ControlCatalog, cfg.OutputDir)
 	if err != nil {
 		return fmt.Errorf("failed to write catalog to file: %w", err)
 	}
@@ -78,36 +89,43 @@ func GeneratePlugin(logger hclog.Logger, templatesDir, sourcePath, outputDir, se
 }
 
 // SetupTemplatingEnvironment validates and sets up the environment for plugin generation.
-func SetupTemplatingEnvironment(logger hclog.Logger) (templatesDir, sourcePath, outputDir, serviceName string, err error) {
-	sourcePath = viper.GetString("source-path")
-	if sourcePath == "" {
-		return "", "", "", "", fmt.Errorf("required: --source-path is required to generate a plugin from a control set from local file or URL")
+func SetupTemplatingEnvironment(logger hclog.Logger) (PluginConfig, error) {
+	cfg := PluginConfig{}
+
+	cfg.SourcePath = viper.GetString("source-path")
+	if cfg.SourcePath == "" {
+		return cfg, fmt.Errorf("required: --source-path is required to generate a plugin from a control set from local file or URL")
 	}
 
-	serviceName = viper.GetString("service-name")
-	if serviceName == "" {
-		return "", "", "", "", fmt.Errorf("required: --service-name is required to generate a plugin")
+	cfg.ServiceName = viper.GetString("service-name")
+	if cfg.ServiceName == "" {
+		return cfg, fmt.Errorf("required: --service-name is required to generate a plugin")
+	}
+
+	cfg.Organization = viper.GetString("organization")
+	if cfg.Organization == "" {
+		return cfg, fmt.Errorf("required: --organization is required to generate a plugin")
 	}
 
 	if viper.GetString("local-templates") != "" {
-		templatesDir = viper.GetString("local-templates")
+		cfg.TemplatesDir = viper.GetString("local-templates")
 	} else {
-		templatesDir = filepath.Join(os.TempDir(), "privateer-templates")
-		err = setupTemplatesDir(templatesDir, logger)
+		cfg.TemplatesDir = filepath.Join(os.TempDir(), "privateer-templates")
+		err := setupTemplatesDir(cfg.TemplatesDir, logger)
 		if err != nil {
-			return "", "", "", "", fmt.Errorf("error setting up templates directory: %w", err)
+			return cfg, fmt.Errorf("error setting up templates directory: %w", err)
 		}
 	}
 
-	outputDir = viper.GetString("output-dir")
-	logger.Trace(fmt.Sprintf("Generated plugin will be stored in this directory: %s", outputDir))
+	cfg.OutputDir = viper.GetString("output-dir")
+	logger.Trace(fmt.Sprintf("Generated plugin will be stored in this directory: %s", cfg.OutputDir))
 
-	err = os.MkdirAll(outputDir, os.ModePerm)
+	err := os.MkdirAll(cfg.OutputDir, os.ModePerm)
 	if err != nil {
-		return "", "", "", "", err
+		return cfg, err
 	}
 
-	return templatesDir, sourcePath, outputDir, serviceName, nil
+	return cfg, nil
 }
 
 func setupTemplatesDir(templatesDir string, logger hclog.Logger) error {
@@ -138,16 +156,15 @@ func generateFileFromTemplate(data CatalogData, templatePath, templatesDir, outp
 		return fmt.Errorf("error calculating relative path for %s: %w", templatePath, err)
 	}
 
-	// If the template is not a text template, copy it over as-is (preserve mode)
-	if filepath.Ext(templatePath) != ".txt" {
+	// If the file is not a template, copy it over as-is (preserve mode)
+	if filepath.Ext(templatePath) != ".tmpl" {
 		return copyNonTemplateFile(templatePath, relativeFilepath, outputDir, logger)
 	}
 
 	tmpl, err := template.New("plugin").Funcs(template.FuncMap{
-		"as_text": func(in string) template.HTML {
-			return template.HTML(
-				strings.TrimSpace(
-					strings.ReplaceAll(in, "\n", " ")))
+		"as_text": func(in string) string {
+			return strings.TrimSpace(
+				strings.ReplaceAll(in, "\n", " "))
 		},
 		"default": func(in string, out string) string {
 			if in != "" {
@@ -161,7 +178,7 @@ func generateFileFromTemplate(data CatalogData, templatePath, templatesDir, outp
 		return fmt.Errorf("error parsing template file %s: %w", templatePath, err)
 	}
 
-	outputPath := filepath.Join(outputDir, strings.TrimSuffix(relativeFilepath, ".txt"))
+	outputPath := filepath.Join(outputDir, strings.TrimSuffix(relativeFilepath, ".tmpl"))
 
 	err = os.MkdirAll(filepath.Dir(outputPath), os.ModePerm)
 	if err != nil {
