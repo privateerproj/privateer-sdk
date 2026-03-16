@@ -7,6 +7,7 @@ The **Privateer SDK** provides the interface and utilities needed for developing
 **For complete SDK documentation, visit [privateerproj.com/docs/developers/sdk/](https://privateerproj.com/docs/developers/sdk/)**
 
 The website includes:
+
 - Detailed SDK overview and components
 - Plugin development guides
 - API reference and examples
@@ -57,11 +58,13 @@ make build
 ### Testing
 
 Run all tests:
+
 ```bash
 make test
 ```
 
 Run tests with coverage:
+
 ```bash
 make testcov
 ```
@@ -76,7 +79,7 @@ make testcov
 
 ## Project Structure
 
-```
+```bash
 privateer-sdk/
 ├── command/        # CLI command utilities
 ├── config/         # Configuration management
