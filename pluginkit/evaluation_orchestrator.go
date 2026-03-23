@@ -102,6 +102,20 @@ func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader Dat
 	return BAD_CATALOG(v.PluginName, fmt.Sprintf("no reference catalog found with id '%s'", catalogId), "aos40")
 }
 
+// AddEvaluationSuiteForAllCatalogs registers the provided steps for every
+// reference catalog that has been loaded via AddReferenceCatalogs.
+// This allows plugin developers to define their step implementations once and
+// have them automatically applied to all catalog versions.
+func (v *EvaluationOrchestrator) AddEvaluationSuiteForAllCatalogs(loader DataLoader, steps map[string][]gemara.AssessmentStep) error {
+	if len(v.referenceCatalogs) == 0 {
+		return BAD_CATALOG(v.PluginName, "no reference catalogs loaded", "aac10")
+	}
+	for _, catalog := range v.referenceCatalogs {
+		v.addEvaluationSuite(catalog, loader, steps)
+	}
+	return nil
+}
+
 func (v *EvaluationOrchestrator) addEvaluationSuite(catalog *gemara.ControlCatalog, loader DataLoader, steps map[string][]gemara.AssessmentStep) {
 	importedControls := getImportedControls(catalog, v.referenceCatalogs)
 	catalog.Controls = append(catalog.Controls, importedControls...)

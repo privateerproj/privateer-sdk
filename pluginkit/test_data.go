@@ -36,6 +36,13 @@ func getTestCatalogWithNoRequirements() *gemara.ControlCatalog {
 	}
 }
 
+// getTestCatalogWithID returns a valid catalog with the given ID for tests that need multiple distinct catalogs.
+func getTestCatalogWithID(id string) *gemara.ControlCatalog {
+	catalog := getTestCatalogWithRequirements()
+	catalog.Metadata.Id = id
+	return catalog
+}
+
 // getTestCatalogWithRequirements returns a catalog with controls and assessment requirements for tests that need a valid catalog.
 func getTestCatalogWithRequirements() *gemara.ControlCatalog {
 	return &gemara.ControlCatalog{

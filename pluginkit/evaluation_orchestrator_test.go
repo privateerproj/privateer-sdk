@@ -116,6 +116,86 @@ func TestEvaluationOrchestrator_AddEvaluationSuite(t *testing.T) {
 	})
 }
 
+func TestEvaluationOrchestrator_AddEvaluationSuiteForAllCatalogs(t *testing.T) {
+	t.Run("Error Without Reference Catalogs", func(t *testing.T) {
+		orchestrator := &EvaluationOrchestrator{}
+		steps := map[string][]gemara.AssessmentStep{
+			"test-requirement": {step_Pass},
+		}
+
+		err := orchestrator.AddEvaluationSuiteForAllCatalogs(nil, steps)
+		if err == nil {
+			t.Error("Expected error when no reference catalogs are loaded")
+		}
+		if !strings.Contains(err.Error(), "no reference catalogs loaded") {
+			t.Errorf("Expected 'no reference catalogs loaded' error, got: %v", err)
+		}
+	})
+
+	t.Run("Registers Suite For Each Catalog", func(t *testing.T) {
+		orchestrator := &EvaluationOrchestrator{}
+		catalog1 := getTestCatalogWithID("CCC.ObjStor")
+		catalog2 := getTestCatalogWithID("CCC.ObjStor-v2")
+		orchestrator.referenceCatalogs = map[string]*gemara.ControlCatalog{
+			catalog1.Metadata.Id: catalog1,
+			catalog2.Metadata.Id: catalog2,
+		}
+
+		steps := map[string][]gemara.AssessmentStep{
+			"CCC.Core.C01.TR01": {step_Pass},
+		}
+
+		err := orchestrator.AddEvaluationSuiteForAllCatalogs(nil, steps)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+
+		if len(orchestrator.possibleSuites) != 2 {
+			t.Errorf("Expected 2 suites (one per catalog), got %d",
+				len(orchestrator.possibleSuites))
+		}
+
+		// Verify each catalog got its own suite
+		suiteIDs := make(map[string]bool)
+		for _, suite := range orchestrator.possibleSuites {
+			suiteIDs[suite.CatalogId] = true
+		}
+		if !suiteIDs["CCC.ObjStor"] || !suiteIDs["CCC.ObjStor-v2"] {
+			t.Errorf("Expected suites for both catalogs, got: %v", suiteIDs)
+		}
+	})
+
+	t.Run("Uses Provided Loader", func(t *testing.T) {
+		orchestrator := &EvaluationOrchestrator{}
+		catalog := getTestCatalogWithRequirements()
+		orchestrator.referenceCatalogs = map[string]*gemara.ControlCatalog{
+			catalog.Metadata.Id: catalog,
+		}
+
+		testLoader := func(cfg *config.Config) (interface{}, error) {
+			return "suite-specific-payload", nil
+		}
+		steps := map[string][]gemara.AssessmentStep{
+			"CCC.Core.C01.TR01": {step_Pass},
+		}
+
+		err := orchestrator.AddEvaluationSuiteForAllCatalogs(testLoader, steps)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+
+		if len(orchestrator.possibleSuites) != 1 {
+			t.Errorf("Expected 1 suite for single catalog, got %d", len(orchestrator.possibleSuites))
+		}
+
+		for _, suite := range orchestrator.possibleSuites {
+			if suite.loader == nil {
+				t.Error("Expected suite loader to be set")
+			}
+		}
+	})
+}
+
 func TestEvaluationOrchestrator_Integration(t *testing.T) {
 	t.Run("Basic Setup", func(t *testing.T) {
 		orchestrator := &EvaluationOrchestrator{
