@@ -132,6 +132,25 @@ func TestEvaluationOrchestrator_AddEvaluationSuiteForAllCatalogs(t *testing.T) {
 		}
 	})
 
+	t.Run("Error With Zero Controls Catalog", func(t *testing.T) {
+		orchestrator := &EvaluationOrchestrator{}
+		catalog := &gemara.ControlCatalog{
+			Metadata: gemara.Metadata{Id: "empty-catalog"},
+			Controls: []gemara.Control{},
+		}
+		orchestrator.referenceCatalogs = map[string]*gemara.ControlCatalog{
+			catalog.Metadata.Id: catalog,
+		}
+
+		err := orchestrator.AddEvaluationSuiteForAllCatalogs(nil, map[string][]gemara.AssessmentStep{})
+		if err == nil {
+			t.Error("Expected error for catalog with zero controls")
+		}
+		if !strings.Contains(err.Error(), "no controls provided") {
+			t.Errorf("Expected 'no controls provided' error, got: %v", err)
+		}
+	})
+
 	t.Run("Registers Suite For Each Catalog", func(t *testing.T) {
 		orchestrator := &EvaluationOrchestrator{}
 		catalog1 := getTestCatalogWithID("CCC.ObjStor")
@@ -192,6 +211,47 @@ func TestEvaluationOrchestrator_AddEvaluationSuiteForAllCatalogs(t *testing.T) {
 			if suite.loader == nil {
 				t.Error("Expected suite loader to be set")
 			}
+		}
+	})
+
+	t.Run("Nil Steps", func(t *testing.T) {
+		orchestrator := &EvaluationOrchestrator{}
+		catalog := getTestCatalogWithRequirements()
+		orchestrator.referenceCatalogs = map[string]*gemara.ControlCatalog{
+			catalog.Metadata.Id: catalog,
+		}
+
+		err := orchestrator.AddEvaluationSuiteForAllCatalogs(nil, nil)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+
+		if len(orchestrator.possibleSuites) != 1 {
+			t.Errorf("Expected 1 suite, got %d", len(orchestrator.possibleSuites))
+		}
+		if orchestrator.possibleSuites[0].steps != nil {
+			t.Error("Expected nil steps to be preserved")
+		}
+	})
+
+	t.Run("Empty Steps", func(t *testing.T) {
+		orchestrator := &EvaluationOrchestrator{}
+		catalog := getTestCatalogWithRequirements()
+		orchestrator.referenceCatalogs = map[string]*gemara.ControlCatalog{
+			catalog.Metadata.Id: catalog,
+		}
+
+		emptySteps := map[string][]gemara.AssessmentStep{}
+		err := orchestrator.AddEvaluationSuiteForAllCatalogs(nil, emptySteps)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+
+		if len(orchestrator.possibleSuites) != 1 {
+			t.Errorf("Expected 1 suite, got %d", len(orchestrator.possibleSuites))
+		}
+		if len(orchestrator.possibleSuites[0].steps) != 0 {
+			t.Error("Expected empty steps map to be preserved")
 		}
 	})
 }

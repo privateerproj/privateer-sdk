@@ -110,8 +110,10 @@ func (v *EvaluationOrchestrator) AddEvaluationSuiteForAllCatalogs(loader DataLoa
 	if len(v.referenceCatalogs) == 0 {
 		return BAD_CATALOG(v.PluginName, "no reference catalogs loaded", "aac10")
 	}
-	for _, catalog := range v.referenceCatalogs {
-		v.addEvaluationSuite(catalog, loader, steps)
+	for catalogId := range v.referenceCatalogs {
+		if err := v.AddEvaluationSuite(catalogId, loader, steps); err != nil {
+			return err
+		}
 	}
 	return nil
 }
