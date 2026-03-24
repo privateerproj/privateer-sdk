@@ -36,10 +36,10 @@ func getTestCatalogWithNoRequirements() *gemara.ControlCatalog {
 	}
 }
 
-// getTestCatalogWithRequirements returns a catalog with controls and assessment requirements for tests that need a valid catalog.
-func getTestCatalogWithRequirements() *gemara.ControlCatalog {
+// getTestCatalogWithID returns a valid catalog with the given ID for tests that need multiple distinct catalogs.
+func getTestCatalogWithID(id string) *gemara.ControlCatalog {
 	return &gemara.ControlCatalog{
-		Metadata: gemara.Metadata{Id: "CCC.ObjStor"},
+		Metadata: gemara.Metadata{Id: id},
 		Controls: []gemara.Control{
 			{
 				Id:        "CCC.Core.C01",
@@ -47,14 +47,19 @@ func getTestCatalogWithRequirements() *gemara.ControlCatalog {
 				Objective: "Ensure that all communications are encrypted in transit.",
 				AssessmentRequirements: []gemara.AssessmentRequirement{
 					{
-						Id:           "CCC.Core.C01.TR01",
-						Text:         "When a port is exposed for non-SSH network traffic, all traffic MUST include a TLS handshake.",
+						Id:            "CCC.Core.C01.TR01",
+						Text:          "When a port is exposed for non-SSH network traffic, all traffic MUST include a TLS handshake.",
 						Applicability: requestedApplicability,
 					},
 				},
 			},
 		},
 	}
+}
+
+// getTestCatalogWithRequirements returns a catalog with controls and assessment requirements for tests that need a valid catalog.
+func getTestCatalogWithRequirements() *gemara.ControlCatalog {
+	return getTestCatalogWithID("CCC.ObjStor")
 }
 
 func passingEvaluation() (evaluation *gemara.ControlEvaluation) {
