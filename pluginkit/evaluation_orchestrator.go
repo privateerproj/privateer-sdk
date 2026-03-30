@@ -119,6 +119,12 @@ func (v *EvaluationOrchestrator) AddEvaluationSuiteForAllCatalogs(loader DataLoa
 }
 
 func (v *EvaluationOrchestrator) addEvaluationSuite(catalog *gemara.ControlCatalog, loader DataLoader, steps map[string][]gemara.AssessmentStep) {
+	for _, existing := range v.possibleSuites {
+		if existing.CatalogId == catalog.Metadata.Id {
+			return
+		}
+	}
+
 	importedControls := getImportedControls(catalog, v.referenceCatalogs)
 	catalog.Controls = append(catalog.Controls, importedControls...)
 
@@ -212,6 +218,7 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 					},
 				}
 				v.Evaluation_Suites = append(v.Evaluation_Suites, suite)
+				break
 			}
 		}
 		if !matched {

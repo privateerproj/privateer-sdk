@@ -116,6 +116,71 @@ func TestEvaluationOrchestrator_AddEvaluationSuite(t *testing.T) {
 	})
 }
 
+func TestEvaluationOrchestrator_AddEvaluationSuite_DeduplicatesCatalogId(t *testing.T) {
+	orchestrator := &EvaluationOrchestrator{}
+	catalog := getTestCatalogWithRequirements()
+	orchestrator.referenceCatalogs = map[string]*gemara.ControlCatalog{
+		catalog.Metadata.Id: catalog,
+	}
+
+	steps := createPassingStepsMap()
+
+	err := orchestrator.AddEvaluationSuite(catalog.Metadata.Id, nil, steps)
+	if err != nil {
+		t.Fatalf("First AddEvaluationSuite failed: %v", err)
+	}
+
+	// Second call with same catalog ID should be silently ignored
+	err = orchestrator.AddEvaluationSuite(catalog.Metadata.Id, nil, steps)
+	if err != nil {
+		t.Fatalf("Second AddEvaluationSuite failed: %v", err)
+	}
+
+	if len(orchestrator.possibleSuites) != 1 {
+		t.Errorf("Expected 1 suite (deduped), got %d", len(orchestrator.possibleSuites))
+	}
+}
+
+func TestEvaluationOrchestrator_Mobilize_BreaksAfterMatch(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "test-mobilize-break-")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
+
+	cfg := setBasicConfig()
+	cfg.Policy.ControlCatalogs = []string{"CCC.ObjStor"}
+	cfg.Write = true
+	cfg.WriteDirectory = tmpDir
+	cfg.Output = "yaml"
+
+	catalog := getTestCatalogWithRequirements()
+	steps := createPassingStepsMap()
+
+	// Manually construct two suites with the same CatalogId to test break behavior
+	orchestrator := &EvaluationOrchestrator{
+		ServiceName: "test-service",
+		PluginName:  "test-plugin",
+		config:      cfg,
+		possibleSuites: []*EvaluationSuite{
+			{CatalogId: "CCC.ObjStor", catalog: catalog, steps: steps, config: cfg},
+			{CatalogId: "CCC.ObjStor", catalog: catalog, steps: steps, config: cfg},
+		},
+	}
+
+	err = orchestrator.Mobilize()
+	if err != nil {
+		t.Fatalf("Mobilize failed: %v", err)
+	}
+
+	// Should only execute the first matching suite due to break
+	if len(orchestrator.Evaluation_Suites) != 1 {
+		t.Errorf("Expected 1 suite (break after first match), got %d", len(orchestrator.Evaluation_Suites))
+	}
+}
+
 func TestEvaluationOrchestrator_AddEvaluationSuiteForAllCatalogs(t *testing.T) {
 	t.Run("Error Without Reference Catalogs", func(t *testing.T) {
 		orchestrator := &EvaluationOrchestrator{}
