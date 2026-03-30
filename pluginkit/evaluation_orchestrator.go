@@ -163,6 +163,7 @@ func getImportedControls(catalog *gemara.ControlCatalog, referenceCatalogs map[s
 
 // Mobilize initializes the orchestrator and executes all evaluation suites.
 func (v *EvaluationOrchestrator) Mobilize() error {
+	v.Evaluation_Suites = nil
 	v.setupConfig()
 	if v.config.Error != nil {
 		return BAD_CONFIG(v.config.Error, "mob10")
@@ -188,9 +189,16 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 		return NO_EVALUATION_SUITES("mob50")
 	}
 
+	availableCatalogIDs := make([]string, 0, len(v.possibleSuites))
+	for _, suite := range v.possibleSuites {
+		availableCatalogIDs = append(availableCatalogIDs, suite.CatalogId)
+	}
+
 	for _, catalog := range v.config.Policy.ControlCatalogs {
+		matched := false
 		for _, suite := range v.possibleSuites {
 			if suite.CatalogId == catalog {
+				matched = true
 				err := suite.Evaluate(v.ServiceName)
 				if err != nil {
 					v.config.Logger.Error(err.Error())
@@ -206,7 +214,15 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 				v.Evaluation_Suites = append(v.Evaluation_Suites, suite)
 			}
 		}
+		if !matched {
+			v.config.Logger.Warn("requested catalog did not match any available suite", "requested", catalog, "available", availableCatalogIDs)
+		}
 	}
+
+	if len(v.Evaluation_Suites) == 0 {
+		return NO_MATCHING_CATALOGS(v.config.Policy.ControlCatalogs, availableCatalogIDs, "mob60")
+	}
+
 	v.config.Logger.Trace("Mobilization complete")
 
 	if !v.config.Write {

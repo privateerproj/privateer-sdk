@@ -256,6 +256,124 @@ func TestEvaluationOrchestrator_AddEvaluationSuiteForAllCatalogs(t *testing.T) {
 	})
 }
 
+func TestEvaluationOrchestrator_Mobilize_UnmatchedCatalogs(t *testing.T) {
+	t.Run("Error When No Requested Catalogs Match", func(t *testing.T) {
+		cfg := setBasicConfig()
+		cfg.Policy.ControlCatalogs = []string{"nonexistent-catalog"}
+
+		orchestrator := &EvaluationOrchestrator{
+			ServiceName: "test-service",
+			PluginName:  "test-plugin",
+			config:      cfg,
+			possibleSuites: []*EvaluationSuite{
+				{CatalogId: "catalog-a", config: cfg},
+				{CatalogId: "catalog-b", config: cfg},
+			},
+		}
+
+		err := orchestrator.Mobilize()
+		if err == nil {
+			t.Fatal("Expected error when no catalogs match")
+		}
+		if !strings.Contains(err.Error(), "no requested catalogs matched available suites") {
+			t.Errorf("Expected 'no requested catalogs matched' error, got: %v", err)
+		}
+	})
+
+	t.Run("Repeated Calls Clear Prior Results", func(t *testing.T) {
+		tmpDir, err := os.MkdirTemp("", "test-mobilize-repeated-")
+		if err != nil {
+			t.Fatalf("Failed to create temp directory: %v", err)
+		}
+		defer func() {
+			_ = os.RemoveAll(tmpDir)
+		}()
+
+		cfg := setBasicConfig()
+		cfg.Write = true
+		cfg.WriteDirectory = tmpDir
+		cfg.Output = "yaml"
+
+		catalog := getTestCatalogWithRequirements()
+		steps := createPassingStepsMap()
+
+		orchestrator := &EvaluationOrchestrator{
+			ServiceName: "test-service",
+			PluginName:  "test-plugin",
+			config:      cfg,
+			possibleSuites: []*EvaluationSuite{
+				{
+					CatalogId: "CCC.ObjStor",
+					catalog:   catalog,
+					steps:     steps,
+					config:    cfg,
+				},
+			},
+		}
+
+		// First call matches
+		cfg.Policy.ControlCatalogs = []string{"CCC.ObjStor"}
+		err = orchestrator.Mobilize()
+		if err != nil {
+			t.Fatalf("First Mobilize() call failed: %v", err)
+		}
+		if len(orchestrator.Evaluation_Suites) != 1 {
+			t.Fatalf("Expected 1 suite after first call, got %d", len(orchestrator.Evaluation_Suites))
+		}
+
+		// Second call with non-matching catalog should error, not silently succeed
+		cfg.Policy.ControlCatalogs = []string{"nonexistent-catalog"}
+		err = orchestrator.Mobilize()
+		if err == nil {
+			t.Fatal("Expected error on second Mobilize() with unmatched catalogs")
+		}
+		if !strings.Contains(err.Error(), "no requested catalogs matched available suites") {
+			t.Errorf("Expected 'no requested catalogs matched' error, got: %v", err)
+		}
+	})
+
+	t.Run("Partial Match Succeeds With Warning", func(t *testing.T) {
+		tmpDir, err := os.MkdirTemp("", "test-mobilize-")
+		if err != nil {
+			t.Fatalf("Failed to create temp directory: %v", err)
+		}
+		defer func() {
+			_ = os.RemoveAll(tmpDir)
+		}()
+
+		cfg := setBasicConfig()
+		cfg.Policy.ControlCatalogs = []string{"CCC.ObjStor", "nonexistent-catalog"}
+		cfg.Write = true
+		cfg.WriteDirectory = tmpDir
+		cfg.Output = "yaml"
+
+		catalog := getTestCatalogWithRequirements()
+		steps := createPassingStepsMap()
+
+		orchestrator := &EvaluationOrchestrator{
+			ServiceName: "test-service",
+			PluginName:  "test-plugin",
+			config:      cfg,
+			possibleSuites: []*EvaluationSuite{
+				{
+					CatalogId: "CCC.ObjStor",
+					catalog:   catalog,
+					steps:     steps,
+					config:    cfg,
+				},
+			},
+		}
+
+		err = orchestrator.Mobilize()
+		if err != nil {
+			t.Errorf("Expected partial match to succeed, got error: %v", err)
+		}
+		if len(orchestrator.Evaluation_Suites) != 1 {
+			t.Errorf("Expected 1 executed suite, got %d", len(orchestrator.Evaluation_Suites))
+		}
+	})
+}
+
 func TestEvaluationOrchestrator_Integration(t *testing.T) {
 	t.Run("Basic Setup", func(t *testing.T) {
 		orchestrator := &EvaluationOrchestrator{

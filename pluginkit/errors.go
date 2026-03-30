@@ -55,6 +55,9 @@ var (
 	BAD_CONFIG = func(err error, mod string) error {
 		return errMod(fmt.Errorf("failed to setup config: %w", err), mod)
 	}
+	NO_MATCHING_CATALOGS = func(requested []string, available []string, mod string) error {
+		return errMod(fmt.Errorf("no requested catalogs matched available suites. requested=%v available=%v", requested, available), mod)
+	}
 )
 
 func errMod(err any, mod string) error {
