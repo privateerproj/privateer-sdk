@@ -142,7 +142,6 @@ func NewConfig(requiredVars []string) Config {
 		"invasive", invasive,
 		"applicability", applicability,
 		"control-catalogs", catalogs,
-		"vars", vars,
 		"output", output,
 	)
 	return config
@@ -158,7 +157,7 @@ func printSanitizedVars(logger hclog.Logger, vars map[string]interface{}) {
 			sanitizedVars[key] = value
 		}
 	}
-	logger.Trace("Using vars: %v", sanitizedVars)
+	logger.Trace("Using vars", "vars", sanitizedVars)
 }
 
 func defaultWritePath() string {
