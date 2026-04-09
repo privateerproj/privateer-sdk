@@ -29,7 +29,7 @@ func FromURL(url, destDir, binaryName string) error {
 	if err != nil {
 		return fmt.Errorf("downloading %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("downloading %s: status %d", url, resp.StatusCode)
@@ -61,7 +61,7 @@ func extractFromTarGz(data []byte, destPath, binaryName string) error {
 	if err != nil {
 		return fmt.Errorf("opening gzip reader: %w", err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 
 	tr := tar.NewReader(gz)
 	for {
@@ -98,7 +98,7 @@ func extractFromZip(data []byte, destPath, binaryName string) error {
 			if err != nil {
 				return fmt.Errorf("opening %s in zip: %w", name, err)
 			}
-			defer rc.Close()
+			defer func() { _ = rc.Close() }()
 
 			content, err := io.ReadAll(rc)
 			if err != nil {

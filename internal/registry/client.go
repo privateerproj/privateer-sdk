@@ -56,7 +56,7 @@ func (c *Client) GetVettedList() (*VettedListResponse, error) {
 	if err != nil {
 		return nil, fmt.Errorf("GET %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GET %s returned status %d", url, resp.StatusCode)
@@ -76,7 +76,7 @@ func (c *Client) GetPluginData(owner, repo string) (*PluginData, error) {
 	if err != nil {
 		return nil, fmt.Errorf("GET %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, fmt.Errorf("plugin %s/%s not found in registry", owner, repo)
