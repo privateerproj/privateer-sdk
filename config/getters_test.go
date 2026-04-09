@@ -2,6 +2,8 @@ package config
 
 import (
 	"testing"
+
+	"github.com/spf13/viper"
 )
 
 var testConfig = Config{
@@ -192,5 +194,65 @@ func TestGetIntSlice(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestGetBinariesPath(t *testing.T) {
+	orig := viper.GetString("binaries-path")
+	defer viper.Set("binaries-path", orig)
+
+	viper.Set("binaries-path", "/path/to/bin")
+	if got := GetBinariesPath(); got != "/path/to/bin" {
+		t.Errorf("GetBinariesPath() = %q, want /path/to/bin", got)
+	}
+
+	viper.Set("binaries-path", "")
+	if got := GetBinariesPath(); got != "" {
+		t.Errorf("GetBinariesPath() = %q, want empty", got)
+	}
+}
+
+func TestGetServices(t *testing.T) {
+	orig := viper.GetStringMap("services")
+	defer viper.Set("services", orig)
+
+	viper.Set("services", map[string]interface{}{
+		"svc1": map[string]interface{}{"plugin": "my-plugin"},
+		"svc2": map[string]interface{}{"plugin": "other/plugin"},
+	})
+	got := GetServices()
+	if len(got) != 2 {
+		t.Errorf("GetServices() returned %d entries, want 2", len(got))
+	}
+	if _, ok := got["svc1"]; !ok {
+		t.Error("GetServices() missing key svc1")
+	}
+	if _, ok := got["svc2"]; !ok {
+		t.Error("GetServices() missing key svc2")
+	}
+
+	viper.Set("services", map[string]interface{}{})
+	got = GetServices()
+	if len(got) != 0 {
+		t.Errorf("GetServices() returned %d entries, want 0", len(got))
+	}
+}
+
+func TestGetServicePlugin(t *testing.T) {
+	origServices := viper.GetStringMap("services")
+	origPlugin := viper.GetString("services.svc1.plugin")
+	defer func() {
+		viper.Set("services", origServices)
+		viper.Set("services.svc1.plugin", origPlugin)
+	}()
+
+	viper.Set("services", map[string]interface{}{
+		"svc1": map[string]interface{}{"plugin": "ossf/pvtr-github-repo-scanner"},
+	})
+	if got := GetServicePlugin("svc1"); got != "ossf/pvtr-github-repo-scanner" {
+		t.Errorf("GetServicePlugin(\"svc1\") = %q, want ossf/pvtr-github-repo-scanner", got)
+	}
+	if got := GetServicePlugin("nonexistent"); got != "" {
+		t.Errorf("GetServicePlugin(\"nonexistent\") = %q, want empty", got)
 	}
 }

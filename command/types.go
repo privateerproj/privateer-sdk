@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 
+	hclog "github.com/hashicorp/go-hclog"
 	hcplugin "github.com/hashicorp/go-plugin"
 	"github.com/spf13/viper"
 )
@@ -35,10 +36,11 @@ type PluginPkg struct {
 	Command       *exec.Cmd
 	Result        string
 
-	Available  bool
-	Requested  bool
-	Successful bool
-	Error      error
+	Installable bool
+	Installed   bool
+	Requested   bool
+	Successful  bool
+	Error       error
 }
 
 func (p *PluginPkg) getBinary() (binaryName string, err error) {
@@ -66,6 +68,16 @@ func (p *PluginPkg) queueCmd() {
 	for _, flag := range flags {
 		cmd.Args = append(cmd.Args, flag)
 		p.Command = cmd
+	}
+}
+
+// closeClient kills the plugin process and logs the result.
+func (p *PluginPkg) closeClient(serviceName string, client *hcplugin.Client, logger hclog.Logger) {
+	client.Kill()
+	if p.Error != nil {
+		logger.Error(fmt.Sprintf("Error from %s: %s", serviceName, p.Error))
+	} else {
+		logger.Trace(fmt.Sprintf("Completed %s", serviceName))
 	}
 }
 

@@ -39,7 +39,7 @@ func Run(logger hclog.Logger, getPlugins func() []*PluginPkg) (exitCode int) {
 		servicePluginName := viper.GetString(fmt.Sprintf("services.%s.plugin", serviceName))
 		for _, pluginPkg := range plugins {
 			if pluginPkg.Name == servicePluginName {
-				if !pluginPkg.Available {
+				if !pluginPkg.Installed {
 					logger.Error(fmt.Sprintf("requested plugin that is not installed: %s", pluginPkg.Name))
 					return BadUsage
 				}
@@ -50,7 +50,7 @@ func Run(logger hclog.Logger, getPlugins func() []*PluginPkg) (exitCode int) {
 				rpcClient, err := client.Client()
 				if err != nil {
 					logger.Error(fmt.Sprintf("internal error while initializing %s RPC client: %s", serviceName, err))
-					closeClient(pluginPkg, serviceName, client, logger)
+					pluginPkg.closeClient(serviceName, client, logger)
 					return InternalError
 				}
 				// Request the plugin
@@ -58,7 +58,7 @@ func Run(logger hclog.Logger, getPlugins func() []*PluginPkg) (exitCode int) {
 				rawPlugin, err = rpcClient.Dispense(shared.PluginName)
 				if err != nil {
 					logger.Error(fmt.Sprintf("internal error while dispensing RPC client: %s", err.Error()))
-					closeClient(pluginPkg, serviceName, client, logger)
+					pluginPkg.closeClient(serviceName, client, logger)
 					return InternalError
 				}
 				// Execute plugin
@@ -71,23 +71,11 @@ func Run(logger hclog.Logger, getPlugins func() []*PluginPkg) (exitCode int) {
 				} else {
 					pluginPkg.Successful = true
 				}
-				closeClient(pluginPkg, serviceName, client, logger)
+				pluginPkg.closeClient(serviceName, client, logger)
 			}
 		}
 	}
 	return exitCode
-}
-
-func closeClient(pluginPkg *PluginPkg, serviceName string, client *hcplugin.Client, logger hclog.Logger) {
-	// Close the client: this doesn't work via defer because it leaves the plugin running while the next begins
-	if pluginPkg.Successful {
-		logger.Info(fmt.Sprintf("Plugin for %s completed successfully", serviceName))
-	} else if pluginPkg.Error != nil {
-		logger.Error(pluginPkg.Error.Error())
-	} else {
-		logger.Error(fmt.Sprintf("unexpected exit while attempting to run package: %v", pluginPkg))
-	}
-	client.Kill()
 }
 
 // newClient handles the lifecycle of a plugin application.
@@ -107,4 +95,3 @@ func newClient(cmd *exec.Cmd, logger hclog.Logger) *hcplugin.Client {
 		SyncStderr:      os.Stderr,
 	})
 }
-
