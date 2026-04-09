@@ -20,13 +20,15 @@ type Writer interface {
 	Flush() error
 }
 
-// GetListCmd returns the list command. The caller is responsible for
-// registering flags via SetListCmdFlags and adding it to a root command.
-func GetListCmd(writer Writer) *cobra.Command {
+// GetListCmd returns the list command with flags registered.
+// writerFn is called at command execution time, so the writer can be
+// initialized lazily (e.g. in a PersistentPreRun hook).
+func GetListCmd(writerFn func() Writer) *cobra.Command {
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "Consult the Charts! List all plugins that have been installed.",
 		Run: func(cmd *cobra.Command, args []string) {
+			writer := writerFn()
 			if viper.GetBool("installable") {
 				writeInstallablePlugins(writer)
 			} else {
@@ -38,6 +40,7 @@ func GetListCmd(writer Writer) *cobra.Command {
 			}
 		},
 	}
+	SetListCmdFlags(listCmd)
 	return listCmd
 }
 
