@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"path"
+	"regexp"
 	"strings"
 
 	"github.com/privateerproj/privateer-sdk/internal/install"
@@ -11,6 +12,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
+
+var validNameSegment = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
 
 // GetInstallCmd returns the install command that can be added to a root command.
 func GetInstallCmd(writer Writer) *cobra.Command {
@@ -83,20 +86,23 @@ func parsePluginName(name string) (owner, repo string, err error) {
 	if name == "" {
 		return "", "", fmt.Errorf("plugin name must not be empty")
 	}
-	if strings.Contains(name, "..") || strings.ContainsAny(name, "\\") {
-		return "", "", fmt.Errorf("plugin name %q contains invalid characters", name)
-	}
 	parts := strings.SplitN(name, "/", 2)
 	if len(parts) == 2 {
-		if parts[0] == "" || parts[1] == "" {
-			return "", "", fmt.Errorf("plugin name %q has empty owner or repo", name)
-		}
-		return parts[0], parts[1], nil
+		owner, repo = parts[0], parts[1]
+	} else {
+		owner, repo = "privateerproj", name
 	}
-	return "privateerproj", name, nil
+	if !validNameSegment.MatchString(owner) {
+		return "", "", fmt.Errorf("invalid owner %q: must match %s", owner, validNameSegment.String())
+	}
+	if !validNameSegment.MatchString(repo) {
+		return "", "", fmt.Errorf("invalid repo %q: must match %s", repo, validNameSegment.String())
+	}
+	return owner, repo, nil
 }
 
 func isVetted(plugins []string, name string) bool {
+	name = strings.TrimSpace(name)
 	for _, p := range plugins {
 		if strings.TrimSpace(p) == name {
 			return true

@@ -46,22 +46,32 @@ func TestParsePluginName(t *testing.T) {
 		{
 			name:        "path traversal",
 			input:       "../etc/passwd",
-			expectError: "invalid characters",
+			expectError: "invalid owner",
 		},
 		{
 			name:        "backslash",
 			input:       "org\\repo",
-			expectError: "invalid characters",
+			expectError: "invalid repo",
 		},
 		{
 			name:        "empty owner",
 			input:       "/my-plugin",
-			expectError: "empty owner or repo",
+			expectError: "invalid owner",
 		},
 		{
 			name:        "empty repo",
 			input:       "myorg/",
-			expectError: "empty owner or repo",
+			expectError: "invalid repo",
+		},
+		{
+			name:        "owner starts with dot",
+			input:       ".hidden/repo",
+			expectError: "invalid owner",
+		},
+		{
+			name:        "repo starts with hyphen",
+			input:       "org/-repo",
+			expectError: "invalid repo",
 		},
 	}
 
