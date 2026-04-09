@@ -20,7 +20,8 @@ type Writer interface {
 	Flush() error
 }
 
-// GetListCmd returns the list command with all flags registered.
+// GetListCmd returns the list command. The caller is responsible for
+// registering flags via SetListCmdFlags and adding it to a root command.
 func GetListCmd(writer Writer) *cobra.Command {
 	listCmd := &cobra.Command{
 		Use:   "list",
@@ -37,17 +38,19 @@ func GetListCmd(writer Writer) *cobra.Command {
 			}
 		},
 	}
-
-	listCmd.PersistentFlags().BoolP("all", "a", false, "Review the Fleet! List all plugins that have been installed or requested in the current config")
-	_ = viper.BindPFlag("all", listCmd.PersistentFlags().Lookup("all"))
-
-	listCmd.PersistentFlags().Bool("installed", false, "List only plugins that are installed locally")
-	_ = viper.BindPFlag("installed", listCmd.PersistentFlags().Lookup("installed"))
-
-	listCmd.PersistentFlags().Bool("installable", false, "List vetted plugins from the registry that are available to install")
-	_ = viper.BindPFlag("installable", listCmd.PersistentFlags().Lookup("installable"))
-
 	return listCmd
+}
+
+// SetListCmdFlags registers the standard list flags on the given command.
+func SetListCmdFlags(cmd *cobra.Command) {
+	cmd.PersistentFlags().BoolP("all", "a", false, "Review the Fleet! List all plugins that have been installed or requested in the current config")
+	_ = viper.BindPFlag("all", cmd.PersistentFlags().Lookup("all"))
+
+	cmd.PersistentFlags().Bool("installed", false, "List only plugins that are installed locally")
+	_ = viper.BindPFlag("installed", cmd.PersistentFlags().Lookup("installed"))
+
+	cmd.PersistentFlags().Bool("installable", false, "List vetted plugins from the registry that are available to install")
+	_ = viper.BindPFlag("installable", cmd.PersistentFlags().Lookup("installable"))
 }
 
 func writeInstallablePlugins(writer Writer) {

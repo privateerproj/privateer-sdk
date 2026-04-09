@@ -3,6 +3,7 @@ package command
 import (
 	"fmt"
 	"log"
+	"path"
 	"strings"
 
 	"github.com/privateerproj/privateer-sdk/internal/install"
@@ -59,9 +60,10 @@ func installPlugin(writer Writer, pluginName string) error {
 	}
 
 	destDir := viper.GetString("binaries-path")
-	_, _ = fmt.Fprintf(writer, "Downloading %s to %s...\n", pluginData.Name, destDir)
+	binaryName := path.Base(pluginData.Name)
+	_, _ = fmt.Fprintf(writer, "Downloading %s to %s...\n", binaryName, destDir)
 
-	err = install.FromURL(downloadURL, destDir, pluginData.Name)
+	err = install.FromURL(downloadURL, destDir, binaryName)
 	if err != nil {
 		return fmt.Errorf("installing plugin: %w", err)
 	}
@@ -103,6 +105,7 @@ func resolveDownloadURL(data *registry.PluginData) (string, error) {
 		return "", fmt.Errorf("plugin %s has no download URL and no source/version to infer one from", data.Name)
 	}
 	base := install.InferGitHubReleaseBase(data.Source, data.Latest)
-	artifact := install.InferArtifactFilename(data.Name)
+	binaryName := path.Base(data.Name)
+	artifact := install.InferArtifactFilename(binaryName)
 	return fmt.Sprintf("%s/%s", base, artifact), nil
 }
