@@ -71,14 +71,16 @@ func (p *PluginPkg) queueCmd() {
 	}
 }
 
-// closeClient kills the plugin process and logs the result.
+// closeClient logs the plugin result and kills the process.
 func (p *PluginPkg) closeClient(serviceName string, client *hcplugin.Client, logger hclog.Logger) {
-	client.Kill()
-	if p.Error != nil {
+	if p.Successful {
+		logger.Info(fmt.Sprintf("Plugin for %s completed successfully", serviceName))
+	} else if p.Error != nil {
 		logger.Error(fmt.Sprintf("Error from %s: %s", serviceName, p.Error))
 	} else {
-		logger.Trace(fmt.Sprintf("Completed %s", serviceName))
+		logger.Warn(fmt.Sprintf("Unexpected exit from %s with no error or success", serviceName))
 	}
+	client.Kill()
 }
 
 // NewPluginPkg creates a new PluginPkg instance for the given plugin and service names.
