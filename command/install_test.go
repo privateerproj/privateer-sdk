@@ -13,6 +13,7 @@ func TestParsePluginName(t *testing.T) {
 		input         string
 		expectedOwner string
 		expectedRepo  string
+		expectError   string
 	}{
 		{
 			name:          "owner/repo format",
@@ -32,11 +33,51 @@ func TestParsePluginName(t *testing.T) {
 			expectedOwner: "myorg",
 			expectedRepo:  "my-plugin",
 		},
+		{
+			name:        "empty string",
+			input:       "",
+			expectError: "must not be empty",
+		},
+		{
+			name:        "whitespace only",
+			input:       "   ",
+			expectError: "must not be empty",
+		},
+		{
+			name:        "path traversal",
+			input:       "../etc/passwd",
+			expectError: "invalid characters",
+		},
+		{
+			name:        "backslash",
+			input:       "org\\repo",
+			expectError: "invalid characters",
+		},
+		{
+			name:        "empty owner",
+			input:       "/my-plugin",
+			expectError: "empty owner or repo",
+		},
+		{
+			name:        "empty repo",
+			input:       "myorg/",
+			expectError: "empty owner or repo",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			owner, repo, err := parsePluginName(tt.input)
+
+			if tt.expectError != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.expectError)
+				}
+				if !strings.Contains(err.Error(), tt.expectError) {
+					t.Errorf("expected error containing %q, got: %v", tt.expectError, err)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}

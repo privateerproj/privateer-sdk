@@ -77,9 +77,20 @@ func installPlugin(writer Writer, pluginName string) error {
 
 // parsePluginName splits a plugin name into owner and repo.
 // Accepts formats: "owner/repo" or just "repo" (assumes "privateerproj" as owner).
+// Returns an error if the name is empty or contains path traversal characters.
 func parsePluginName(name string) (owner, repo string, err error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", "", fmt.Errorf("plugin name must not be empty")
+	}
+	if strings.Contains(name, "..") || strings.ContainsAny(name, "\\") {
+		return "", "", fmt.Errorf("plugin name %q contains invalid characters", name)
+	}
 	parts := strings.SplitN(name, "/", 2)
 	if len(parts) == 2 {
+		if parts[0] == "" || parts[1] == "" {
+			return "", "", fmt.Errorf("plugin name %q has empty owner or repo", name)
+		}
 		return parts[0], parts[1], nil
 	}
 	return "privateerproj", name, nil
