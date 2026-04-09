@@ -54,6 +54,8 @@ func SetListCmdFlags(cmd *cobra.Command) {
 
 	cmd.PersistentFlags().Bool("installable", false, "List vetted plugins from the registry that are available to install")
 	_ = viper.BindPFlag("installable", cmd.PersistentFlags().Lookup("installable"))
+
+	cmd.MarkFlagsMutuallyExclusive("all", "installed", "installable")
 }
 
 func writeInstallablePlugins(writer Writer) {
