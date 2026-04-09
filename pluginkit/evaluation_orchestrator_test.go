@@ -116,6 +116,329 @@ func TestEvaluationOrchestrator_AddEvaluationSuite(t *testing.T) {
 	})
 }
 
+func TestEvaluationOrchestrator_AddEvaluationSuite_DeduplicatesCatalogId(t *testing.T) {
+	orchestrator := &EvaluationOrchestrator{}
+	catalog := getTestCatalogWithRequirements()
+	orchestrator.referenceCatalogs = map[string]*gemara.ControlCatalog{
+		catalog.Metadata.Id: catalog,
+	}
+
+	steps := createPassingStepsMap()
+
+	err := orchestrator.AddEvaluationSuite(catalog.Metadata.Id, nil, steps)
+	if err != nil {
+		t.Fatalf("First AddEvaluationSuite failed: %v", err)
+	}
+
+	// Second call with same catalog ID should be silently ignored
+	err = orchestrator.AddEvaluationSuite(catalog.Metadata.Id, nil, steps)
+	if err != nil {
+		t.Fatalf("Second AddEvaluationSuite failed: %v", err)
+	}
+
+	if len(orchestrator.possibleSuites) != 1 {
+		t.Errorf("Expected 1 suite (deduped), got %d", len(orchestrator.possibleSuites))
+	}
+}
+
+func TestEvaluationOrchestrator_Mobilize_BreaksAfterMatch(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "test-mobilize-break-")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
+
+	cfg := setBasicConfig()
+	cfg.Policy.ControlCatalogs = []string{"CCC.ObjStor"}
+	cfg.Write = true
+	cfg.WriteDirectory = tmpDir
+	cfg.Output = "yaml"
+
+	catalog := getTestCatalogWithRequirements()
+	steps := createPassingStepsMap()
+
+	// Manually construct two suites with the same CatalogId to test break behavior
+	orchestrator := &EvaluationOrchestrator{
+		ServiceName: "test-service",
+		PluginName:  "test-plugin",
+		config:      cfg,
+		possibleSuites: []*EvaluationSuite{
+			{CatalogId: "CCC.ObjStor", catalog: catalog, steps: steps, config: cfg},
+			{CatalogId: "CCC.ObjStor", catalog: catalog, steps: steps, config: cfg},
+		},
+	}
+
+	err = orchestrator.Mobilize()
+	if err != nil {
+		t.Fatalf("Mobilize failed: %v", err)
+	}
+
+	// Should only execute the first matching suite due to break
+	if len(orchestrator.Evaluation_Suites) != 1 {
+		t.Errorf("Expected 1 suite (break after first match), got %d", len(orchestrator.Evaluation_Suites))
+	}
+}
+
+func TestEvaluationOrchestrator_AddEvaluationSuiteForAllCatalogs(t *testing.T) {
+	t.Run("Error Without Reference Catalogs", func(t *testing.T) {
+		orchestrator := &EvaluationOrchestrator{}
+		steps := map[string][]gemara.AssessmentStep{
+			"test-requirement": {step_Pass},
+		}
+
+		err := orchestrator.AddEvaluationSuiteForAllCatalogs(nil, steps)
+		if err == nil {
+			t.Error("Expected error when no reference catalogs are loaded")
+		}
+		if !strings.Contains(err.Error(), "no reference catalogs loaded") {
+			t.Errorf("Expected 'no reference catalogs loaded' error, got: %v", err)
+		}
+	})
+
+	t.Run("Error With Zero Controls Catalog", func(t *testing.T) {
+		orchestrator := &EvaluationOrchestrator{}
+		catalog := &gemara.ControlCatalog{
+			Metadata: gemara.Metadata{Id: "empty-catalog"},
+			Controls: []gemara.Control{},
+		}
+		orchestrator.referenceCatalogs = map[string]*gemara.ControlCatalog{
+			catalog.Metadata.Id: catalog,
+		}
+
+		err := orchestrator.AddEvaluationSuiteForAllCatalogs(nil, map[string][]gemara.AssessmentStep{})
+		if err == nil {
+			t.Error("Expected error for catalog with zero controls")
+		}
+		if !strings.Contains(err.Error(), "no controls provided") {
+			t.Errorf("Expected 'no controls provided' error, got: %v", err)
+		}
+	})
+
+	t.Run("Registers Suite For Each Catalog", func(t *testing.T) {
+		orchestrator := &EvaluationOrchestrator{}
+		catalog1 := getTestCatalogWithID("CCC.ObjStor")
+		catalog2 := getTestCatalogWithID("CCC.ObjStor-v2")
+		orchestrator.referenceCatalogs = map[string]*gemara.ControlCatalog{
+			catalog1.Metadata.Id: catalog1,
+			catalog2.Metadata.Id: catalog2,
+		}
+
+		steps := map[string][]gemara.AssessmentStep{
+			"CCC.Core.C01.TR01": {step_Pass},
+		}
+
+		err := orchestrator.AddEvaluationSuiteForAllCatalogs(nil, steps)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+
+		if len(orchestrator.possibleSuites) != 2 {
+			t.Errorf("Expected 2 suites (one per catalog), got %d",
+				len(orchestrator.possibleSuites))
+		}
+
+		// Verify each catalog got its own suite
+		suiteIDs := make(map[string]bool)
+		for _, suite := range orchestrator.possibleSuites {
+			suiteIDs[suite.CatalogId] = true
+		}
+		if !suiteIDs["CCC.ObjStor"] || !suiteIDs["CCC.ObjStor-v2"] {
+			t.Errorf("Expected suites for both catalogs, got: %v", suiteIDs)
+		}
+	})
+
+	t.Run("Uses Provided Loader", func(t *testing.T) {
+		orchestrator := &EvaluationOrchestrator{}
+		catalog := getTestCatalogWithRequirements()
+		orchestrator.referenceCatalogs = map[string]*gemara.ControlCatalog{
+			catalog.Metadata.Id: catalog,
+		}
+
+		testLoader := func(cfg *config.Config) (interface{}, error) {
+			return "suite-specific-payload", nil
+		}
+		steps := map[string][]gemara.AssessmentStep{
+			"CCC.Core.C01.TR01": {step_Pass},
+		}
+
+		err := orchestrator.AddEvaluationSuiteForAllCatalogs(testLoader, steps)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+
+		if len(orchestrator.possibleSuites) != 1 {
+			t.Errorf("Expected 1 suite for single catalog, got %d", len(orchestrator.possibleSuites))
+		}
+
+		for _, suite := range orchestrator.possibleSuites {
+			if suite.loader == nil {
+				t.Error("Expected suite loader to be set")
+			}
+		}
+	})
+
+	t.Run("Nil Steps", func(t *testing.T) {
+		orchestrator := &EvaluationOrchestrator{}
+		catalog := getTestCatalogWithRequirements()
+		orchestrator.referenceCatalogs = map[string]*gemara.ControlCatalog{
+			catalog.Metadata.Id: catalog,
+		}
+
+		err := orchestrator.AddEvaluationSuiteForAllCatalogs(nil, nil)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+
+		if len(orchestrator.possibleSuites) != 1 {
+			t.Errorf("Expected 1 suite, got %d", len(orchestrator.possibleSuites))
+		}
+		if orchestrator.possibleSuites[0].steps != nil {
+			t.Error("Expected nil steps to be preserved")
+		}
+	})
+
+	t.Run("Empty Steps", func(t *testing.T) {
+		orchestrator := &EvaluationOrchestrator{}
+		catalog := getTestCatalogWithRequirements()
+		orchestrator.referenceCatalogs = map[string]*gemara.ControlCatalog{
+			catalog.Metadata.Id: catalog,
+		}
+
+		emptySteps := map[string][]gemara.AssessmentStep{}
+		err := orchestrator.AddEvaluationSuiteForAllCatalogs(nil, emptySteps)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+
+		if len(orchestrator.possibleSuites) != 1 {
+			t.Errorf("Expected 1 suite, got %d", len(orchestrator.possibleSuites))
+		}
+		if len(orchestrator.possibleSuites[0].steps) != 0 {
+			t.Error("Expected empty steps map to be preserved")
+		}
+	})
+}
+
+func TestEvaluationOrchestrator_Mobilize_UnmatchedCatalogs(t *testing.T) {
+	t.Run("Error When No Requested Catalogs Match", func(t *testing.T) {
+		cfg := setBasicConfig()
+		cfg.Policy.ControlCatalogs = []string{"nonexistent-catalog"}
+
+		orchestrator := &EvaluationOrchestrator{
+			ServiceName: "test-service",
+			PluginName:  "test-plugin",
+			config:      cfg,
+			possibleSuites: []*EvaluationSuite{
+				{CatalogId: "catalog-a", config: cfg},
+				{CatalogId: "catalog-b", config: cfg},
+			},
+		}
+
+		err := orchestrator.Mobilize()
+		if err == nil {
+			t.Fatal("Expected error when no catalogs match")
+		}
+		if !strings.Contains(err.Error(), "no requested catalogs matched available suites") {
+			t.Errorf("Expected 'no requested catalogs matched' error, got: %v", err)
+		}
+	})
+
+	t.Run("Repeated Calls Clear Prior Results", func(t *testing.T) {
+		tmpDir, err := os.MkdirTemp("", "test-mobilize-repeated-")
+		if err != nil {
+			t.Fatalf("Failed to create temp directory: %v", err)
+		}
+		defer func() {
+			_ = os.RemoveAll(tmpDir)
+		}()
+
+		cfg := setBasicConfig()
+		cfg.Write = true
+		cfg.WriteDirectory = tmpDir
+		cfg.Output = "yaml"
+
+		catalog := getTestCatalogWithRequirements()
+		steps := createPassingStepsMap()
+
+		orchestrator := &EvaluationOrchestrator{
+			ServiceName: "test-service",
+			PluginName:  "test-plugin",
+			config:      cfg,
+			possibleSuites: []*EvaluationSuite{
+				{
+					CatalogId: "CCC.ObjStor",
+					catalog:   catalog,
+					steps:     steps,
+					config:    cfg,
+				},
+			},
+		}
+
+		// First call matches
+		cfg.Policy.ControlCatalogs = []string{"CCC.ObjStor"}
+		err = orchestrator.Mobilize()
+		if err != nil {
+			t.Fatalf("First Mobilize() call failed: %v", err)
+		}
+		if len(orchestrator.Evaluation_Suites) != 1 {
+			t.Fatalf("Expected 1 suite after first call, got %d", len(orchestrator.Evaluation_Suites))
+		}
+
+		// Second call with non-matching catalog should error, not silently succeed
+		cfg.Policy.ControlCatalogs = []string{"nonexistent-catalog"}
+		err = orchestrator.Mobilize()
+		if err == nil {
+			t.Fatal("Expected error on second Mobilize() with unmatched catalogs")
+		}
+		if !strings.Contains(err.Error(), "no requested catalogs matched available suites") {
+			t.Errorf("Expected 'no requested catalogs matched' error, got: %v", err)
+		}
+	})
+
+	t.Run("Partial Match Succeeds With Warning", func(t *testing.T) {
+		tmpDir, err := os.MkdirTemp("", "test-mobilize-")
+		if err != nil {
+			t.Fatalf("Failed to create temp directory: %v", err)
+		}
+		defer func() {
+			_ = os.RemoveAll(tmpDir)
+		}()
+
+		cfg := setBasicConfig()
+		cfg.Policy.ControlCatalogs = []string{"CCC.ObjStor", "nonexistent-catalog"}
+		cfg.Write = true
+		cfg.WriteDirectory = tmpDir
+		cfg.Output = "yaml"
+
+		catalog := getTestCatalogWithRequirements()
+		steps := createPassingStepsMap()
+
+		orchestrator := &EvaluationOrchestrator{
+			ServiceName: "test-service",
+			PluginName:  "test-plugin",
+			config:      cfg,
+			possibleSuites: []*EvaluationSuite{
+				{
+					CatalogId: "CCC.ObjStor",
+					catalog:   catalog,
+					steps:     steps,
+					config:    cfg,
+				},
+			},
+		}
+
+		err = orchestrator.Mobilize()
+		if err != nil {
+			t.Errorf("Expected partial match to succeed, got error: %v", err)
+		}
+		if len(orchestrator.Evaluation_Suites) != 1 {
+			t.Errorf("Expected 1 executed suite, got %d", len(orchestrator.Evaluation_Suites))
+		}
+	})
+}
+
 func TestEvaluationOrchestrator_Integration(t *testing.T) {
 	t.Run("Basic Setup", func(t *testing.T) {
 		orchestrator := &EvaluationOrchestrator{

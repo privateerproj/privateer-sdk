@@ -102,7 +102,29 @@ func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader Dat
 	return BAD_CATALOG(v.PluginName, fmt.Sprintf("no reference catalog found with id '%s'", catalogId), "aos40")
 }
 
+// AddEvaluationSuiteForAllCatalogs registers the provided steps for every
+// reference catalog that has been loaded via AddReferenceCatalogs.
+// This allows plugin developers to define their step implementations once and
+// have them automatically applied to all catalog versions.
+func (v *EvaluationOrchestrator) AddEvaluationSuiteForAllCatalogs(loader DataLoader, steps map[string][]gemara.AssessmentStep) error {
+	if len(v.referenceCatalogs) == 0 {
+		return BAD_CATALOG(v.PluginName, "no reference catalogs loaded", "aac10")
+	}
+	for catalogId := range v.referenceCatalogs {
+		if err := v.AddEvaluationSuite(catalogId, loader, steps); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (v *EvaluationOrchestrator) addEvaluationSuite(catalog *gemara.ControlCatalog, loader DataLoader, steps map[string][]gemara.AssessmentStep) {
+	for _, existing := range v.possibleSuites {
+		if existing.CatalogId == catalog.Metadata.Id {
+			return
+		}
+	}
+
 	importedControls := getImportedControls(catalog, v.referenceCatalogs)
 	catalog.Controls = append(catalog.Controls, importedControls...)
 
@@ -147,6 +169,7 @@ func getImportedControls(catalog *gemara.ControlCatalog, referenceCatalogs map[s
 
 // Mobilize initializes the orchestrator and executes all evaluation suites.
 func (v *EvaluationOrchestrator) Mobilize() error {
+	v.Evaluation_Suites = nil
 	v.setupConfig()
 	if v.config.Error != nil {
 		return BAD_CONFIG(v.config.Error, "mob10")
@@ -172,9 +195,16 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 		return NO_EVALUATION_SUITES("mob50")
 	}
 
+	availableCatalogIDs := make([]string, 0, len(v.possibleSuites))
+	for _, suite := range v.possibleSuites {
+		availableCatalogIDs = append(availableCatalogIDs, suite.CatalogId)
+	}
+
 	for _, catalog := range v.config.Policy.ControlCatalogs {
+		matched := false
 		for _, suite := range v.possibleSuites {
 			if suite.CatalogId == catalog {
+				matched = true
 				err := suite.Evaluate(v.ServiceName)
 				if err != nil {
 					v.config.Logger.Error(err.Error())
@@ -188,9 +218,18 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 					},
 				}
 				v.Evaluation_Suites = append(v.Evaluation_Suites, suite)
+				break
 			}
 		}
+		if !matched {
+			v.config.Logger.Warn("requested catalog did not match any available suite", "requested", catalog, "available", availableCatalogIDs)
+		}
 	}
+
+	if len(v.Evaluation_Suites) == 0 {
+		return NO_MATCHING_CATALOGS(v.config.Policy.ControlCatalogs, availableCatalogIDs, "mob60")
+	}
+
 	v.config.Logger.Trace("Mobilization complete")
 
 	if !v.config.Write {
