@@ -2,15 +2,14 @@ package command
 
 import (
 	"fmt"
-	"log"
 	"path"
 	"regexp"
 	"strings"
 
+	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/privateerproj/privateer-sdk/internal/install"
 	"github.com/privateerproj/privateer-sdk/internal/registry"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 var validNameSegment = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
@@ -31,6 +30,7 @@ func GetInstallCmd(writer Writer) *cobra.Command {
 }
 
 func installPlugin(writer Writer, pluginName string) error {
+	defer func() { _ = writer.Flush() }()
 	client := registry.NewClient()
 
 	// Fetch the vetted list to validate the plugin name
@@ -62,8 +62,11 @@ func installPlugin(writer Writer, pluginName string) error {
 		return err
 	}
 
-	destDir := viper.GetString("binaries-path")
+	destDir := config.GetBinariesPath()
 	binaryName := path.Base(pluginData.Name)
+	if !validNameSegment.MatchString(binaryName) {
+		return fmt.Errorf("invalid binary name %q from registry", binaryName)
+	}
 	_, _ = fmt.Fprintf(writer, "Downloading %s to %s...\n", binaryName, destDir)
 
 	err = install.FromURL(downloadURL, destDir, binaryName)
@@ -72,9 +75,6 @@ func installPlugin(writer Writer, pluginName string) error {
 	}
 
 	_, _ = fmt.Fprintf(writer, "Successfully installed %s\n", pluginData.Name)
-	if err := writer.Flush(); err != nil {
-		log.Printf("Error flushing writer: %v", err)
-	}
 	return nil
 }
 

@@ -14,6 +14,20 @@ import (
 	"time"
 )
 
+const maxDownloadBytes int64 = 500 << 20 // 500 MB
+
+// limitedRead reads up to limit bytes from r. If the content exceeds limit, it returns an error.
+func limitedRead(r io.Reader, limit int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("content exceeds maximum allowed size (%d bytes)", limit)
+	}
+	return data, nil
+}
+
 // FromURL downloads an artifact from the given URL and extracts the binary
 // into destDir with the given binaryName. Supports .tar.gz and .zip archives,
 // as well as raw binaries.
@@ -35,7 +49,7 @@ func FromURL(url, destDir, binaryName string) error {
 		return fmt.Errorf("downloading %s: status %d", url, resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := limitedRead(resp.Body, maxDownloadBytes)
 	if err != nil {
 		return fmt.Errorf("reading response body: %w", err)
 	}
@@ -75,7 +89,7 @@ func extractFromTarGz(data []byte, destPath, binaryName string) error {
 
 		name := filepath.Base(header.Name)
 		if name == binaryName || strings.TrimSuffix(name, ".exe") == binaryName {
-			content, err := io.ReadAll(tr)
+			content, err := limitedRead(tr, maxDownloadBytes)
 			if err != nil {
 				return fmt.Errorf("reading %s from archive: %w", name, err)
 			}
@@ -100,7 +114,7 @@ func extractFromZip(data []byte, destPath, binaryName string) error {
 			}
 			defer func() { _ = rc.Close() }()
 
-			content, err := io.ReadAll(rc)
+			content, err := limitedRead(rc, maxDownloadBytes)
 			if err != nil {
 				return fmt.Errorf("reading %s from zip: %w", name, err)
 			}

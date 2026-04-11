@@ -2,6 +2,7 @@ package install
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"fmt"
@@ -128,6 +129,82 @@ func TestFromURL_CreatesDestDir(t *testing.T) {
 	}
 }
 
+func TestFromURL_Zip(t *testing.T) {
+	binaryContent := []byte("the-zip-binary-content")
+	archive := createZip(t, "my-plugin", binaryContent)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(archive)
+	}))
+	defer server.Close()
+
+	destDir := t.TempDir()
+	err := FromURL(server.URL+"/my-plugin.zip", destDir, "my-plugin")
+	if err != nil {
+		t.Fatalf("FromURL returned error: %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(destDir, "my-plugin"))
+	if err != nil {
+		t.Fatalf("reading installed binary: %v", err)
+	}
+	if !bytes.Equal(got, binaryContent) {
+		t.Errorf("binary content mismatch:\n  got:      %q\n  expected: %q", got, binaryContent)
+	}
+}
+
+func TestFromURL_Zip_BinaryNotFound(t *testing.T) {
+	archive := createZip(t, "wrong-name", []byte("content"))
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(archive)
+	}))
+	defer server.Close()
+
+	destDir := t.TempDir()
+	err := FromURL(server.URL+"/archive.zip", destDir, "my-plugin")
+	if err == nil {
+		t.Fatal("expected error when binary not found in zip, got nil")
+	}
+	if !bytes.Contains([]byte(err.Error()), []byte("not found in archive")) {
+		t.Errorf("expected 'not found in archive' error, got: %v", err)
+	}
+}
+
+func TestLimitedRead(t *testing.T) {
+	t.Run("within limit", func(t *testing.T) {
+		data, err := limitedRead(bytes.NewReader([]byte("hello")), 10)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if string(data) != "hello" {
+			t.Errorf("got %q, expected %q", data, "hello")
+		}
+	})
+
+	t.Run("exactly at limit", func(t *testing.T) {
+		input := bytes.Repeat([]byte("x"), 100)
+		data, err := limitedRead(bytes.NewReader(input), 100)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(data) != 100 {
+			t.Errorf("got %d bytes, expected 100", len(data))
+		}
+	})
+
+	t.Run("exceeds limit", func(t *testing.T) {
+		input := bytes.Repeat([]byte("x"), 101)
+		_, err := limitedRead(bytes.NewReader(input), 100)
+		if err == nil {
+			t.Fatal("expected error for oversized content, got nil")
+		}
+		if !bytes.Contains([]byte(err.Error()), []byte("exceeds maximum allowed size")) {
+			t.Errorf("expected 'exceeds maximum allowed size' error, got: %v", err)
+		}
+	})
+}
+
 // createTarGz creates an in-memory tar.gz archive containing a single file.
 func createTarGz(t *testing.T, filename string, content []byte) []byte {
 	t.Helper()
@@ -151,6 +228,25 @@ func createTarGz(t *testing.T, filename string, content []byte) []byte {
 	}
 	if err := gw.Close(); err != nil {
 		t.Fatalf("closing gzip writer: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// createZip creates an in-memory zip archive containing a single file.
+func createZip(t *testing.T, filename string, content []byte) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+
+	fw, err := zw.Create(filename)
+	if err != nil {
+		t.Fatalf("creating zip entry: %v", err)
+	}
+	if _, err := fw.Write(content); err != nil {
+		t.Fatalf("writing zip content: %v", err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("closing zip writer: %v", err)
 	}
 	return buf.Bytes()
 }

@@ -159,7 +159,10 @@ func getInstallablePlugins() ([]*PluginPkg, error) {
 // getLocalAndRemotePlugins returns local plugins plus any vetted plugins from the registry that are not already installed.
 func getLocalAndRemotePlugins() []*PluginPkg {
 	plugins := getLocalPlugins()
-	remote, _ := fetchVettedPlugins()
+	remote, err := fetchVettedPlugins()
+	if err != nil {
+		log.Printf("Warning: could not fetch remote plugin list: %v", err)
+	}
 	for _, vp := range remote {
 		if vp.Name == "" || Contains(plugins, vp.Name) {
 			continue
