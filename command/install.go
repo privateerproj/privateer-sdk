@@ -2,7 +2,9 @@ package command
 
 import (
 	"fmt"
+	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -17,16 +19,24 @@ var validNameSegment = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
 
 // GetInstallCmd returns the install command that can be added to a root command.
 func GetInstallCmd(writer Writer) *cobra.Command {
+	var localPath string
+
 	installCmd := &cobra.Command{
 		Use:   "install [plugin-name]",
-		Short: "Install a vetted plugin from the registry.",
-		Long:  "Resolve the plugin name to registry metadata, then download the plugin binary from the release URL into the binaries path.",
-		Args:  cobra.ExactArgs(1),
+		Short: "Install a plugin from the registry or a local path.",
+		Long:  "Install a vetted plugin from the registry, or use --local to install a plugin binary from a local path.",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			pluginName := args[0]
-			return installPlugin(writer, pluginName)
+			if localPath != "" {
+				return installLocal(writer, localPath)
+			}
+			if len(args) == 0 {
+				return fmt.Errorf("plugin name is required (or use --local)")
+			}
+			return installPlugin(writer, args[0])
 		},
 	}
+	installCmd.Flags().StringVar(&localPath, "local", "", "Path to a local plugin binary to install")
 	return installCmd
 }
 
@@ -91,6 +101,55 @@ func installPlugin(writer Writer, pluginName string) error {
 	}
 
 	_, _ = fmt.Fprintf(writer, "Successfully installed %s\n", pluginData.Name)
+	return nil
+}
+
+func installLocal(writer Writer, binaryPath string) error {
+	defer func() { _ = writer.Flush() }()
+
+	info, err := os.Stat(binaryPath)
+	if err != nil {
+		return fmt.Errorf("cannot access %s: %w", binaryPath, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("%s is a directory, not a binary", binaryPath)
+	}
+
+	binaryName := filepath.Base(binaryPath)
+	if !validNameSegment.MatchString(binaryName) {
+		return fmt.Errorf("invalid binary name %q", binaryName)
+	}
+
+	binPath := config.GetBinariesPath()
+	destDir := filepath.Join(binPath, "local")
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return fmt.Errorf("creating local plugin directory: %w", err)
+	}
+
+	src, err := os.ReadFile(binaryPath)
+	if err != nil {
+		return fmt.Errorf("reading %s: %w", binaryPath, err)
+	}
+	destPath := filepath.Join(destDir, binaryName)
+	if err := os.WriteFile(destPath, src, 0755); err != nil {
+		return fmt.Errorf("writing %s: %w", destPath, err)
+	}
+
+	m, err := manifest.Load(binPath)
+	if err != nil {
+		return fmt.Errorf("loading plugin manifest: %w", err)
+	}
+	manifestBinaryPath := filepath.Join("local", binaryName)
+	m.Add(manifest.Plugin{
+		Name:       "local/" + binaryName,
+		Version:    "local",
+		BinaryPath: manifestBinaryPath,
+	})
+	if err := m.Save(binPath); err != nil {
+		return fmt.Errorf("saving plugin manifest: %w", err)
+	}
+
+	_, _ = fmt.Fprintf(writer, "Installed local plugin %s\n", binaryName)
 	return nil
 }
 
