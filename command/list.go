@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"path"
+	"path/filepath"
 	"strings"
 
-	hcplugin "github.com/hashicorp/go-plugin"
 	"github.com/privateerproj/privateer-sdk/config"
+	"github.com/privateerproj/privateer-sdk/internal/manifest"
 	"github.com/privateerproj/privateer-sdk/internal/registry"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -59,14 +59,17 @@ func SetListCmdFlags(cmd *cobra.Command) {
 }
 
 func writeInstallablePlugins(writer Writer) {
-	plugins, err := getInstallablePlugins()
+	remote, err := fetchVettedPlugins()
 	if err != nil {
 		_, _ = fmt.Fprintf(writer, "Error loading vetted plugins: %v\n", err)
 		return
 	}
+	local := getLocalPlugins()
 	_, _ = fmt.Fprintln(writer, "Plugins that can be installed:")
-	for _, pluginPkg := range plugins {
-		_, _ = fmt.Fprintf(writer, "  - %s\n", pluginPkg.Name)
+	for _, vp := range remote {
+		if !Contains(local, vp.Name) {
+			_, _ = fmt.Fprintf(writer, "  - %s\n", vp.Name)
+		}
 	}
 }
 
@@ -77,7 +80,8 @@ func writePluginDetails(writer Writer) {
 	if viper.GetBool("installed") {
 		plugins = getLocalPlugins()
 	} else if viper.GetBool("all") {
-		plugins = getLocalAndRemotePlugins()
+		plugins = GetPlugins()
+		plugins = appendRemotePlugins(plugins)
 	} else {
 		plugins = GetPlugins()
 	}
@@ -89,35 +93,39 @@ func writePluginDetails(writer Writer) {
 // getRequestedPlugins returns a deduplicated list of plugin names requested in the config.
 func getRequestedPlugins() []*PluginPkg {
 	services := config.GetServices()
-	seen := make(map[string]*PluginPkg)
-	var requestedPluginPackages []*PluginPkg
+	seen := make(map[string]bool)
+	var out []*PluginPkg
 	for serviceName := range services {
 		pluginName := config.GetServicePlugin(serviceName)
-		if _, exists := seen[pluginName]; exists {
+		if seen[pluginName] {
 			continue
 		}
+		seen[pluginName] = true
 		pluginPkg := NewPluginPkg(pluginName, serviceName)
 		pluginPkg.Requested = true
-		seen[pluginName] = pluginPkg
-		requestedPluginPackages = append(requestedPluginPackages, pluginPkg)
+		out = append(out, pluginPkg)
 	}
-	return requestedPluginPackages
+	return out
 }
 
-// getLocalPlugins returns a list of plugins found in the binaries path.
+// getLocalPlugins returns installed plugins from the manifest.
 func getLocalPlugins() []*PluginPkg {
-	var installedPlugins []*PluginPkg
-	pluginPaths, _ := hcplugin.Discover("*", viper.GetString("binaries-path"))
-	for _, pluginPath := range pluginPaths {
-		name := path.Base(pluginPath)
-		if strings.Contains(name, "privateer") {
-			continue
-		}
-		pluginPkg := NewPluginPkg(name, "")
-		pluginPkg.Installed = true
-		installedPlugins = append(installedPlugins, pluginPkg)
+	binPath := config.GetBinariesPath()
+	m, err := manifest.Load(binPath)
+	if err != nil {
+		return nil
 	}
-	return installedPlugins
+	var plugins []*PluginPkg
+	for _, p := range m.Plugins {
+		pkg := &PluginPkg{
+			Name:      p.Name,
+			Path:      filepath.Join(binPath, p.BinaryPath),
+			Installed: true,
+		}
+		pkg.queueCmd()
+		plugins = append(plugins, pkg)
+	}
+	return plugins
 }
 
 // GetPlugins returns a combined list of all plugins (requested and local).
@@ -126,8 +134,10 @@ func GetPlugins() []*PluginPkg {
 	output := make([]*PluginPkg, 0)
 	localPlugins := getLocalPlugins()
 	for _, plugin := range getRequestedPlugins() {
-		if Contains(localPlugins, plugin.Name) {
+		if local := findPlugin(localPlugins, plugin.Name); local != nil {
 			plugin.Installed = true
+			plugin.Path = local.Path
+			plugin.queueCmd()
 		}
 		output = append(output, plugin)
 	}
@@ -137,39 +147,6 @@ func GetPlugins() []*PluginPkg {
 		}
 	}
 	return output
-}
-
-// getInstallablePlugins returns vetted plugins from the registry that are not already installed.
-func getInstallablePlugins() ([]*PluginPkg, error) {
-	remote, err := fetchVettedPlugins()
-	if err != nil {
-		return nil, err
-	}
-	local := getLocalPlugins()
-	var out []*PluginPkg
-	for _, vp := range remote {
-		if vp.Name == "" || Contains(local, vp.Name) {
-			continue
-		}
-		out = append(out, &PluginPkg{Name: vp.Name, Installable: true})
-	}
-	return out, nil
-}
-
-// getLocalAndRemotePlugins returns local plugins plus any vetted plugins from the registry that are not already installed.
-func getLocalAndRemotePlugins() []*PluginPkg {
-	plugins := getLocalPlugins()
-	remote, err := fetchVettedPlugins()
-	if err != nil {
-		log.Printf("Warning: could not fetch remote plugin list: %v", err)
-	}
-	for _, vp := range remote {
-		if vp.Name == "" || Contains(plugins, vp.Name) {
-			continue
-		}
-		plugins = append(plugins, &PluginPkg{Name: vp.Name, Installable: true})
-	}
-	return plugins
 }
 
 // fetchVettedPlugins returns vetted plugin names from the registry.
@@ -182,25 +159,42 @@ func fetchVettedPlugins() ([]*PluginPkg, error) {
 	if len(resp.Plugins) == 0 {
 		return nil, fmt.Errorf("response has no plugins array or it is empty")
 	}
-	return pluginNamesToVetted(resp.Plugins), nil
-}
-
-func pluginNamesToVetted(names []string) []*PluginPkg {
-	list := make([]*PluginPkg, 0, len(names))
-	for _, name := range names {
+	var out []*PluginPkg
+	for _, name := range resp.Plugins {
+		name = strings.TrimSpace(name)
 		if name != "" {
-			list = append(list, &PluginPkg{Name: strings.TrimSpace(name)})
+			out = append(out, &PluginPkg{Name: name})
 		}
 	}
-	return list
+	return out, nil
+}
+
+// appendRemotePlugins appends vetted registry plugins not already in the slice.
+func appendRemotePlugins(plugins []*PluginPkg) []*PluginPkg {
+	remote, err := fetchVettedPlugins()
+	if err != nil {
+		log.Printf("Warning: could not fetch remote plugin list: %v", err)
+		return plugins
+	}
+	for _, vp := range remote {
+		if !Contains(plugins, vp.Name) {
+			plugins = append(plugins, &PluginPkg{Name: vp.Name, Installable: true})
+		}
+	}
+	return plugins
+}
+
+// findPlugin returns the first plugin matching by name, or nil.
+func findPlugin(slice []*PluginPkg, search string) *PluginPkg {
+	for _, plugin := range slice {
+		if plugin.Name == search {
+			return plugin
+		}
+	}
+	return nil
 }
 
 // Contains checks if a plugin with the given name exists in the slice.
 func Contains(slice []*PluginPkg, search string) bool {
-	for _, plugin := range slice {
-		if plugin.Name == search {
-			return true
-		}
-	}
-	return false
+	return findPlugin(slice, search) != nil
 }

@@ -44,31 +44,27 @@ type PluginPkg struct {
 }
 
 func (p *PluginPkg) getBinary() (binaryName string, err error) {
-	p.Name = filepath.Base(strings.ToLower(p.Name)) // in some cases a filepath may arrive here instead of the base name; overwrite if so
-	if runtime.GOOS == "windows" && !strings.HasSuffix(p.Name, ".exe") {
-		p.Name = fmt.Sprintf("%s.exe", p.Name)
+	lookupName := filepath.Base(strings.ToLower(p.Name))
+	if runtime.GOOS == "windows" && !strings.HasSuffix(lookupName, ".exe") {
+		lookupName = fmt.Sprintf("%s.exe", lookupName)
 	}
-	plugins, _ := hcplugin.Discover(p.Name, viper.GetString("binaries-path"))
+	plugins, _ := hcplugin.Discover(lookupName, viper.GetString("binaries-path"))
 	if len(plugins) != 1 {
-		err = fmt.Errorf("failed to locate requested plugin '%s' at path '%s'", p.Name, viper.GetString("binaries-path"))
+		err = fmt.Errorf("failed to locate requested plugin '%s' at path '%s'", lookupName, viper.GetString("binaries-path"))
 		return
 	}
 	binaryName = plugins[0]
-
 	return
 }
 
 func (p *PluginPkg) queueCmd() {
 	cmd := exec.Command(p.Path)
-	flags := []string{
+	cmd.Args = append(cmd.Args,
 		fmt.Sprintf("--config=%s", viper.GetString("config")),
 		fmt.Sprintf("--loglevel=%s", viper.GetString("loglevel")),
 		fmt.Sprintf("--service=%s", p.ServiceTarget),
-	}
-	for _, flag := range flags {
-		cmd.Args = append(cmd.Args, flag)
-		p.Command = cmd
-	}
+	)
+	p.Command = cmd
 }
 
 // closeClient logs the plugin result and kills the process.

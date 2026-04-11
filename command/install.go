@@ -8,6 +8,7 @@ import (
 
 	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/privateerproj/privateer-sdk/internal/install"
+	"github.com/privateerproj/privateer-sdk/internal/manifest"
 	"github.com/privateerproj/privateer-sdk/internal/registry"
 	"github.com/spf13/cobra"
 )
@@ -33,20 +34,21 @@ func installPlugin(writer Writer, pluginName string) error {
 	defer func() { _ = writer.Flush() }()
 	client := registry.NewClient()
 
-	// Fetch the vetted list to validate the plugin name
+	// Parse owner/repo from plugin name
+	owner, repo, err := parsePluginName(pluginName)
+	if err != nil {
+		return err
+	}
+
+	// Fetch the vetted list and validate using the normalized owner/repo form
+	fullName := owner + "/" + repo
 	vetted, err := client.GetVettedList()
 	if err != nil {
 		return fmt.Errorf("fetching vetted plugin list: %w", err)
 	}
 
-	if !isVetted(vetted.Plugins, pluginName) {
-		return fmt.Errorf("plugin %q is not in the vetted plugin list", pluginName)
-	}
-
-	// Parse owner/repo from plugin name
-	owner, repo, err := parsePluginName(pluginName)
-	if err != nil {
-		return err
+	if !isVetted(vetted.Plugins, fullName) {
+		return fmt.Errorf("plugin %q is not in the vetted plugin list", fullName)
 	}
 
 	// Fetch plugin metadata
@@ -72,6 +74,20 @@ func installPlugin(writer Writer, pluginName string) error {
 	err = install.FromURL(downloadURL, destDir, binaryName)
 	if err != nil {
 		return fmt.Errorf("installing plugin: %w", err)
+	}
+
+	// Update the plugin manifest
+	m, err := manifest.Load(destDir)
+	if err != nil {
+		return fmt.Errorf("loading plugin manifest: %w", err)
+	}
+	m.Add(manifest.Plugin{
+		Name:       fullName,
+		Version:    pluginData.Latest,
+		BinaryPath: binaryName,
+	})
+	if err := m.Save(destDir); err != nil {
+		return fmt.Errorf("saving plugin manifest: %w", err)
 	}
 
 	_, _ = fmt.Fprintf(writer, "Successfully installed %s\n", pluginData.Name)
