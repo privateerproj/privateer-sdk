@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -164,9 +163,9 @@ func generateFileFromTemplate(data CatalogData, templatePath, templatesDir, outp
 		return fmt.Errorf("error calculating relative path for %s: %w", templatePath, err)
 	}
 
-	// If the file is not a template, copy it over as-is (preserve mode)
+	// If the file is not a template, copy it over with placeholder replacement
 	if filepath.Ext(templatePath) != ".tmpl" {
-		return copyNonTemplateFile(templatePath, relativeFilepath, outputDir, logger)
+		return copyNonTemplateFile(data, templatePath, relativeFilepath, outputDir, logger)
 	}
 
 	tmpl, err := template.New("plugin").Funcs(template.FuncMap{
@@ -282,39 +281,29 @@ func resolveSourcePath(sourcePath string) (string, error) {
 	return sourcePath, nil
 }
 
-func copyNonTemplateFile(templatePath, relativeFilepath, outputDir string, logger hclog.Logger) error {
+func copyNonTemplateFile(data CatalogData, templatePath, relativeFilepath, outputDir string, logger hclog.Logger) error {
 	outputPath := filepath.Join(outputDir, relativeFilepath)
 	if err := os.MkdirAll(filepath.Dir(outputPath), os.ModePerm); err != nil {
 		return fmt.Errorf("error creating directories for %s: %w", outputPath, err)
 	}
 
-	// Copy file contents
-	srcFile, err := os.Open(templatePath)
+	content, err := os.ReadFile(templatePath)
 	if err != nil {
-		return fmt.Errorf("error opening source file %s: %w", templatePath, err)
+		return fmt.Errorf("error reading source file %s: %w", templatePath, err)
 	}
-	defer func() {
-		err := srcFile.Close()
-		if err != nil {
-			logger.Error("error closing output file %s: %w", templatePath, err)
-		}
-	}()
 
-	dstFile, err := os.Create(outputPath)
-	if err != nil {
-		return fmt.Errorf("error creating destination file %s: %w", outputPath, err)
-	}
-	defer func() {
-		_ = dstFile.Close()
-	}()
-
-	if _, err := io.Copy(dstFile, srcFile); err != nil {
-		return fmt.Errorf("error copying file to %s: %w", outputPath, err)
-	}
+	// Replace placeholders in non-template files
+	output := strings.ReplaceAll(string(content), "__SERVICE_NAME__", data.ServiceName)
+	output = strings.ReplaceAll(output, "__ORGANIZATION__", data.Organization)
 
 	// Try to preserve file mode from source
+	mode := os.FileMode(0644)
 	if fi, err := os.Stat(templatePath); err == nil {
-		_ = os.Chmod(outputPath, fi.Mode())
+		mode = fi.Mode()
+	}
+
+	if err := os.WriteFile(outputPath, []byte(output), mode); err != nil {
+		return fmt.Errorf("error writing file %s: %w", outputPath, err)
 	}
 
 	return nil
