@@ -6,3 +6,6 @@ __debug_bin
 # Test
 coverage.out
 **/tmp
+
+# Claude Code
+**/.claude/*.local.*

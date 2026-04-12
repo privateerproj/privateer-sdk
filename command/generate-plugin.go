@@ -2,13 +2,15 @@ package command
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
-	"text/template"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"text/template"
 
 	"github.com/go-git/go-git/v5"
 	hclog "github.com/hashicorp/go-hclog"
@@ -16,6 +18,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/gemaraproj/go-gemara"
+	"github.com/gemaraproj/go-gemara/fetcher"
 	"github.com/privateerproj/privateer-sdk/utils"
 )
 
@@ -50,7 +53,12 @@ func GeneratePlugin(logger hclog.Logger, cfg PluginConfig) error {
 	data.ServiceName = cfg.ServiceName
 	data.Organization = cfg.Organization
 
-	err := data.LoadFile("file://" + cfg.SourcePath)
+	sourcePath, err := resolveSourcePath(cfg.SourcePath)
+	if err != nil {
+		return fmt.Errorf("invalid source path: %w", err)
+	}
+
+	err = data.LoadFiles(context.Background(), &fetcher.URI{}, []string{sourcePath})
 	if err != nil {
 		return err
 	}
@@ -258,6 +266,20 @@ func snakeCase(in string) string {
 	return strings.TrimSpace(
 		strings.ReplaceAll(
 			strings.ReplaceAll(in, ".", "_"), "-", "_"))
+}
+
+// resolveSourcePath ensures the source path has a URI scheme.
+// Bare file paths get file:// prepended; all other schemes are
+// passed through for the fetcher to validate.
+func resolveSourcePath(sourcePath string) (string, error) {
+	parsed, err := url.Parse(sourcePath)
+	if err != nil {
+		return "", err
+	}
+	if parsed.Scheme == "" {
+		return "file://" + sourcePath, nil
+	}
+	return sourcePath, nil
 }
 
 func copyNonTemplateFile(templatePath, relativeFilepath, outputDir string, logger hclog.Logger) error {

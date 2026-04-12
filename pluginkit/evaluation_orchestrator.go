@@ -145,11 +145,11 @@ func (v *EvaluationOrchestrator) addEvaluationSuite(catalog *gemara.ControlCatal
 
 // getImportedControls returns controls from imported catalogs that are listed in the primary catalog's imports.
 func getImportedControls(catalog *gemara.ControlCatalog, referenceCatalogs map[string]*gemara.ControlCatalog) []gemara.Control {
-	if len(catalog.Imports.Controls) == 0 {
+	if len(catalog.Imports) == 0 {
 		return nil
 	}
 	var result []gemara.Control
-	for _, importEntry := range catalog.Imports.Controls {
+	for _, importEntry := range catalog.Imports {
 		refCatalog, ok := referenceCatalogs[importEntry.ReferenceId]
 		if !ok {
 			continue
