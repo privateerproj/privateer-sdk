@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 
+	hclog "github.com/hashicorp/go-hclog"
 	hcplugin "github.com/hashicorp/go-plugin"
 	"github.com/spf13/viper"
 )
@@ -35,38 +36,47 @@ type PluginPkg struct {
 	Command       *exec.Cmd
 	Result        string
 
-	Available  bool
-	Requested  bool
-	Successful bool
-	Error      error
+	Installable bool
+	Installed   bool
+	Requested   bool
+	Successful  bool
+	Error       error
 }
 
 func (p *PluginPkg) getBinary() (binaryName string, err error) {
-	p.Name = filepath.Base(strings.ToLower(p.Name)) // in some cases a filepath may arrive here instead of the base name; overwrite if so
-	if runtime.GOOS == "windows" && !strings.HasSuffix(p.Name, ".exe") {
-		p.Name = fmt.Sprintf("%s.exe", p.Name)
+	lookupName := filepath.Base(strings.ToLower(p.Name))
+	if runtime.GOOS == "windows" && !strings.HasSuffix(lookupName, ".exe") {
+		lookupName = fmt.Sprintf("%s.exe", lookupName)
 	}
-	plugins, _ := hcplugin.Discover(p.Name, viper.GetString("binaries-path"))
+	plugins, _ := hcplugin.Discover(lookupName, viper.GetString("binaries-path"))
 	if len(plugins) != 1 {
-		err = fmt.Errorf("failed to locate requested plugin '%s' at path '%s'", p.Name, viper.GetString("binaries-path"))
+		err = fmt.Errorf("failed to locate requested plugin '%s' at path '%s'", lookupName, viper.GetString("binaries-path"))
 		return
 	}
 	binaryName = plugins[0]
-
 	return
 }
 
 func (p *PluginPkg) queueCmd() {
 	cmd := exec.Command(p.Path)
-	flags := []string{
+	cmd.Args = append(cmd.Args,
 		fmt.Sprintf("--config=%s", viper.GetString("config")),
 		fmt.Sprintf("--loglevel=%s", viper.GetString("loglevel")),
 		fmt.Sprintf("--service=%s", p.ServiceTarget),
+	)
+	p.Command = cmd
+}
+
+// closeClient logs the plugin result and kills the process.
+func (p *PluginPkg) closeClient(serviceName string, client *hcplugin.Client, logger hclog.Logger) {
+	if p.Successful {
+		logger.Info(fmt.Sprintf("Plugin for %s completed successfully", serviceName))
+	} else if p.Error != nil {
+		logger.Error(fmt.Sprintf("Error from %s: %s", serviceName, p.Error))
+	} else {
+		logger.Warn(fmt.Sprintf("Unexpected exit from %s with no error or success", serviceName))
 	}
-	for _, flag := range flags {
-		cmd.Args = append(cmd.Args, flag)
-		p.Command = cmd
-	}
+	client.Kill()
 }
 
 // NewPluginPkg creates a new PluginPkg instance for the given plugin and service names.

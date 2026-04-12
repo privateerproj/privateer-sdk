@@ -2,7 +2,27 @@ package config
 
 import (
 	"fmt"
+
+	"github.com/spf13/viper"
 )
+
+// GetBinariesPath returns the path to the directory where plugins are installed.
+// It reads from the same viper state as NewConfig (e.g. after command.ReadConfig()).
+func GetBinariesPath() string {
+	return viper.GetString("binaries-path")
+}
+
+// GetServices returns the services map from config (service name -> service config).
+// It reads from the same viper state as NewConfig (e.g. after command.ReadConfig()).
+func GetServices() map[string]interface{} {
+	return viper.GetStringMap("services")
+}
+
+// GetServicePlugin returns the plugin name for the given service.
+// It reads from the same viper state as NewConfig (e.g. after command.ReadConfig()).
+func GetServicePlugin(serviceName string) string {
+	return viper.GetString("services." + serviceName + ".plugin")
+}
 
 // GetVar retrieves the value associated with the given key from the Config's Vars map.
 // It returns the value as an interface{} and a string representing the type of the value.
