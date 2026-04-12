@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"text/template"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"text/template"
 
 	"github.com/go-git/go-git/v5"
 	hclog "github.com/hashicorp/go-hclog"
@@ -50,7 +51,12 @@ func GeneratePlugin(logger hclog.Logger, cfg PluginConfig) error {
 	data.ServiceName = cfg.ServiceName
 	data.Organization = cfg.Organization
 
-	err := data.LoadFile("file://" + cfg.SourcePath)
+	sourcePath, err := resolveSourcePath(cfg.SourcePath)
+	if err != nil {
+		return fmt.Errorf("invalid source path: %w", err)
+	}
+
+	err = data.LoadFile(sourcePath)
 	if err != nil {
 		return err
 	}
@@ -258,6 +264,25 @@ func snakeCase(in string) string {
 	return strings.TrimSpace(
 		strings.ReplaceAll(
 			strings.ReplaceAll(in, ".", "_"), "-", "_"))
+}
+
+// resolveSourcePath ensures the source path has an appropriate URI scheme.
+// URLs with https:// are passed through as-is; bare file paths get file:// prepended.
+func resolveSourcePath(sourcePath string) (string, error) {
+	parsed, err := url.Parse(sourcePath)
+	if err != nil {
+		return "", err
+	}
+	switch parsed.Scheme {
+	case "https", "file":
+		return sourcePath, nil
+	case "http":
+		return "", fmt.Errorf("http URLs are not supported, use https")
+	case "":
+		return "file://" + sourcePath, nil
+	default:
+		return "", fmt.Errorf("unsupported scheme: %s", parsed.Scheme)
+	}
 }
 
 func copyNonTemplateFile(templatePath, relativeFilepath, outputDir string, logger hclog.Logger) error {
