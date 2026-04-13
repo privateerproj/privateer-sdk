@@ -515,6 +515,47 @@ func TestPrintSanitizedVars(t *testing.T) {
 	printSanitizedVars(logger, vars)
 }
 
+func TestSanitizeVars(t *testing.T) {
+	tests := []struct {
+		name     string
+		key      string
+		value    string
+		expected string
+	}{
+		// Exact matches (existing behavior)
+		{"exact token", "token", "val", "REDACTED"},
+		{"exact auth", "auth", "val", "REDACTED"},
+		{"exact password", "password", "val", "REDACTED"},
+		{"exact secret", "secret", "val", "REDACTED"},
+		{"exact apikey", "apikey", "val", "REDACTED"},
+		{"exact api_key", "api_key", "val", "REDACTED"},
+
+		// Compound keys (new behavior)
+		{"compound clientsecret", "clientsecret", "val", "REDACTED"},
+		{"compound authtoken", "authtoken", "val", "REDACTED"},
+		{"compound apikey_v2", "apikey_v2", "val", "REDACTED"},
+		{"compound my_api_key", "my_api_key", "val", "REDACTED"},
+		{"compound AccessToken", "AccessToken", "val", "REDACTED"},
+		{"compound ClientSecret", "ClientSecret", "val", "REDACTED"},
+		{"compound PASSWORD_HASH", "PASSWORD_HASH", "val", "REDACTED"},
+
+		// Non-sensitive keys should not be redacted
+		{"safe username", "username", "val", "val"},
+		{"safe region", "region", "val", "val"},
+		{"safe endpoint", "endpoint", "val", "val"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			vars := map[string]interface{}{tc.key: tc.value}
+			result := sanitizeVars(vars)
+			if result[tc.key] != tc.expected {
+				t.Errorf("sanitizeVars(%q) = %q, want %q", tc.key, result[tc.key], tc.expected)
+			}
+		})
+	}
+}
+
 func TestSetupLogging(t *testing.T) {
 	c := Config{
 		WriteDirectory: "/tmp/test",
