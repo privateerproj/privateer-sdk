@@ -148,16 +148,29 @@ func NewConfig(requiredVars []string) Config {
 }
 
 func printSanitizedVars(logger hclog.Logger, vars map[string]interface{}) {
+	sanitizedVars := sanitizeVars(vars)
+	logger.Trace("Using vars", "vars", sanitizedVars)
+}
+
+func sanitizeVars(vars map[string]interface{}) map[string]interface{} {
+	sensitivePatterns := []string{"token", "auth", "password", "secret", "apikey", "api_key"}
 	sanitizedVars := make(map[string]interface{})
 	for key, value := range vars {
-		switch key {
-		case "token", "auth", "password", "secret", "apikey", "api_key":
+		redact := false
+		lower := strings.ToLower(key)
+		for _, pattern := range sensitivePatterns {
+			if strings.Contains(lower, pattern) {
+				redact = true
+				break
+			}
+		}
+		if redact {
 			sanitizedVars[key] = "REDACTED"
-		default:
+		} else {
 			sanitizedVars[key] = value
 		}
 	}
-	logger.Trace("Using vars", "vars", sanitizedVars)
+	return sanitizedVars
 }
 
 func defaultWritePath() string {
