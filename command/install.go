@@ -6,6 +6,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/privateerproj/privateer-sdk/config"
@@ -76,6 +77,9 @@ func installPlugin(writer Writer, pluginName string) error {
 
 	destDir := config.GetBinariesPath()
 	binaryName := path.Base(pluginData.Name)
+	if runtime.GOOS == "windows" && !strings.HasSuffix(binaryName, ".exe") {
+		binaryName = binaryName + ".exe"
+	}
 	if !validNameSegment.MatchString(binaryName) {
 		return fmt.Errorf("invalid binary name %q from registry", binaryName)
 	}
