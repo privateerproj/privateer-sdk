@@ -4,7 +4,7 @@ go 1.26.2
 
 require (
 	github.com/gemaraproj/go-gemara v0.3.0
-	github.com/go-git/go-git/v5 v5.17.2
+	github.com/go-git/go-git/v5 v5.18.0
 	github.com/goccy/go-yaml v1.19.2
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.7.0
