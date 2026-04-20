@@ -208,3 +208,30 @@ func TestReadConfig_CwdTakesPrecedenceOverHome(t *testing.T) {
 		t.Errorf("expected loglevel 'debug' from cwd config, got %q", viper.GetString("loglevel"))
 	}
 }
+
+func TestReadConfig_UnprefixedEnvIgnored(t *testing.T) {
+	resetViper()
+	t.Setenv("LOGLEVEL", "trace")
+	ReadConfig()
+	if viper.GetString("loglevel") == "trace" {
+		t.Error("unprefixed env var should not override config")
+	}
+}
+
+func TestReadConfig_PrefixedEnvOverrides(t *testing.T) {
+	resetViper()
+	t.Setenv("PVTR_LOGLEVEL", "debug")
+	ReadConfig()
+	if viper.GetString("loglevel") != "debug" {
+		t.Errorf("expected 'debug', got %q", viper.GetString("loglevel"))
+	}
+}
+
+func TestReadConfig_HyphenatedKeyViaUnderscoredEnv(t *testing.T) {
+	resetViper()
+	t.Setenv("PVTR_WRITE_DIRECTORY", "/tmp/test-output")
+	ReadConfig()
+	if viper.GetString("write-directory") != "/tmp/test-output" {
+		t.Errorf("expected '/tmp/test-output', got %q", viper.GetString("write-directory"))
+	}
+}
