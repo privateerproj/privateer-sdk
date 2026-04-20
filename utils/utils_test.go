@@ -161,3 +161,21 @@ func TestGetExecutableName(t *testing.T) {
 		})
 	}
 }
+
+func TestRandomString_Length(t *testing.T) {
+	for _, n := range []int{0, 1, 5, 20, 100} {
+		s := RandomString(n)
+		if len(s) != n {
+			t.Errorf("RandomString(%d) returned length %d", n, len(s))
+		}
+	}
+}
+
+func TestRandomString_OnlyLowercaseLetters(t *testing.T) {
+	s := RandomString(1000)
+	for i, c := range s {
+		if c < 'a' || c > 'z' {
+			t.Errorf("RandomString produced non-lowercase char %q at index %d", c, i)
+		}
+	}
+}
