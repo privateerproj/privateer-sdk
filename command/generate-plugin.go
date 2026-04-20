@@ -127,7 +127,7 @@ func SetupTemplatingEnvironment(logger hclog.Logger) (PluginConfig, error) {
 	cfg.OutputDir = viper.GetString("output-dir")
 	logger.Trace(fmt.Sprintf("Generated plugin will be stored in this directory: %s", cfg.OutputDir))
 
-	err := os.MkdirAll(cfg.OutputDir, os.ModePerm)
+	err := os.MkdirAll(cfg.OutputDir, utils.DirPermissions)
 	if err != nil {
 		return cfg, err
 	}
@@ -187,7 +187,7 @@ func generateFileFromTemplate(data CatalogData, templatePath, templatesDir, outp
 
 	outputPath := filepath.Join(outputDir, strings.TrimSuffix(relativeFilepath, ".tmpl"))
 
-	err = os.MkdirAll(filepath.Dir(outputPath), os.ModePerm)
+	err = os.MkdirAll(filepath.Dir(outputPath), utils.DirPermissions)
 	if err != nil {
 		return fmt.Errorf("error creating directories for %s: %w", outputPath, err)
 	}
@@ -249,7 +249,7 @@ func writeCatalogFile(catalog *gemara.ControlCatalog, outputDir string) error {
 	fileName := fmt.Sprintf("catalog_%s_%s.yaml", id, version)
 	filePath := filepath.Join(dirPath, fileName)
 
-	err = os.MkdirAll(dirPath, os.ModePerm)
+	err = os.MkdirAll(dirPath, utils.DirPermissions)
 	if err != nil {
 		return fmt.Errorf("error creating directories for %s: %w", filePath, err)
 	}
@@ -283,7 +283,7 @@ func resolveSourcePath(sourcePath string) (string, error) {
 
 func copyNonTemplateFile(data CatalogData, templatePath, relativeFilepath, outputDir string, logger hclog.Logger) error {
 	outputPath := filepath.Join(outputDir, relativeFilepath)
-	if err := os.MkdirAll(filepath.Dir(outputPath), os.ModePerm); err != nil {
+	if err := os.MkdirAll(filepath.Dir(outputPath), utils.DirPermissions); err != nil {
 		return fmt.Errorf("error creating directories for %s: %w", outputPath, err)
 	}
 

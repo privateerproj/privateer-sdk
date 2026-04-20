@@ -13,6 +13,7 @@ import (
 	"github.com/gemaraproj/go-gemara/gemaraconv"
 	"github.com/goccy/go-yaml"
 	"github.com/privateerproj/privateer-sdk/config"
+	"github.com/privateerproj/privateer-sdk/utils"
 )
 
 // EvaluationOrchestrator gets the plugin in position to execute the specified evaluation suites.
@@ -289,7 +290,7 @@ func (v *EvaluationOrchestrator) writeResultsToFile(serviceName string, result [
 
 	// Create log file and directory if it doesn't exist
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		err = os.MkdirAll(dir, os.ModePerm)
+		err = os.MkdirAll(dir, utils.DirPermissions)
 		if err != nil {
 			v.config.Logger.Error("Error creating directory", "directory", dir)
 			return err

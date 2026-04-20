@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-hclog"
+	"github.com/privateerproj/privateer-sdk/utils"
 	"github.com/spf13/viper"
 )
 
@@ -213,7 +214,7 @@ func (c *Config) setupLoggingFilesAndDirectories(logFilePath string) io.Writer {
 	// Create log file and directory if it doesn't exist
 	if _, err := os.Stat(logFilePath); os.IsNotExist(err) {
 		// mkdir all directories from filepath
-		_ = os.MkdirAll(path.Dir(logFilePath), os.ModePerm)
+		_ = os.MkdirAll(path.Dir(logFilePath), utils.DirPermissions)
 		_, _ = os.Create(logFilePath)
 	}
 

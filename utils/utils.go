@@ -12,6 +12,10 @@ import (
 	"strings"
 )
 
+// DirPermissions is the default permission mode for directories created by the SDK.
+// 0750 = owner: rwx, group: r-x, others: --- (no access).
+const DirPermissions os.FileMode = 0750
+
 func init() {
 }
 
