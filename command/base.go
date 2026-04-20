@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -41,6 +42,10 @@ func SetBase(cmd *cobra.Command) {
 // ReadConfig reads the configuration file. If --config is explicitly provided,
 // that exact path is used. Otherwise, it searches ./config.yml and ~/.privateer/config.yml.
 func ReadConfig() {
+	// Namespace env overrides so only PVTR_* vars are recognized,
+	// preventing accidental or malicious collisions on shared systems.
+	viper.SetEnvPrefix("PVTR")
+	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
 	viper.AutomaticEnv()
 
 	configPath := viper.GetString("config")
