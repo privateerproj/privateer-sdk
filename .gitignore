@@ -4,7 +4,7 @@
 __debug_bin
 
 # Test
-coverage.out
+coverage.*
 **/tmp
 
 # Claude Code
