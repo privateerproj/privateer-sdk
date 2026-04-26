@@ -46,93 +46,124 @@ type Req struct {
 	Text string
 }
 
-// GeneratePlugin generates a plugin from a catalog file.
-func GeneratePlugin(logger hclog.Logger, cfg PluginConfig) error {
+// GeneratePlugin executes the plugin generation flow and returns an
+// exit code from the same set used by Run (TestPass, TestFail, InternalError,
+// BadUsage). Mirrors Run's shape: classification + logging happen here so the
+// CLI just calls os.Exit(GeneratePlugin(logger)).
+func GeneratePlugin(logger hclog.Logger) (exitCode int) {
+	cfg, exitCode := setupTemplatingEnvironment(logger)
+	if exitCode != TestPass {
+		return exitCode
+	}
+	return generatePlugin(logger, cfg)
+}
+
+// generatePlugin generates a plugin from a catalog file. Returns an exit code
+// from the run.go set: TestPass on success, TestFail if some templates failed
+// to render but the rest succeeded, InternalError for I/O / fetch / parse
+// failures.
+func generatePlugin(logger hclog.Logger, cfg PluginConfig) (exitCode int) {
 	data := CatalogData{}
 	data.ServiceName = cfg.ServiceName
 	data.Organization = cfg.Organization
 
 	sourcePath, err := resolveSourcePath(cfg.SourcePath)
 	if err != nil {
-		return fmt.Errorf("invalid source path: %w", err)
+		logger.Error(fmt.Sprintf("invalid source path: %s", err))
+		return InternalError
 	}
 
-	err = data.LoadFiles(context.Background(), &fetcher.URI{}, []string{sourcePath})
-	if err != nil {
-		return err
+	if err := data.LoadFiles(context.Background(), &fetcher.URI{}, []string{sourcePath}); err != nil {
+		logger.Error(err.Error())
+		return InternalError
 	}
 
-	err = data.getAssessmentRequirements()
-	if err != nil {
-		return err
+	if err := data.getAssessmentRequirements(); err != nil {
+		logger.Error(err.Error())
+		return InternalError
 	}
 
+	var renderFailures int
 	err = filepath.Walk(cfg.TemplatesDir,
 		func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
-			if !info.IsDir() {
-				err = generateFileFromTemplate(data, path, cfg.TemplatesDir, cfg.OutputDir, logger)
-				if err != nil {
-					logger.Error(fmt.Sprintf("Failed while writing in dir '%s': %s", cfg.OutputDir, err))
+			if info.IsDir() {
+				if info.Name() == ".git" {
+					return filepath.SkipDir
 				}
-			} else if info.Name() == ".git" {
-				return filepath.SkipDir
+				return nil
+			}
+			if genErr := generateFileFromTemplate(data, path, cfg.TemplatesDir, cfg.OutputDir, logger); genErr != nil {
+				logger.Error(fmt.Sprintf("Failed while writing in dir '%s': %s", cfg.OutputDir, genErr))
+				renderFailures++
 			}
 			return nil
 		},
 	)
 	if err != nil {
-		return fmt.Errorf("error walking through templates directory: %w", err)
+		logger.Error(fmt.Sprintf("error walking through templates directory: %s", err))
+		return InternalError
 	}
 
-	err = writeCatalogFile(&data.ControlCatalog, cfg.OutputDir)
-	if err != nil {
-		return fmt.Errorf("failed to write catalog to file: %w", err)
+	if err := writeCatalogFile(&data.ControlCatalog, cfg.OutputDir); err != nil {
+		logger.Error(fmt.Sprintf("failed to write catalog to file: %s", err))
+		return InternalError
 	}
 
-	return nil
+	if renderFailures > 0 {
+		logger.Error(fmt.Sprintf("%d template(s) failed to render", renderFailures))
+		return TestFail
+	}
+
+	return TestPass
 }
 
-// SetupTemplatingEnvironment validates and sets up the environment for plugin generation.
-func SetupTemplatingEnvironment(logger hclog.Logger) (PluginConfig, error) {
+// setupTemplatingEnvironment validates and sets up the environment for plugin
+// generation. Returns the same exit codes as GeneratePlugin: BadUsage when
+// a required flag is missing, InternalError for I/O failures, TestPass when
+// the config is ready.
+func setupTemplatingEnvironment(logger hclog.Logger) (PluginConfig, int) {
 	cfg := PluginConfig{}
 
 	cfg.SourcePath = viper.GetString("source-path")
 	if cfg.SourcePath == "" {
-		return cfg, fmt.Errorf("required: --source-path is required to generate a plugin from a control set from local file or URL")
+		logger.Error("required: --source-path is required to generate a plugin from a control set from local file or URL")
+		return cfg, BadUsage
 	}
 
 	cfg.ServiceName = viper.GetString("service-name")
 	if cfg.ServiceName == "" {
-		return cfg, fmt.Errorf("required: --service-name is required to generate a plugin")
+		logger.Error("required: --service-name is required to generate a plugin")
+		return cfg, BadUsage
 	}
 
 	cfg.Organization = viper.GetString("organization")
 	if cfg.Organization == "" {
-		return cfg, fmt.Errorf("required: --organization is required to generate a plugin")
+		logger.Error("required: --organization is required to generate a plugin")
+		return cfg, BadUsage
 	}
 
 	if viper.GetString("local-templates") != "" {
 		cfg.TemplatesDir = viper.GetString("local-templates")
 	} else {
 		cfg.TemplatesDir = filepath.Join(os.TempDir(), "privateer-templates")
-		err := setupTemplatesDir(cfg.TemplatesDir, logger)
-		if err != nil {
-			return cfg, fmt.Errorf("error setting up templates directory: %w", err)
+		if err := setupTemplatesDir(cfg.TemplatesDir, logger); err != nil {
+			logger.Error(fmt.Sprintf("error setting up templates directory: %s", err))
+			return cfg, InternalError
 		}
 	}
 
 	cfg.OutputDir = viper.GetString("output-dir")
 	logger.Trace(fmt.Sprintf("Generated plugin will be stored in this directory: %s", cfg.OutputDir))
 
-	err := os.MkdirAll(cfg.OutputDir, utils.DirPermissions)
-	if err != nil {
-		return cfg, err
+	if err := os.MkdirAll(cfg.OutputDir, utils.DirPermissions); err != nil {
+		logger.Error(err.Error())
+		return cfg, InternalError
 	}
 
-	return cfg, nil
+	return cfg, TestPass
 }
 
 func setupTemplatesDir(templatesDir string, logger hclog.Logger) error {
@@ -165,7 +196,7 @@ func generateFileFromTemplate(data CatalogData, templatePath, templatesDir, outp
 
 	// If the file is not a template, copy it over with placeholder replacement
 	if filepath.Ext(templatePath) != ".tmpl" {
-		return copyNonTemplateFile(data, templatePath, relativeFilepath, outputDir, logger)
+		return copyNonTemplateFile(data, templatePath, relativeFilepath, outputDir)
 	}
 
 	tmpl, err := template.New("plugin").Funcs(template.FuncMap{
@@ -268,20 +299,28 @@ func snakeCase(in string) string {
 }
 
 // resolveSourcePath ensures the source path has a URI scheme.
-// Bare file paths get file:// prepended; all other schemes are
-// passed through for the fetcher to validate.
+// Bare file paths get resolved to absolute and prefixed with file://;
+// all other schemes are passed through for the fetcher to validate.
+//
+// Absolute resolution matters because url.Parse("file://foo/bar") treats
+// "foo" as the host and "/bar" as the path, so a relative input would silently
+// reach the fetcher with the leading directory stripped.
 func resolveSourcePath(sourcePath string) (string, error) {
 	parsed, err := url.Parse(sourcePath)
 	if err != nil {
 		return "", err
 	}
 	if parsed.Scheme == "" {
-		return "file://" + sourcePath, nil
+		abs, err := filepath.Abs(sourcePath)
+		if err != nil {
+			return "", err
+		}
+		return "file://" + abs, nil
 	}
 	return sourcePath, nil
 }
 
-func copyNonTemplateFile(data CatalogData, templatePath, relativeFilepath, outputDir string, logger hclog.Logger) error {
+func copyNonTemplateFile(data CatalogData, templatePath, relativeFilepath, outputDir string) error {
 	outputPath := filepath.Join(outputDir, relativeFilepath)
 	if err := os.MkdirAll(filepath.Dir(outputPath), utils.DirPermissions); err != nil {
 		return fmt.Errorf("error creating directories for %s: %w", outputPath, err)

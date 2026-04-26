@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	hclog "github.com/hashicorp/go-hclog"
+	"github.com/spf13/viper"
 )
 
 func TestResolveSourcePath(t *testing.T) {
@@ -19,11 +20,8 @@ func TestResolveSourcePath(t *testing.T) {
 			input:    "/path/to/catalog.yaml",
 			expected: "file:///path/to/catalog.yaml",
 		},
-		{
-			name:     "relative file path gets file:// prepended",
-			input:    "catalog.yaml",
-			expected: "file://catalog.yaml",
-		},
+		// Relative paths are tested separately in TestResolveSourcePathRelative
+		// since the expected value depends on the current working directory.
 		{
 			name:     "https URL passed through",
 			input:    "https://example.com/catalog.yaml",
@@ -59,9 +57,41 @@ func TestResolveSourcePath(t *testing.T) {
 	}
 }
 
-func TestCopyNonTemplateFile(t *testing.T) {
-	logger := hclog.NewNullLogger()
+// TestResolveSourcePathRelative verifies relative paths are resolved against
+// the current working directory. Without this resolution, "catalog.yaml" would
+// become "file://catalog.yaml" -- which url.Parse interprets as host=catalog.yaml
+// and an empty path, silently breaking the fetcher.
+func TestResolveSourcePathRelative(t *testing.T) {
+	tmp := t.TempDir()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
 
+	if err := os.Chdir(tmp); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	got, err := resolveSourcePath("catalog.yaml")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// On macOS, t.TempDir() may return a /var path that resolves to /private/var.
+	// filepath.Abs uses the canonical (resolved) cwd, so compute the expected
+	// value the same way rather than concatenating tmp directly.
+	expectedAbs, err := filepath.Abs("catalog.yaml")
+	if err != nil {
+		t.Fatalf("filepath.Abs: %v", err)
+	}
+	want := "file://" + expectedAbs
+	if got != want {
+		t.Errorf("expected %q, got %q", want, got)
+	}
+}
+
+func TestCopyNonTemplateFile(t *testing.T) {
 	tests := []struct {
 		name            string
 		inputContent    string
@@ -107,7 +137,7 @@ func TestCopyNonTemplateFile(t *testing.T) {
 				Organization: tc.organization,
 			}
 
-			err := copyNonTemplateFile(data, srcPath, "testfile.yaml", outDir, logger)
+			err := copyNonTemplateFile(data, srcPath, "testfile.yaml", outDir)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -125,7 +155,6 @@ func TestCopyNonTemplateFile(t *testing.T) {
 }
 
 func TestCopyNonTemplateFilePreservesMode(t *testing.T) {
-	logger := hclog.NewNullLogger()
 	srcDir := t.TempDir()
 	outDir := t.TempDir()
 
@@ -135,7 +164,7 @@ func TestCopyNonTemplateFilePreservesMode(t *testing.T) {
 	}
 
 	data := CatalogData{ServiceName: "svc", Organization: "org"}
-	err := copyNonTemplateFile(data, srcPath, "script.sh", outDir, logger)
+	err := copyNonTemplateFile(data, srcPath, "script.sh", outDir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -151,12 +180,59 @@ func TestCopyNonTemplateFilePreservesMode(t *testing.T) {
 }
 
 func TestCopyNonTemplateFileMissingSource(t *testing.T) {
-	logger := hclog.NewNullLogger()
 	outDir := t.TempDir()
 
 	data := CatalogData{ServiceName: "svc", Organization: "org"}
-	err := copyNonTemplateFile(data, "/nonexistent/file.yaml", "file.yaml", outDir, logger)
+	err := copyNonTemplateFile(data, "/nonexistent/file.yaml", "file.yaml", outDir)
 	if err == nil {
 		t.Fatal("expected error for missing source file, got nil")
+	}
+}
+
+// TestGeneratePlugin_BadUsage verifies that each missing required flag
+// produces the BadUsage exit code (4), matching the contract used by `pvtr run`.
+func TestGeneratePlugin_BadUsage(t *testing.T) {
+	tests := []struct {
+		name         string
+		sourcePath   string
+		serviceName  string
+		organization string
+	}{
+		{
+			name: "missing source-path",
+		},
+		{
+			name:       "missing service-name",
+			sourcePath: "any.yaml",
+		},
+		{
+			name:        "missing organization",
+			sourcePath:  "any.yaml",
+			serviceName: "svc",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			viper.Reset()
+			t.Cleanup(viper.Reset)
+
+			if tc.sourcePath != "" {
+				viper.Set("source-path", tc.sourcePath)
+			}
+			if tc.serviceName != "" {
+				viper.Set("service-name", tc.serviceName)
+			}
+			if tc.organization != "" {
+				viper.Set("organization", tc.organization)
+			}
+			viper.Set("local-templates", t.TempDir())
+			viper.Set("output-dir", t.TempDir())
+
+			got := GeneratePlugin(hclog.NewNullLogger())
+			if got != BadUsage {
+				t.Errorf("expected BadUsage (%d), got %d", BadUsage, got)
+			}
+		})
 	}
 }
