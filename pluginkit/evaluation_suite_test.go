@@ -7,6 +7,56 @@ import (
 	"github.com/gemaraproj/go-gemara"
 )
 
+func BenchmarkEvaluate_Passing(b *testing.B) {
+	cfg := setBasicConfig()
+	steps := createPassingStepsMap()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		suite := &EvaluationSuite{
+			Name:    "bench",
+			catalog: getTestCatalogWithRequirements(),
+			steps:   steps,
+			config:  cfg,
+		}
+		b.StartTimer()
+		if err := suite.Evaluate("bench-service"); err != nil {
+			b.Fatalf("Evaluate failed: %v", err)
+		}
+	}
+}
+
+func BenchmarkSetupEvalLog(b *testing.B) {
+	suite := &EvaluationSuite{
+		catalog:   getTestCatalogWithRequirements(),
+		CatalogId: "CCC.ObjStor",
+		config:    setBasicConfig(),
+	}
+	steps := createPassingStepsMap()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := suite.setupEvalLog(steps)
+		if err != nil {
+			b.Fatalf("setupEvalLog failed: %v", err)
+		}
+	}
+}
+
+func BenchmarkGetAssessmentRequirements(b *testing.B) {
+	suite := &EvaluationSuite{
+		catalog: getTestCatalogWithRequirements(),
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := suite.GetAssessmentRequirements()
+		if err != nil {
+			b.Fatalf("GetAssessmentRequirements failed: %v", err)
+		}
+	}
+}
+
 func TestEvaluate(t *testing.T) {
 	testData := getTestEvaluateData()
 
@@ -31,9 +81,8 @@ func TestEvaluate(t *testing.T) {
 			} else if err != nil && test.expectedEvalSuiteError == nil {
 				// For now, we expect an error about missing assessment requirements when catalog is empty
 				// This is expected behavior with the current implementation
-				expectedMessage := NO_ASSESSMENT_STEPS_PROVIDED("")
-				if !strings.Contains(err.Error(), expectedMessage.Error()) {
-					t.Errorf("Expected error containing '%s', but got '%v'", expectedMessage, err)
+				if !strings.Contains(err.Error(), "assessment steps not provided") {
+					t.Errorf("Expected error mentioning 'assessment steps not provided', but got '%v'", err)
 				}
 			} else if err == nil && test.expectedEvalSuiteError != nil {
 				t.Errorf("Expected error '%s', but got no error", test.expectedEvalSuiteError)

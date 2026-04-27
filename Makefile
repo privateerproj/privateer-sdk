@@ -20,3 +20,7 @@ test-cov:
 	@echo "Running tests and generating coverage output"
 	@go test ./... -coverprofile coverage.out -covermode count
 	@echo "Current test coverage : $(shell go tool cover -func=coverage.out | grep total | grep -Eo '[0-9]+\.[0-9]+') %"
+
+bench:
+	@echo "  >  Running benchmarks ..."
+	go test -bench=. -benchmem -run=^$$ ./...

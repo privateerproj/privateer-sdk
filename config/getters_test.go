@@ -256,3 +256,57 @@ func TestGetServicePlugin(t *testing.T) {
 		t.Errorf("GetServicePlugin(\"nonexistent\") = %q, want empty", got)
 	}
 }
+
+func BenchmarkGetVar_Hit(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_, _ = testConfig.GetVar("stringKey")
+	}
+}
+
+func BenchmarkGetVar_Miss(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_, _ = testConfig.GetVar("doesNotExist")
+	}
+}
+
+func BenchmarkGetString(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_ = testConfig.GetString("stringKey")
+	}
+}
+
+func BenchmarkGetInt(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_ = testConfig.GetInt("intKey")
+	}
+}
+
+func BenchmarkGetBool(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_ = testConfig.GetBool("boolKey")
+	}
+}
+
+func BenchmarkGetMap(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_ = testConfig.GetMap("map[string]interface {}Key")
+	}
+}
+
+func BenchmarkGetStringSlice(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_ = testConfig.GetStringSlice("[]stringKey")
+	}
+}
+
+func BenchmarkGetIntSlice(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_ = testConfig.GetIntSlice("[]intKey")
+	}
+}
+
+func BenchmarkGetString_TypeMismatch(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_ = testConfig.GetString("intKey")
+	}
+}

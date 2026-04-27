@@ -489,6 +489,59 @@ func createTestEvalLog() gemara.EvaluationLog {
 	}
 }
 
+func BenchmarkGetImportedControls(b *testing.B) {
+	primary := &gemara.ControlCatalog{
+		Metadata: gemara.Metadata{Id: "primary"},
+		Controls: []gemara.Control{
+			{Id: "P-1"},
+		},
+		Imports: []gemara.MultiEntryMapping{
+			{
+				ReferenceId: "imported",
+				Entries: []gemara.ArtifactMapping{
+					{ReferenceId: "I-1"},
+					{ReferenceId: "I-2"},
+				},
+			},
+		},
+	}
+	imported := &gemara.ControlCatalog{
+		Metadata: gemara.Metadata{Id: "imported"},
+		Controls: []gemara.Control{
+			{Id: "I-1"},
+			{Id: "I-2"},
+			{Id: "I-3"},
+		},
+	}
+	refs := map[string]*gemara.ControlCatalog{
+		"primary":  primary,
+		"imported": imported,
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = getImportedControls(primary, refs)
+	}
+}
+
+func BenchmarkAddPossibleControls(b *testing.B) {
+	catalog := getTestCatalogWithRequirements()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		orchestrator := &EvaluationOrchestrator{}
+		orchestrator.addPossibleControls(catalog)
+	}
+}
+
+func BenchmarkGetPluginCatalogs(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_, err := getPluginCatalogs("catalog-test-data", testDataFS)
+		if err != nil {
+			b.Fatalf("getPluginCatalogs failed: %v", err)
+		}
+	}
+}
+
 func TestEvaluationOrchestrator_WriteResults_SARIF(t *testing.T) {
 	t.Run("SARIF output with PluginUri", func(t *testing.T) {
 		tmpDir, err := os.MkdirTemp("", "test-sarif-")
