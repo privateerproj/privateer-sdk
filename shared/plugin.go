@@ -2,23 +2,38 @@
 package shared
 
 import (
+	"errors"
 	"net/rpc"
 
 	hcplugin "github.com/hashicorp/go-plugin"
 )
 
-// Pluginer is the interface that we're exposing as a plugin.
+// Pluginer is the interface that we're exposing as a plugin. Start returns a
+// privateer exit code (TestPass, TestFail, InternalError, BadUsage) and an
+// optional error for diagnostic logging. Typed errors do not survive net/rpc,
+// so classification must happen on the plugin side — see pluginkit.ExitCodeFor.
 type Pluginer interface {
-	Start() error
+	Start() (int, error)
+}
+
+type StartResponse struct {
+	ExitCode int
+	Err      string
 }
 
 // PluginRPC is an implementation that talks over RPC.
 type PluginRPC struct{ client *rpc.Client }
 
 // Start is a wrapper for interface implementation of Start.
-func (g *PluginRPC) Start() error {
-	var err error
-	return g.client.Call("Plugin.Start", new(interface{}), &err)
+func (g *PluginRPC) Start() (int, error) {
+	var resp StartResponse
+	if err := g.client.Call("Plugin.Start", new(interface{}), &resp); err != nil {
+		return InternalError, err
+	}
+	if resp.Err != "" {
+		return resp.ExitCode, errors.New(resp.Err)
+	}
+	return resp.ExitCode, nil
 }
 
 // PluginRPCServer is the RPC server that PluginRPC talks to, conforming to
@@ -29,9 +44,13 @@ type PluginRPCServer struct {
 }
 
 // Start is a wrapper for interface implementation.
-func (s *PluginRPCServer) Start(args interface{}, resp *error) error {
-	*resp = s.Impl.Start()
-	return *resp
+func (s *PluginRPCServer) Start(args interface{}, resp *StartResponse) error {
+	code, err := s.Impl.Start()
+	resp.ExitCode = code
+	if err != nil {
+		resp.Err = err.Error()
+	}
+	return nil
 }
 
 // Plugin is the implementation of plugin.Plugin so we can serve/consume this.

@@ -12,15 +12,31 @@ import (
 	"github.com/privateerproj/privateer-sdk/shared"
 )
 
-// Exit codes for plugin execution results.
+// Aliases for the canonical values in shared/ — kept here so command.TestPass
+// etc. stay valid for existing callers.
 const (
-	TestPass      = iota // TestPass indicates all tests passed.
-	TestFail             // TestFail indicates one or more tests failed.
-	Aborted              // Aborted indicates execution was aborted.
-	InternalError        // InternalError indicates an internal error occurred.
-	BadUsage             // BadUsage indicates incorrect command usage.
-	NoTests              // NoTests indicates no tests were found to run.
+	TestPass      = shared.TestPass
+	TestFail      = shared.TestFail
+	Aborted       = shared.Aborted
+	InternalError = shared.InternalError
+	BadUsage      = shared.BadUsage
+	NoTests       = shared.NoTests
 )
+
+// Across multi-plugin runs the most severe outcome wins.
+var exitSeverity = map[int]int{
+	TestPass:      0,
+	TestFail:      1,
+	BadUsage:      2,
+	InternalError: 3,
+}
+
+func mergeExitCode(prev, next int) int {
+	if exitSeverity[next] > exitSeverity[prev] {
+		return next
+	}
+	return prev
+}
 
 // Run executes all plugins with handling for the command line.
 func Run(logger hclog.Logger, getPlugins func() []*PluginPkg) (exitCode int) {
@@ -64,12 +80,13 @@ func Run(logger hclog.Logger, getPlugins func() []*PluginPkg) (exitCode int) {
 				// Execute plugin
 				plugin := rawPlugin.(shared.Pluginer)
 				logger.Trace(fmt.Sprintf("Starting Plugin %v: %s", runCount, pluginPkg.Name))
-				response := plugin.Start()
+				pluginExitCode, response := plugin.Start()
 				if response != nil {
-					pluginPkg.Error = fmt.Errorf("tests failed in plugin %s: %v", serviceName, response)
-					exitCode = TestFail
-				} else {
-					pluginPkg.Successful = true
+					pluginPkg.Error = fmt.Errorf("plugin %s: %v", serviceName, response)
+				}
+				pluginPkg.Successful = pluginExitCode == TestPass
+				if !pluginPkg.Successful {
+					exitCode = mergeExitCode(exitCode, pluginExitCode)
 				}
 				pluginPkg.closeClient(serviceName, client, logger)
 			}
