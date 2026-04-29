@@ -19,7 +19,9 @@ import (
 var validNameSegment = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
 
 // GetInstallCmd returns the install command that can be added to a root command.
-func GetInstallCmd(writer Writer) *cobra.Command {
+// writerFn is called at command execution time, so the writer can be
+// initialized lazily (e.g. in a PersistentPreRun hook).
+func GetInstallCmd(writerFn func() Writer) *cobra.Command {
 	var localPath string
 
 	installCmd := &cobra.Command{
@@ -28,6 +30,7 @@ func GetInstallCmd(writer Writer) *cobra.Command {
 		Long:  "Install a vetted plugin from the registry, or use --local to install a plugin binary from a local path.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			writer := writerFn()
 			if localPath != "" {
 				return installLocal(writer, localPath)
 			}

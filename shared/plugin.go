@@ -16,7 +16,7 @@ type Pluginer interface {
 	Start() (int, error)
 }
 
-type startResponse struct {
+type StartResponse struct {
 	ExitCode int
 	Err      string
 }
@@ -26,7 +26,7 @@ type PluginRPC struct{ client *rpc.Client }
 
 // Start is a wrapper for interface implementation of Start.
 func (g *PluginRPC) Start() (int, error) {
-	var resp startResponse
+	var resp StartResponse
 	if err := g.client.Call("Plugin.Start", new(interface{}), &resp); err != nil {
 		return InternalError, err
 	}
@@ -44,7 +44,7 @@ type PluginRPCServer struct {
 }
 
 // Start is a wrapper for interface implementation.
-func (s *PluginRPCServer) Start(args interface{}, resp *startResponse) error {
+func (s *PluginRPCServer) Start(args interface{}, resp *StartResponse) error {
 	code, err := s.Impl.Start()
 	resp.ExitCode = code
 	if err != nil {
