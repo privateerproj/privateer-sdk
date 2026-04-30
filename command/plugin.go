@@ -18,8 +18,9 @@ type Plugin struct{}
 var ActiveEvaluationOrchestrator *pluginkit.EvaluationOrchestrator
 
 // Start will be called by Privateer via gRPC.
-func (p *Plugin) Start() error {
-	return ActiveEvaluationOrchestrator.Mobilize()
+func (p *Plugin) Start() (int, error) {
+	err := ActiveEvaluationOrchestrator.Mobilize()
+	return pluginkit.ExitCodeFor(ActiveEvaluationOrchestrator, err), err
 }
 
 // NewPluginCommands creates a new cobra command for the plugin with version and orchestrator support.

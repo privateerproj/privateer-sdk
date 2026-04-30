@@ -621,6 +621,47 @@ func TestSetupLoggingPluginCreatesFiles(t *testing.T) {
 	}
 }
 
+func BenchmarkNewConfig(b *testing.B) {
+	cfg := `
+services:
+  bench-service:
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: ["tlp_green"]
+    vars:
+      key: value
+`
+	viper.Reset()
+	viper.SetConfigType("yaml")
+	if err := viper.ReadConfig(bytes.NewBufferString(cfg)); err != nil {
+		b.Fatalf("error reading config: %v", err)
+	}
+	viper.Set("service", "bench-service")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = NewConfig([]string{"key"})
+	}
+}
+
+func BenchmarkSanitizeVars(b *testing.B) {
+	vars := map[string]interface{}{
+		"token":        "secret-token",
+		"password":     "my-password",
+		"api_key":      "abc123",
+		"AccessToken":  "xyz",
+		"username":     "testuser",
+		"region":       "us-west-2",
+		"endpoint":     "https://example.com",
+		"clientsecret": "shh",
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = sanitizeVars(vars)
+	}
+}
+
 func TestSetupLoggingFilesAndDirectories(t *testing.T) {
 	tmpDir := path.Join(os.TempDir(), "privateer-test")
 	defer func() {

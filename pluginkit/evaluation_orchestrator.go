@@ -136,10 +136,10 @@ func (v *EvaluationOrchestrator) addEvaluationSuite(catalog *gemara.ControlCatal
 		config:    v.config,
 	}
 
+	// Leave suite.loader nil when no override is given so loadPayload
+	// reuses the orchestrator payload instead of re-running v.loader per suite.
 	if loader != nil {
 		suite.loader = loader
-	} else {
-		suite.loader = v.loader
 	}
 	v.possibleSuites = append(v.possibleSuites, &suite)
 }
@@ -323,15 +323,13 @@ func (v *EvaluationOrchestrator) writeResultsToFile(serviceName string, result [
 
 // loadPayload loads the payload data to be referenced in assessments.
 func (v *EvaluationOrchestrator) loadPayload() (err error) {
-	payload := new(interface{})
 	if v.loader != nil {
 		data, err := v.loader(v.config)
 		if err != nil {
 			return err
 		}
-		payload = &data
+		v.Payload = data
 	}
-	v.Payload = payload
 	for _, suite := range v.possibleSuites {
 		if suite.loader != nil {
 			data, err := suite.loader(v.config)
