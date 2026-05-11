@@ -8,8 +8,12 @@ on:
 jobs:
   release:
     permissions:
-      contents: write       # Create release and push tags
-      pull-requests: read   # Read PR labels for release-drafter
+      contents: write       # create_release, publish_release: tag + release
+      pull-requests: read   # create_release: read PR labels for release-drafter
+      id-token: write       # release_goreleaser, release_image: attestation OIDC
+      attestations: write   # release_goreleaser, release_image: build provenance
+      packages: write       # release_image: push container image (gated, but validated)
+      discussions: write    # release_discussion: announcement (gated, defensive)
     uses: github-community-projects/ospo-reusable-workflows/.github/workflows/release.yaml@e92cb6053ace495fe40a5f185988557afcdcecbc # v1.0.1
     with:
       publish: true
