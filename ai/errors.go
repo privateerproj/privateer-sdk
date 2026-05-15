@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -98,7 +99,7 @@ func classifyTransportError(provider Provider, err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, contextDeadlineExceeded) {
+	if errors.Is(err, context.DeadlineExceeded) {
 		return &Error{Kind: ErrorKindTimeout, Provider: provider, Err: err, Message: err.Error()}
 	}
 
@@ -109,8 +110,3 @@ func classifyTransportError(provider Provider, err error) error {
 
 	return &Error{Kind: ErrorKindProviderError, Provider: provider, Err: err, Message: err.Error()}
 }
-
-// contextDeadlineExceeded is a local marker error used by
-// classifyTransportError to recognize context-deadline failures via
-// errors.Is without importing context here directly.
-var contextDeadlineExceeded = errors.New("context deadline exceeded")
