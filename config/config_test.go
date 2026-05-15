@@ -529,6 +529,7 @@ func TestSanitizeVars(t *testing.T) {
 		{"exact secret", "secret", "val", "REDACTED"},
 		{"exact apikey", "apikey", "val", "REDACTED"},
 		{"exact api_key", "api_key", "val", "REDACTED"},
+		{"exact ai_api_key", "ai_api_key", "val", "REDACTED"},
 
 		// Compound keys (new behavior)
 		{"compound clientsecret", "clientsecret", "val", "REDACTED"},
