@@ -329,7 +329,7 @@ services:
 		runningServiceName:   "my-service-1",
 		runningApplicability: []string{"tlp_green"},
 		requiredVars:         []string{},
-		expectedError:        "bad output type, allowed output types are json or yaml",
+		expectedError:        "bad output type, allowed output types are json, yaml, sarif, or gemara",
 		config: `
 output: bad
 services:
@@ -665,11 +665,11 @@ func BenchmarkSanitizeVars(b *testing.B) {
 func TestSetupLoggingFilesAndDirectories(t *testing.T) {
 	tmpDir := path.Join(os.TempDir(), "privateer-test")
 	defer func() {
-	     err := os.RemoveAll(tmpDir)
-	     if err != nil {
-	         t.Error("Failed to clean up tmpDir")
-	     }
-	 }()
+		err := os.RemoveAll(tmpDir)
+		if err != nil {
+			t.Error("Failed to clean up tmpDir")
+		}
+	}()
 
 	logFilePath := path.Join(tmpDir, "test", "service.log")
 
