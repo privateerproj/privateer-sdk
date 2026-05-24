@@ -18,12 +18,12 @@ import (
 
 // EvaluationOrchestrator gets the plugin in position to execute the specified evaluation suites.
 type EvaluationOrchestrator struct {
-	ServiceName       string             `yaml:"service-name"`
-	PluginName        string             `yaml:"plugin-name"`
-	PluginUri         string             `yaml:"plugin-uri"`
-	PluginVersion     string             `yaml:"plugin-version"`
-	Payload           any                `yaml:"payload,omitempty"`
-	Evaluation_Suites []*EvaluationSuite `yaml:"evaluation-suites"` // EvaluationSuite is a map of evaluations to their catalog names
+	ServiceName       string             `json:"service-name" yaml:"service-name"`
+	PluginName        string             `json:"plugin-name" yaml:"plugin-name"`
+	PluginUri         string             `json:"plugin-uri" yaml:"plugin-uri"`
+	PluginVersion     string             `json:"plugin-version" yaml:"plugin-version"`
+	Payload           any                `json:"payload,omitempty" yaml:"payload,omitempty"`
+	Evaluation_Suites []*EvaluationSuite `json:"evaluation-suites" yaml:"evaluation-suites"` // EvaluationSuite is a map of evaluations to their catalog names
 
 	possibleSuites    []*EvaluationSuite
 	possibleControls  map[string][]*gemara.Control
@@ -242,6 +242,16 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 // WriteResults writes the evaluation results to files in the configured output format.
 func (v *EvaluationOrchestrator) WriteResults() error {
 
+	// The payload is typically very large and is only useful for tracing.
+	// Omit it from results unless the user explicitly opts in via --include-payload.
+	// The omitempty struct tags then drop the field entirely from yaml/json.
+	if !v.config.IncludePayload {
+		v.Payload = nil
+		for _, suite := range v.Evaluation_Suites {
+			suite.payload = nil
+		}
+	}
+
 	var err error
 	var result []byte
 	switch v.config.Output {
@@ -251,6 +261,13 @@ func (v *EvaluationOrchestrator) WriteResults() error {
 	case "yaml":
 		result, err = yaml.Marshal(v)
 		err = errMod(err, "wr20")
+	case "gemara":
+		// Emit gemara-native EvaluationLog objects so results are directly
+		// consumable by the wider gemara ecosystem. One log per suite is
+		// produced; unlike the default formats this does not wrap them in
+		// Privateer's orchestrator envelope.
+		result, err = v.marshalGemara()
+		err = errMod(err, "wr25")
 	case "sarif":
 		// Use "README.md" as artifactURI for repository-level assessments
 		// GitHub Code Scanning requires PhysicalLocation, and "README.md" is a common file path
@@ -264,7 +281,7 @@ func (v *EvaluationOrchestrator) WriteResults() error {
 			result = append(result, sarifBytes...)
 		}
 	default:
-		err = fmt.Errorf("output type '%s' is not supported. Supported types are 'json', 'yaml', and 'sarif'", v.config.Output)
+		err = fmt.Errorf("output type '%s' is not supported. Supported types are 'json', 'yaml', 'sarif', and 'gemara'", v.config.Output)
 		err = errMod(err, "wr30")
 	}
 	if err != nil {
@@ -278,7 +295,27 @@ func (v *EvaluationOrchestrator) WriteResults() error {
 	return nil
 }
 
+// marshalGemara serializes the run as gemara-native EvaluationLog objects.
+// Each evaluation suite contributes one EvaluationLog. A single suite is
+// emitted as a lone document; multiple suites are emitted as a list so the
+// output remains valid for downstream gemara consumers.
+func (v *EvaluationOrchestrator) marshalGemara() ([]byte, error) {
+	logs := make([]gemara.EvaluationLog, 0, len(v.Evaluation_Suites))
+	for _, suite := range v.Evaluation_Suites {
+		logs = append(logs, suite.EvaluationLog)
+	}
+	if len(logs) == 1 {
+		return yaml.Marshal(logs[0])
+	}
+	return yaml.Marshal(logs)
+}
+
 func (v *EvaluationOrchestrator) writeResultsToFile(serviceName string, result []byte, extension string) error {
+	// gemara output is YAML-encoded; write it with a .yaml extension
+	// rather than a literal ".gemara" so tooling recognizes the format.
+	if extension == "gemara" {
+		extension = "yaml"
+	}
 	if !strings.Contains(extension, ".") {
 		extension = fmt.Sprintf(".%s", extension)
 	}
