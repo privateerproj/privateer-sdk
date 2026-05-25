@@ -3,6 +3,7 @@ package command
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -117,11 +118,13 @@ func TestReadConfig_SearchesHomeDotPrivateer(t *testing.T) {
 		t.Fatalf("failed to write config: %v", err)
 	}
 
-	// Override HOME so UserHomeDir returns our tmpDir
-	origHome := os.Getenv("HOME")
-	defer func() { _ = os.Setenv("HOME", origHome) }()
-	if err := os.Setenv("HOME", tmpDir); err != nil {
-		t.Fatalf("failed to set HOME: %v", err)
+	// Override the home directory so UserHomeDir returns our tmpDir.
+	// UserHomeDir reads HOME on Unix but USERPROFILE on Windows, so set
+	// whichever applies to this platform. t.Setenv restores it automatically.
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", tmpDir)
+	} else {
+		t.Setenv("HOME", tmpDir)
 	}
 
 	// Chdir to a dir with no config.yml so cwd search misses
@@ -181,11 +184,11 @@ func TestReadConfig_CwdTakesPrecedenceOverHome(t *testing.T) {
 		t.Fatalf("failed to write cwd config: %v", err)
 	}
 
-	// Override HOME
-	origHome := os.Getenv("HOME")
-	defer func() { _ = os.Setenv("HOME", origHome) }()
-	if err := os.Setenv("HOME", tmpDir); err != nil {
-		t.Fatalf("failed to set HOME: %v", err)
+	// Override the home directory (USERPROFILE on Windows, HOME elsewhere)
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", tmpDir)
+	} else {
+		t.Setenv("HOME", tmpDir)
 	}
 
 	// Chdir to cwd with config
