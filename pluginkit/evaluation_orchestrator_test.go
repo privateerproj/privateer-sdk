@@ -3,10 +3,12 @@ package pluginkit
 import (
 	"embed"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/gemaraproj/go-gemara"
+	"github.com/goccy/go-yaml"
 	"github.com/privateerproj/privateer-sdk/config"
 )
 
@@ -612,6 +614,179 @@ func TestEvaluationOrchestrator_WriteResults_SARIF(t *testing.T) {
 		err = orchestrator.WriteResults()
 		if err != nil {
 			t.Errorf("WriteResults failed: %v", err)
+		}
+	})
+}
+
+// writeResultsFixture builds a minimal orchestrator with one suite, writes
+// results to a temp directory, and returns the path to the produced file.
+// It centralizes the boilerplate shared by the gemara and IncludePayload
+// tests below.
+func writeResultsFixture(t *testing.T, output string, includePayload bool, payload any) string {
+	t.Helper()
+	tmpDir, err := os.MkdirTemp("", "test-writeresults-")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(tmpDir) })
+
+	cfg := setBasicConfig()
+	cfg.Output = output
+	cfg.Write = true
+	cfg.WriteDirectory = tmpDir
+	cfg.IncludePayload = includePayload
+
+	orchestrator := &EvaluationOrchestrator{
+		ServiceName:   "test-service",
+		PluginName:    "test-plugin",
+		PluginUri:     "https://github.com/test/repo",
+		PluginVersion: "1.0.0",
+		Payload:       payload,
+		config:        cfg,
+	}
+	orchestrator.Evaluation_Suites = []*EvaluationSuite{
+		{
+			CatalogId:     "test-catalog",
+			EvaluationLog: createTestEvalLog(),
+			config:        cfg,
+		},
+	}
+
+	if err := orchestrator.WriteResults(); err != nil {
+		t.Fatalf("WriteResults failed: %v", err)
+	}
+
+	// gemara output is written with a .yaml extension; everything else uses the
+	// configured output name directly.
+	ext := output
+	if ext == "gemara" {
+		ext = "yaml"
+	}
+	return filepath.Join(tmpDir, "test-service", "test-service."+ext)
+}
+
+func TestEvaluationOrchestrator_WriteResults_Gemara(t *testing.T) {
+	t.Run("emits a list of EvaluationLog objects", func(t *testing.T) {
+		resultPath := writeResultsFixture(t, "gemara", false, nil)
+
+		data, err := os.ReadFile(resultPath)
+		if err != nil {
+			t.Fatalf("expected gemara output file at %s: %v", resultPath, err)
+		}
+
+		// Always-list shape: downstream consumers can range over the result
+		// without first checking whether they got a mapping or a sequence.
+		var logs []gemara.EvaluationLog
+		if err := yaml.Unmarshal(data, &logs); err != nil {
+			t.Fatalf("gemara output is not a list of EvaluationLog: %v\noutput was:\n%s", err, data)
+		}
+		if len(logs) != 1 {
+			t.Errorf("expected 1 EvaluationLog (one suite), got %d", len(logs))
+		}
+
+		// The gemara branch must not wrap output in the orchestrator envelope.
+		if strings.Contains(string(data), "service-name") || strings.Contains(string(data), "plugin-name") {
+			t.Errorf("gemara output should not contain orchestrator envelope fields, got:\n%s", data)
+		}
+	})
+
+	t.Run("empty suite list still emits a list, not null", func(t *testing.T) {
+		tmpDir, err := os.MkdirTemp("", "test-writeresults-")
+		if err != nil {
+			t.Fatalf("temp dir: %v", err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(tmpDir) })
+
+		cfg := setBasicConfig()
+		cfg.Output = "gemara"
+		cfg.Write = true
+		cfg.WriteDirectory = tmpDir
+
+		orchestrator := &EvaluationOrchestrator{
+			ServiceName: "test-service",
+			PluginName:  "test-plugin",
+			config:      cfg,
+		}
+		if err := orchestrator.WriteResults(); err != nil {
+			t.Fatalf("WriteResults failed: %v", err)
+		}
+
+		data, err := os.ReadFile(filepath.Join(tmpDir, "test-service", "test-service.yaml"))
+		if err != nil {
+			t.Fatalf("read output: %v", err)
+		}
+		if strings.TrimSpace(string(data)) != "[]" {
+			t.Errorf("expected empty list output, got: %q", strings.TrimSpace(string(data)))
+		}
+	})
+}
+
+func TestEvaluationOrchestrator_WriteResults_IncludePayload(t *testing.T) {
+	type orchestratorOutput struct {
+		Payload any `yaml:"payload"`
+	}
+
+	largePayload := map[string]any{"trace": "details", "size": "large"}
+
+	t.Run("payload is omitted by default", func(t *testing.T) {
+		resultPath := writeResultsFixture(t, "yaml", false, largePayload)
+
+		data, err := os.ReadFile(resultPath)
+		if err != nil {
+			t.Fatalf("read output: %v", err)
+		}
+		if strings.Contains(string(data), "payload:") {
+			t.Errorf("payload should be omitted by default, but found 'payload:' in output:\n%s", data)
+		}
+	})
+
+	t.Run("payload is included when IncludePayload is true", func(t *testing.T) {
+		resultPath := writeResultsFixture(t, "yaml", true, largePayload)
+
+		data, err := os.ReadFile(resultPath)
+		if err != nil {
+			t.Fatalf("read output: %v", err)
+		}
+		var out orchestratorOutput
+		if err := yaml.Unmarshal(data, &out); err != nil {
+			t.Fatalf("unmarshal output: %v", err)
+		}
+		if out.Payload == nil {
+			t.Errorf("payload should be present when IncludePayload=true, got nil in output:\n%s", data)
+		}
+	})
+
+	t.Run("orchestrator Payload is restored after WriteResults", func(t *testing.T) {
+		// Verifies the snapshot-and-restore: calling WriteResults must not
+		// permanently mutate v.Payload, so repeated calls and post-write
+		// inspection behave consistently.
+		tmpDir, err := os.MkdirTemp("", "test-writeresults-")
+		if err != nil {
+			t.Fatalf("temp dir: %v", err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(tmpDir) })
+
+		cfg := setBasicConfig()
+		cfg.Output = "yaml"
+		cfg.Write = true
+		cfg.WriteDirectory = tmpDir
+		cfg.IncludePayload = false
+
+		orchestrator := &EvaluationOrchestrator{
+			ServiceName: "test-service",
+			PluginName:  "test-plugin",
+			Payload:     largePayload,
+			config:      cfg,
+		}
+		orchestrator.Evaluation_Suites = []*EvaluationSuite{
+			{CatalogId: "test-catalog", EvaluationLog: createTestEvalLog(), config: cfg},
+		}
+
+		if err := orchestrator.WriteResults(); err != nil {
+			t.Fatalf("WriteResults failed: %v", err)
+		}
+		if orchestrator.Payload == nil {
+			t.Errorf("WriteResults must not permanently null out Payload; second-call inspections would be wrong")
 		}
 	})
 }

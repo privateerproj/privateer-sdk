@@ -51,7 +51,7 @@ func NewConfig(requiredVars []string) Config {
 	serviceName := viper.GetString("service") // the currently running service; if empty, we're probably running from core
 
 	write := viper.GetBool("write")                                         // defaults to true, but allow the user to disable file writing
-	output := strings.ToLower(strings.TrimSpace(viper.GetString("output"))) // defaults to yaml, but can be set to json
+	output := strings.ToLower(strings.TrimSpace(viper.GetString("output"))) // defaults to yaml; can be set to json, sarif, or gemara
 	includePayload := viper.GetBool("include-payload")                      // defaults to false; payload is omitted unless explicitly requested
 
 	vars := viper.GetStringMap("vars")

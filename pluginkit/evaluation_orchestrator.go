@@ -242,14 +242,16 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 // WriteResults writes the evaluation results to files in the configured output format.
 func (v *EvaluationOrchestrator) WriteResults() error {
 
-	// The payload is typically very large and is only useful for tracing.
+	// The orchestrator's Payload is typically very large and is only useful for tracing.
 	// Omit it from results unless the user explicitly opts in via --include-payload.
-	// The omitempty struct tags then drop the field entirely from yaml/json.
+	// The omitempty struct tag on Payload then drops the field entirely from yaml/json.
+	// EvaluationSuite.payload is unexported and not serialized, so no per-suite cleanup is needed.
+	// Snapshot-and-restore keeps WriteResults idempotent: callers that invoke it more than once,
+	// or that inspect the orchestrator afterwards, still see the original payload.
 	if !v.config.IncludePayload {
+		saved := v.Payload
 		v.Payload = nil
-		for _, suite := range v.Evaluation_Suites {
-			suite.payload = nil
-		}
+		defer func() { v.Payload = saved }()
 	}
 
 	var err error
@@ -296,16 +298,12 @@ func (v *EvaluationOrchestrator) WriteResults() error {
 }
 
 // marshalGemara serializes the run as gemara-native EvaluationLog objects.
-// Each evaluation suite contributes one EvaluationLog. A single suite is
-// emitted as a lone document; multiple suites are emitted as a list so the
-// output remains valid for downstream gemara consumers.
+// Each evaluation suite contributes one EvaluationLog. Output is always a list,
+// even for a single suite, so downstream gemara consumers can parse uniformly.
 func (v *EvaluationOrchestrator) marshalGemara() ([]byte, error) {
 	logs := make([]gemara.EvaluationLog, 0, len(v.Evaluation_Suites))
 	for _, suite := range v.Evaluation_Suites {
 		logs = append(logs, suite.EvaluationLog)
-	}
-	if len(logs) == 1 {
-		return yaml.Marshal(logs[0])
 	}
 	return yaml.Marshal(logs)
 }
