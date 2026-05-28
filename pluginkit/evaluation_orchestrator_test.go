@@ -676,12 +676,23 @@ func TestEvaluationOrchestrator_WriteResults_Gemara(t *testing.T) {
 
 		// Always-list shape: downstream consumers can range over the result
 		// without first checking whether they got a mapping or a sequence.
-		var logs []gemara.EvaluationLog
+		// Unmarshal into a generic list rather than []gemara.EvaluationLog so
+		// the shape assertion does not depend on gemara's strict field
+		// validation (which rejects unset enum defaults in test fixtures).
+		var logs []map[string]any
 		if err := yaml.Unmarshal(data, &logs); err != nil {
-			t.Fatalf("gemara output is not a list of EvaluationLog: %v\noutput was:\n%s", err, data)
+			t.Fatalf("gemara output is not a list: %v\noutput was:\n%s", err, data)
 		}
 		if len(logs) != 1 {
 			t.Errorf("expected 1 EvaluationLog (one suite), got %d", len(logs))
+		}
+		// Verify it really is the gemara shape (has metadata + evaluations
+		// at the top level of each entry) rather than the orchestrator envelope.
+		if _, ok := logs[0]["metadata"]; !ok {
+			t.Errorf("expected gemara EvaluationLog shape with 'metadata' key, got: %v", logs[0])
+		}
+		if _, ok := logs[0]["evaluations"]; !ok {
+			t.Errorf("expected gemara EvaluationLog shape with 'evaluations' key, got: %v", logs[0])
 		}
 
 		// The gemara branch must not wrap output in the orchestrator envelope.
@@ -715,6 +726,8 @@ func TestEvaluationOrchestrator_WriteResults_Gemara(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read output: %v", err)
 		}
+		// Expect "[]" — a valid empty sequence — rather than null, so consumers
+		// don't have to special-case the no-suites condition.
 		if strings.TrimSpace(string(data)) != "[]" {
 			t.Errorf("expected empty list output, got: %q", strings.TrimSpace(string(data)))
 		}
