@@ -22,6 +22,7 @@ func TestConfigFromSDKConfig_DefaultsAndParsing(t *testing.T) {
 		"ai_provider": "openai",
 		"ai_model":    "gpt-4o-mini",
 		"ai_api_key":  "test-key",
+		"ai_base_url": "http://127.0.0.1:8000/v1",
 		"ai_timeout":  "45s",
 	}})
 	if err != nil {
@@ -32,6 +33,9 @@ func TestConfigFromSDKConfig_DefaultsAndParsing(t *testing.T) {
 	}
 	if aiConfig.Provider != ProviderOpenAI {
 		t.Fatalf("unexpected provider: %s", aiConfig.Provider)
+	}
+	if aiConfig.BaseURL != "http://127.0.0.1:8000/v1" {
+		t.Fatalf("unexpected base URL: %q", aiConfig.BaseURL)
 	}
 	if aiConfig.Timeout != 45*time.Second {
 		t.Fatalf("unexpected timeout: %s", aiConfig.Timeout)

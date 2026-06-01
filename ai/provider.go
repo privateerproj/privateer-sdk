@@ -139,13 +139,6 @@ func validateStructuredSchema(provider Provider, schema *Schema) error {
 			Message:  "structured output schema is required when schema is provided",
 		}
 	}
-	if strings.TrimSpace(schema.Name) == "" {
-		return &Error{
-			Kind:     ErrorKindUnsupportedConfig,
-			Provider: provider,
-			Message:  "structured output schema name is required",
-		}
-	}
 	return nil
 }
 

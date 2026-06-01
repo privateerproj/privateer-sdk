@@ -93,6 +93,13 @@ func (c *openAIClient) Analyze(ctx context.Context, prompt, content string, sche
 	if err := validateStructuredSchema(ProviderOpenAI, request.Schema); err != nil {
 		return nil, err
 	}
+	if request.Schema != nil && strings.TrimSpace(request.Schema.Name) == "" {
+		return nil, &Error{
+			Kind:     ErrorKindUnsupportedConfig,
+			Provider: ProviderOpenAI,
+			Message:  "structured output schema name is required",
+		}
+	}
 
 	reqBody := openAIChatCompletionsRequest{
 		Model: c.config.Model,

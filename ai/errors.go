@@ -99,7 +99,7 @@ func classifyTransportError(provider Provider, err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 		return &Error{Kind: ErrorKindTimeout, Provider: provider, Err: err, Message: err.Error()}
 	}
 

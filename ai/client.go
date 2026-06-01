@@ -1,9 +1,9 @@
 // Package ai defines the provider-neutral contract callers use to talk to
 // any AI backend. Concrete providers (e.g. OpenAI) are implemented as
 // adapters that satisfy the Client interface and are registered in
-// clientFactories. Callers should depend only on the types in this file so
-// that swapping or adding providers does not require changes outside the
-// ai package.
+// clientFactories. Callers should use only the shared types in this package,
+// so adding or changing the SDK's built-in providers does not require changes
+// in the code that calls the SDK.
 package ai
 
 import (
@@ -34,9 +34,9 @@ const (
 // adapter lives in its own file (e.g. openai.go) and is wired in below.
 type clientFactory func(Config) Client
 
-// clientFactories is the provider registry. Adding a new provider is a matter
-// of implementing a Client and registering its constructor here; no caller
-// code needs to change.
+// clientFactories is the internal registry for the providers that ship with
+// this SDK. To add another built-in provider, implement Client and register
+// its constructor here. Code that uses the SDK does not need to change.
 var clientFactories = map[Provider]clientFactory{
 	ProviderOpenAI: func(config Config) Client {
 		return newOpenAIClient(config)
@@ -160,10 +160,10 @@ type ResponseMetadata struct {
 	// audit trails, cross-system debugging). Adapters prefer the HTTP
 	// response header when available and fall back to a body field.
 	RequestID string
-	// FinishReason is the provider's reason for ending generation
-	// (e.g. "stop", "length"). Lets callers detect truncation versus a
-	// natural stop and react accordingly (retry with more tokens, warn,
-	// etc.). Adapters pass it through verbatim.
+	// FinishReason is the provider's reason for ending generation.
+	// Adapters pass the provider's native value through unchanged, so callers
+	// should treat it as provider-specific rather than relying on one shared
+	// set of finish-reason strings across all providers.
 	FinishReason string
 }
 

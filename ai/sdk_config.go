@@ -22,7 +22,7 @@ func NewClientFromConfig(config sdkconfig.Config) (Client, error) {
 }
 
 // ConfigFromSDKConfig extracts AI settings from the SDK config vars
-// (ai_provider, ai_model, ai_api_key, ai_timeout, ai_max_tokens) into a
+// (ai_provider, ai_model, ai_api_key, ai_base_url, ai_timeout, ai_max_tokens) into a
 // provider-neutral Config. The configured return value is false only
 // when none of the ai_* keys are set, letting callers distinguish
 // "intentionally disabled" from "misconfigured" (which is returned as a
@@ -31,10 +31,11 @@ func ConfigFromSDKConfig(config sdkconfig.Config) (Config, bool, error) {
 	provider := Provider(config.GetString("ai_provider"))
 	model := config.GetString("ai_model")
 	apiKey := config.GetString("ai_api_key")
+	baseURL := config.GetString("ai_base_url")
 	timeoutText := config.GetString("ai_timeout")
 	maxTokens := config.GetInt("ai_max_tokens")
 
-	if provider == "" && model == "" && apiKey == "" && timeoutText == "" && maxTokens == 0 {
+	if provider == "" && model == "" && apiKey == "" && baseURL == "" && timeoutText == "" && maxTokens == 0 {
 		return Config{}, false, nil
 	}
 
@@ -42,6 +43,7 @@ func ConfigFromSDKConfig(config sdkconfig.Config) (Config, bool, error) {
 		Provider:  provider,
 		Model:     model,
 		APIKey:    apiKey,
+		BaseURL:   baseURL,
 		MaxTokens: maxTokens,
 	}
 

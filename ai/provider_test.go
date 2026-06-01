@@ -59,8 +59,8 @@ func TestValidateStructuredSchema(t *testing.T) {
 	if err := validateStructuredSchema(ProviderOpenAI, &Schema{Name: "schema-without-body"}); err == nil {
 		t.Fatal("expected missing schema body error")
 	}
-	if err := validateStructuredSchema(ProviderOpenAI, &Schema{Value: json.RawMessage(`{"type":"object"}`)}); err == nil {
-		t.Fatal("expected missing schema name error")
+	if err := validateStructuredSchema(ProviderOpenAI, &Schema{Value: json.RawMessage(`{"type":"object"}`)}); err != nil {
+		t.Fatalf("unexpected error for nameless schema: %v", err)
 	}
 	if err := validateStructuredSchema(ProviderOpenAI, &Schema{Name: "assessment_result", Value: json.RawMessage(`{"type":"object"}`)}); err != nil {
 		t.Fatalf("unexpected valid schema error: %v", err)
@@ -89,5 +89,23 @@ func TestParseStructuredOutput(t *testing.T) {
 	}
 	if !strings.Contains(aiErr.Error(), "openai structured response") {
 		t.Fatalf("unexpected error message: %s", aiErr.Error())
+	}
+}
+
+func TestClassifyTransportError_CanceledContextIsTimeout(t *testing.T) {
+	err := classifyTransportError(ProviderOpenAI, context.Canceled)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var aiErr *Error
+	if !errors.As(err, &aiErr) {
+		t.Fatalf("expected *Error, got %T", err)
+	}
+	if aiErr.Kind != ErrorKindTimeout {
+		t.Fatalf("unexpected error kind: %s", aiErr.Kind)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatal("expected wrapped context.Canceled")
 	}
 }

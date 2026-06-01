@@ -170,6 +170,36 @@ func TestOpenAIAnalyze_StructuredOutput(t *testing.T) {
 	}
 }
 
+func TestOpenAIAnalyze_RequiresSchemaName(t *testing.T) {
+	client, err := NewClient(Config{
+		Provider: ProviderOpenAI,
+		APIKey:   "test-key",
+		Model:    "gpt-4o-mini",
+		BaseURL:  "https://example.com",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	_, err = client.Analyze(context.Background(), "prompt", "content", &Schema{
+		Value: json.RawMessage(`{"type":"object"}`),
+	})
+	if err == nil {
+		t.Fatal("expected missing schema name error")
+	}
+
+	var aiErr *Error
+	if !errors.As(err, &aiErr) {
+		t.Fatalf("expected *Error, got %T", err)
+	}
+	if aiErr.Kind != ErrorKindUnsupportedConfig {
+		t.Fatalf("unexpected error kind: %s", aiErr.Kind)
+	}
+	if aiErr.Message != "structured output schema name is required" {
+		t.Fatalf("unexpected error message: %s", aiErr.Message)
+	}
+}
+
 func TestOpenAIAnalyze_HTTPErrorKinds(t *testing.T) {
 	tests := []struct {
 		name       string
