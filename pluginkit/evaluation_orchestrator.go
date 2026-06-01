@@ -271,12 +271,9 @@ func (v *EvaluationOrchestrator) WriteResults() error {
 		result, err = v.marshalGemara()
 		err = errMod(err, "wr25")
 	case "sarif":
-		// Use "README.md" as artifactURI for repository-level assessments
-		// GitHub Code Scanning requires PhysicalLocation, and "README.md" is a common file path
-		// that satisfies this requirement (as recommended in gemara's ToSARIF documentation)
 		for _, suite := range v.Evaluation_Suites {
-			evalConverter := gemaraconv.EvaluationLog(&suite.EvaluationLog)
-			sarifBytes, sarifErr := evalConverter.ToSARIF("", suite.catalog)
+			evalConverter := gemaraconv.EvaluationLog(suite.EvaluationLog)
+			sarifBytes, sarifErr := evalConverter.ToSARIF(gemaraconv.WithCatalog(suite.catalog))
 			if sarifErr != nil {
 				break
 			}

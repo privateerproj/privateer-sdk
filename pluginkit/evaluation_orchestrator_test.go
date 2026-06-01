@@ -2,6 +2,7 @@ package pluginkit
 
 import (
 	"embed"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -545,77 +546,98 @@ func BenchmarkGetPluginCatalogs(b *testing.B) {
 }
 
 func TestEvaluationOrchestrator_WriteResults_SARIF(t *testing.T) {
-	t.Run("SARIF output with PluginUri", func(t *testing.T) {
-		tmpDir, err := os.MkdirTemp("", "test-sarif-")
-		if err != nil {
-			t.Fatalf("Failed to create temp directory: %v", err)
-		}
-		defer func() {
-			_ = os.RemoveAll(tmpDir)
-		}()
+	tests := []struct {
+		name      string
+		pluginUri string
+		catalog   *gemara.ControlCatalog
+	}{
+		{name: "with PluginUri, no catalog", pluginUri: "https://github.com/test/repo"},
+		{name: "without PluginUri, no catalog", pluginUri: ""},
+		{name: "with catalog enrichment", pluginUri: "https://github.com/test/repo", catalog: getTestCatalogWithRequirements()},
+	}
 
-		cfg := setBasicConfig()
-		cfg.Output = "sarif"
-		cfg.Write = true
-		cfg.WriteDirectory = tmpDir
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir, err := os.MkdirTemp("", "test-sarif-")
+			if err != nil {
+				t.Fatalf("Failed to create temp directory: %v", err)
+			}
+			defer func() {
+				_ = os.RemoveAll(tmpDir)
+			}()
 
-		orchestrator := &EvaluationOrchestrator{
-			ServiceName:   "test-service",
-			PluginName:    "test-plugin",
-			PluginUri:     "https://github.com/test/repo",
-			PluginVersion: "1.0.0",
-			config:        cfg,
-		}
+			cfg := setBasicConfig()
+			cfg.Output = "sarif"
+			cfg.Write = true
+			cfg.WriteDirectory = tmpDir
 
-		suite := &EvaluationSuite{
-			CatalogId:     "test-catalog",
-			EvaluationLog: createTestEvalLog(),
-			config:        cfg,
-		}
+			orchestrator := &EvaluationOrchestrator{
+				ServiceName:   "test-service",
+				PluginName:    "test-plugin",
+				PluginUri:     tc.pluginUri,
+				PluginVersion: "1.0.0",
+				config:        cfg,
+			}
 
-		orchestrator.Evaluation_Suites = []*EvaluationSuite{suite}
+			suite := &EvaluationSuite{
+				CatalogId:     "test-catalog",
+				EvaluationLog: createTestEvalLog(),
+				catalog:       tc.catalog,
+				config:        cfg,
+			}
 
-		err = orchestrator.WriteResults()
-		if err != nil {
-			t.Errorf("WriteResults failed: %v", err)
-		}
-	})
+			orchestrator.Evaluation_Suites = []*EvaluationSuite{suite}
 
-	t.Run("SARIF output without PluginUri", func(t *testing.T) {
-		tmpDir, err := os.MkdirTemp("", "test-sarif-")
-		if err != nil {
-			t.Fatalf("Failed to create temp directory: %v", err)
-		}
-		defer func() {
-			_ = os.RemoveAll(tmpDir)
-		}()
+			if err := orchestrator.WriteResults(); err != nil {
+				t.Fatalf("WriteResults failed: %v", err)
+			}
 
-		cfg := setBasicConfig()
-		cfg.Output = "sarif"
-		cfg.Write = true
-		cfg.WriteDirectory = tmpDir
+			outPath := filepath.Join(tmpDir, "test-service", "test-service.sarif")
+			data, err := os.ReadFile(outPath)
+			if err != nil {
+				t.Fatalf("expected SARIF output at %s: %v", outPath, err)
+			}
+			if len(data) == 0 {
+				t.Fatal("SARIF output file is empty")
+			}
 
-		orchestrator := &EvaluationOrchestrator{
-			ServiceName:   "test-service",
-			PluginName:    "test-plugin",
-			PluginUri:     "",
-			PluginVersion: "1.0.0",
-			config:        cfg,
-		}
-
-		suite := &EvaluationSuite{
-			CatalogId:     "test-catalog",
-			EvaluationLog: createTestEvalLog(),
-			config:        cfg,
-		}
-
-		orchestrator.Evaluation_Suites = []*EvaluationSuite{suite}
-
-		err = orchestrator.WriteResults()
-		if err != nil {
-			t.Errorf("WriteResults failed: %v", err)
-		}
-	})
+			var report struct {
+				Schema  string `json:"$schema"`
+				Version string `json:"version"`
+				Runs    []struct {
+					Tool struct {
+						Driver struct {
+							Name           string `json:"name"`
+							InformationURI string `json:"informationUri"`
+							Version        string `json:"version"`
+							Rules          []struct {
+								ID string `json:"id"`
+							} `json:"rules"`
+						} `json:"driver"`
+					} `json:"tool"`
+				} `json:"runs"`
+			}
+			if err := json.Unmarshal(data, &report); err != nil {
+				t.Fatalf("SARIF output is not valid JSON: %v", err)
+			}
+			if report.Version != "2.1.0" {
+				t.Errorf("expected SARIF version 2.1.0, got %q", report.Version)
+			}
+			if !strings.Contains(report.Schema, "sarif-schema-2.1.0") {
+				t.Errorf("unexpected SARIF schema: %q", report.Schema)
+			}
+			if len(report.Runs) == 0 {
+				t.Fatal("expected at least one SARIF run")
+			}
+			driver := report.Runs[0].Tool.Driver
+			if driver.Name != "test-plugin" {
+				t.Errorf("expected driver name %q, got %q", "test-plugin", driver.Name)
+			}
+			if driver.InformationURI != "https://github.com/test/repo" {
+				t.Errorf("expected driver informationUri from EvaluationLog metadata, got %q", driver.InformationURI)
+			}
+		})
+	}
 }
 
 // writeResultsFixture builds a minimal orchestrator with one suite, writes
