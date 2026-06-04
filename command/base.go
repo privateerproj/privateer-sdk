@@ -36,6 +36,9 @@ func SetBase(cmd *cobra.Command) {
 	cmd.PersistentFlags().BoolP("write", "", true, "Keep all of the detailed result outputs in a file. Disabling does not disable log files")
 	_ = viper.BindPFlag("write", cmd.PersistentFlags().Lookup("write"))
 
+	cmd.PersistentFlags().Bool("dry-run-ai", false, "Log AI prompts and model settings without making real provider requests")
+	_ = viper.BindPFlag("dry-run-ai", cmd.PersistentFlags().Lookup("dry-run-ai"))
+
 	cmd.PersistentFlags().BoolP("help", "h", false, "Give me a heading! Help for the specified command")
 }
 

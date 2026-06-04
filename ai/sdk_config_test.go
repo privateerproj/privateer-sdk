@@ -1,10 +1,12 @@
 package ai
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	sdkconfig "github.com/privateerproj/privateer-sdk/config"
+	"github.com/spf13/viper"
 )
 
 func TestConfigFromSDKConfig_NotConfigured(t *testing.T) {
@@ -74,5 +76,165 @@ func TestNewClientFromConfig(t *testing.T) {
 	}
 	if _, ok := client.(*openAIClient); !ok {
 		t.Fatalf("expected *openAIClient, got %T", client)
+	}
+}
+
+func TestNewClientFromConfig_PartialLiveConfigErrors(t *testing.T) {
+	tests := []struct {
+		name        string
+		vars        map[string]interface{}
+		wantErrText string
+	}{
+		{
+			name: "provider only",
+			vars: map[string]interface{}{
+				"ai_provider": "openai",
+			},
+			wantErrText: "ai model is required",
+		},
+		{
+			name: "model only",
+			vars: map[string]interface{}{
+				"ai_model": "gpt-4o-mini",
+			},
+			wantErrText: "ai provider is required",
+		},
+		{
+			name: "provider and model without api key",
+			vars: map[string]interface{}{
+				"ai_provider": "openai",
+				"ai_model":    "gpt-4o-mini",
+			},
+			wantErrText: "ai api key is required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+			t.Cleanup(viper.Reset)
+
+			client, err := NewClientFromConfig(sdkconfig.Config{Vars: tt.vars})
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.wantErrText) {
+				t.Fatalf("error = %q, want substring %q", err.Error(), tt.wantErrText)
+			}
+			if client != nil {
+				t.Fatalf("expected nil client, got %T", client)
+			}
+		})
+	}
+}
+
+func TestConfigFromSDKConfig_DryRunViaConfig(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	aiConfig, configured, err := ConfigFromSDKConfig(sdkconfig.Config{Vars: map[string]interface{}{
+		"ai_provider": "openai",
+		"ai_model":    "gpt-4o-mini",
+		"ai_dry_run":  true,
+	}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !configured {
+		t.Fatal("expected configured result")
+	}
+	if !aiConfig.DryRun {
+		t.Fatal("expected DryRun to be true")
+	}
+}
+
+func TestConfigFromSDKConfig_DryRunViaCLIFlag(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.Set("dry-run-ai", true)
+
+	aiConfig, configured, err := ConfigFromSDKConfig(sdkconfig.Config{Vars: map[string]interface{}{
+		"ai_provider": "openai",
+		"ai_model":    "gpt-4o-mini",
+	}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !configured {
+		t.Fatal("expected configured result")
+	}
+	if !aiConfig.DryRun {
+		t.Fatal("expected DryRun to be true from CLI flag")
+	}
+}
+
+func TestNewClientFromConfig_DryRunSkipsAPIKey(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	client, err := NewClientFromConfig(sdkconfig.Config{Vars: map[string]interface{}{
+		"ai_provider": "openai",
+		"ai_model":    "gpt-4o-mini",
+		"ai_dry_run":  true,
+	}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := client.(*dryRunClient); !ok {
+		t.Fatalf("expected *dryRunClient, got %T", client)
+	}
+}
+
+func TestConfigFromSDKConfig_DryRunDefaultsFalse(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	aiConfig, configured, err := ConfigFromSDKConfig(sdkconfig.Config{Vars: map[string]interface{}{
+		"ai_provider": "openai",
+		"ai_model":    "gpt-4o-mini",
+		"ai_api_key":  "test-key",
+	}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !configured {
+		t.Fatal("expected configured result")
+	}
+	if aiConfig.DryRun {
+		t.Fatal("expected DryRun to default to false when neither config var nor flag is set")
+	}
+}
+
+func TestConfigFromSDKConfig_UsesViperFallback(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	viper.Set("ai_provider", "openai")
+	viper.Set("ai_model", "gpt-4o-mini")
+	viper.Set("ai_api_key", "test-key")
+	viper.Set("ai_timeout", "45s")
+	viper.Set("ai_max_tokens", 512)
+
+	aiConfig, configured, err := ConfigFromSDKConfig(sdkconfig.Config{Vars: map[string]interface{}{}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !configured {
+		t.Fatal("expected configured result from viper-backed settings")
+	}
+	if aiConfig.Provider != ProviderOpenAI {
+		t.Fatalf("unexpected provider: %s", aiConfig.Provider)
+	}
+	if aiConfig.Model != "gpt-4o-mini" {
+		t.Fatalf("unexpected model: %s", aiConfig.Model)
+	}
+	if aiConfig.APIKey != "test-key" {
+		t.Fatalf("unexpected api key: %s", aiConfig.APIKey)
+	}
+	if aiConfig.Timeout != 45*time.Second {
+		t.Fatalf("unexpected timeout: %s", aiConfig.Timeout)
+	}
+	if aiConfig.MaxTokens != 512 {
+		t.Fatalf("unexpected max tokens: %d", aiConfig.MaxTokens)
 	}
 }
