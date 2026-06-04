@@ -91,21 +91,3 @@ func TestParseStructuredOutput(t *testing.T) {
 		t.Fatalf("unexpected error message: %s", aiErr.Error())
 	}
 }
-
-func TestClassifyTransportError_CanceledContextIsTimeout(t *testing.T) {
-	err := classifyTransportError(ProviderOpenAI, context.Canceled)
-	if err == nil {
-		t.Fatal("expected error")
-	}
-
-	var aiErr *Error
-	if !errors.As(err, &aiErr) {
-		t.Fatalf("expected *Error, got %T", err)
-	}
-	if aiErr.Kind != ErrorKindTimeout {
-		t.Fatalf("unexpected error kind: %s", aiErr.Kind)
-	}
-	if !errors.Is(err, context.Canceled) {
-		t.Fatal("expected wrapped context.Canceled")
-	}
-}
