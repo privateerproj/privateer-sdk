@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -35,7 +36,7 @@ func TestFromURL_RawBinary(t *testing.T) {
 	}
 
 	info, _ := os.Stat(filepath.Join(destDir, "my-plugin"))
-	if info.Mode().Perm()&0100 == 0 {
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0100 == 0 {
 		t.Error("installed binary is not executable")
 	}
 }
