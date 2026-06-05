@@ -36,6 +36,12 @@ func SetBase(cmd *cobra.Command) {
 	cmd.PersistentFlags().BoolP("write", "", true, "Keep all of the detailed result outputs in a file. Disabling does not disable log files")
 	_ = viper.BindPFlag("write", cmd.PersistentFlags().Lookup("write"))
 
+	cmd.PersistentFlags().StringP("output", "o", "yaml", "Output format for results: yaml, json, sarif, or gemara")
+	_ = viper.BindPFlag("output", cmd.PersistentFlags().Lookup("output"))
+
+	cmd.PersistentFlags().BoolP("include-payload", "", false, "Include the raw evaluated payload in results output (large; useful for tracing)")
+	_ = viper.BindPFlag("include-payload", cmd.PersistentFlags().Lookup("include-payload"))
+
 	cmd.PersistentFlags().BoolP("help", "h", false, "Give me a heading! Help for the specified command")
 }
 

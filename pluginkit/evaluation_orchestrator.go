@@ -18,12 +18,12 @@ import (
 
 // EvaluationOrchestrator gets the plugin in position to execute the specified evaluation suites.
 type EvaluationOrchestrator struct {
-	ServiceName       string             `yaml:"service-name"`
-	PluginName        string             `yaml:"plugin-name"`
-	PluginUri         string             `yaml:"plugin-uri"`
-	PluginVersion     string             `yaml:"plugin-version"`
-	Payload           any                `yaml:"payload,omitempty"`
-	Evaluation_Suites []*EvaluationSuite `yaml:"evaluation-suites"` // EvaluationSuite is a map of evaluations to their catalog names
+	ServiceName       string             `json:"service-name" yaml:"service-name"`
+	PluginName        string             `json:"plugin-name" yaml:"plugin-name"`
+	PluginUri         string             `json:"plugin-uri" yaml:"plugin-uri"`
+	PluginVersion     string             `json:"plugin-version" yaml:"plugin-version"`
+	Payload           any                `json:"payload,omitempty" yaml:"payload,omitempty"`
+	Evaluation_Suites []*EvaluationSuite `json:"evaluation-suites" yaml:"evaluation-suites"` // EvaluationSuite is a map of evaluations to their catalog names
 
 	possibleSuites    []*EvaluationSuite
 	possibleControls  map[string][]*gemara.Control
@@ -242,6 +242,18 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 // WriteResults writes the evaluation results to files in the configured output format.
 func (v *EvaluationOrchestrator) WriteResults() error {
 
+	// The orchestrator's Payload is typically very large and is only useful for tracing.
+	// Omit it from results unless the user explicitly opts in via --include-payload.
+	// The omitempty struct tag on Payload then drops the field entirely from yaml/json.
+	// EvaluationSuite.payload is unexported and not serialized, so no per-suite cleanup is needed.
+	// Snapshot-and-restore keeps WriteResults idempotent: callers that invoke it more than once,
+	// or that inspect the orchestrator afterwards, still see the original payload.
+	if !v.config.IncludePayload {
+		saved := v.Payload
+		v.Payload = nil
+		defer func() { v.Payload = saved }()
+	}
+
 	var err error
 	var result []byte
 	switch v.config.Output {
@@ -251,20 +263,24 @@ func (v *EvaluationOrchestrator) WriteResults() error {
 	case "yaml":
 		result, err = yaml.Marshal(v)
 		err = errMod(err, "wr20")
+	case "gemara":
+		// Emit gemara-native EvaluationLog objects so results are directly
+		// consumable by the wider gemara ecosystem. One log per suite is
+		// produced; unlike the default formats this does not wrap them in
+		// Privateer's orchestrator envelope.
+		result, err = v.marshalGemara()
+		err = errMod(err, "wr25")
 	case "sarif":
-		// Use "README.md" as artifactURI for repository-level assessments
-		// GitHub Code Scanning requires PhysicalLocation, and "README.md" is a common file path
-		// that satisfies this requirement (as recommended in gemara's ToSARIF documentation)
 		for _, suite := range v.Evaluation_Suites {
-			evalConverter := gemaraconv.EvaluationLog(&suite.EvaluationLog)
-			sarifBytes, sarifErr := evalConverter.ToSARIF("", suite.catalog)
+			evalConverter := gemaraconv.EvaluationLog(suite.EvaluationLog)
+			sarifBytes, sarifErr := evalConverter.ToSARIF(gemaraconv.WithCatalog(suite.catalog))
 			if sarifErr != nil {
 				break
 			}
 			result = append(result, sarifBytes...)
 		}
 	default:
-		err = fmt.Errorf("output type '%s' is not supported. Supported types are 'json', 'yaml', and 'sarif'", v.config.Output)
+		err = fmt.Errorf("output type '%s' is not supported. Supported types are 'json', 'yaml', 'sarif', and 'gemara'", v.config.Output)
 		err = errMod(err, "wr30")
 	}
 	if err != nil {
@@ -278,7 +294,23 @@ func (v *EvaluationOrchestrator) WriteResults() error {
 	return nil
 }
 
+// marshalGemara serializes the run as gemara-native EvaluationLog objects.
+// Each evaluation suite contributes one EvaluationLog. Output is always a list,
+// even for a single suite, so downstream gemara consumers can parse uniformly.
+func (v *EvaluationOrchestrator) marshalGemara() ([]byte, error) {
+	logs := make([]gemara.EvaluationLog, 0, len(v.Evaluation_Suites))
+	for _, suite := range v.Evaluation_Suites {
+		logs = append(logs, suite.EvaluationLog)
+	}
+	return yaml.Marshal(logs)
+}
+
 func (v *EvaluationOrchestrator) writeResultsToFile(serviceName string, result []byte, extension string) error {
+	// gemara output is YAML-encoded; write it with a .yaml extension
+	// rather than a literal ".gemara" so tooling recognizes the format.
+	if extension == "gemara" {
+		extension = "yaml"
+	}
 	if !strings.Contains(extension, ".") {
 		extension = fmt.Sprintf(".%s", extension)
 	}

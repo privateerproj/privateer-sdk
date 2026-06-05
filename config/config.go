@@ -20,7 +20,16 @@ import (
 
 const defaultServiceName = "overview"
 
-var allowedOutputTypes = []string{"json", "yaml", "sarif"}
+var allowedOutputTypes = []string{"json", "yaml", "sarif", "gemara"}
+
+var inheritedTopLevelVarKeys = []string{
+	"ai_provider",
+	"ai_model",
+	"ai_api_key",
+	"ai_base_url",
+	"ai_timeout",
+	"ai_max_tokens",
+}
 
 // Config holds the configuration for a plugin execution.
 type Config struct {
@@ -29,6 +38,7 @@ type Config struct {
 	Logger         hclog.Logger
 	Write          bool
 	Output         string
+	IncludePayload bool
 	WriteDirectory string
 	Invasive       bool
 	Policy         Policy
@@ -50,13 +60,25 @@ func NewConfig(requiredVars []string) Config {
 	serviceName := viper.GetString("service") // the currently running service; if empty, we're probably running from core
 
 	write := viper.GetBool("write")                                         // defaults to true, but allow the user to disable file writing
-	output := strings.ToLower(strings.TrimSpace(viper.GetString("output"))) // defaults to yaml, but can be set to json
+	output := strings.ToLower(strings.TrimSpace(viper.GetString("output"))) // defaults to yaml; can be set to json, sarif, or gemara
+	includePayload := viper.GetBool("include-payload")                      // defaults to false; payload is omitted unless explicitly requested
 
 	vars := viper.GetStringMap("vars")
 	localVars := viper.GetStringMap(fmt.Sprintf("services.%s.vars", serviceName))
 	for key, value := range localVars {
 		// Overwrite or add local vars onto the global vars
 		vars[key] = value
+	}
+	// AI settings may be declared at the top level so all services inherit them.
+	// Copy them into Vars so SDK consumers that only receive config.Config still
+	// see the same effective ai_* values at runtime.
+	for _, key := range inheritedTopLevelVarKeys {
+		if _, exists := vars[key]; exists {
+			continue
+		}
+		if value := viper.Get(key); value != nil {
+			vars[key] = value
+		}
 	}
 
 	topLoglevel := viper.GetString("loglevel")
@@ -108,7 +130,7 @@ func NewConfig(requiredVars []string) Config {
 	if output == "" {
 		output = "yaml"
 	} else if ok := slices.Contains(allowedOutputTypes, output); !ok {
-		errString = "bad output type, allowed output types are json or yaml"
+		errString = "bad output type, allowed output types are json, yaml, sarif, or gemara"
 	}
 
 	var err error
@@ -122,6 +144,7 @@ func NewConfig(requiredVars []string) Config {
 		WriteDirectory: writeDir,
 		Write:          write,
 		Output:         output,
+		IncludePayload: includePayload,
 		Invasive:       invasive,
 		Policy: Policy{
 			ControlCatalogs: catalogs,

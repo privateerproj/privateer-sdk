@@ -504,6 +504,44 @@ func TestNewConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestNewConfig_InheritsTopLevelAISettingsIntoVars(t *testing.T) {
+	viper.Reset()
+	viper.SetConfigType("yaml")
+	err := viper.ReadConfig(bytes.NewBufferString(`
+ai_provider: openai
+ai_model: gpt-5.4-mini
+ai_api_key: top-level-key
+ai_base_url: http://127.0.0.1:8000/v1
+ai_timeout: 45s
+ai_max_tokens: 1024
+services:
+  my-service-1:
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: ["tlp_green"]
+`))
+	if err != nil {
+		t.Fatalf("error reading config: %v", err)
+	}
+
+	viper.Set("service", "my-service-1")
+	c := NewConfig(nil)
+
+	for key, want := range map[string]interface{}{
+		"ai_provider":   "openai",
+		"ai_model":      "gpt-5.4-mini",
+		"ai_api_key":    "top-level-key",
+		"ai_base_url":   "http://127.0.0.1:8000/v1",
+		"ai_timeout":    "45s",
+		"ai_max_tokens": 1024,
+	} {
+		if got, ok := c.Vars[key]; !ok || got != want {
+			t.Fatalf("Vars[%q] = %#v, want %#v", key, got, want)
+		}
+	}
+}
 func TestDefaultWritePath(t *testing.T) {
 	path := defaultWritePath()
 
@@ -545,6 +583,7 @@ func TestSanitizeVars(t *testing.T) {
 		{"exact secret", "secret", "val", "REDACTED"},
 		{"exact apikey", "apikey", "val", "REDACTED"},
 		{"exact api_key", "api_key", "val", "REDACTED"},
+		{"exact ai_api_key", "ai_api_key", "val", "REDACTED"},
 
 		// Compound keys (new behavior)
 		{"compound clientsecret", "clientsecret", "val", "REDACTED"},
