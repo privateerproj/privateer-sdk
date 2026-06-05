@@ -329,7 +329,7 @@ services:
 		runningServiceName:   "my-service-1",
 		runningApplicability: []string{"tlp_green"},
 		requiredVars:         []string{},
-		expectedError:        "bad output type, allowed output types are json or yaml",
+		expectedError:        "bad output type, allowed output types are json, yaml, sarif, or gemara",
 		config: `
 output: bad
 services:

@@ -14,23 +14,23 @@ type TestSet func() (result gemara.ControlEvaluation)
 // EvaluationSuite contains the results of all EvaluationLog executions.
 // Exported fields will be used in the final YAML or JSON output documents.
 type EvaluationSuite struct {
-	Name   string        // Name is the name of the suite
-	Result gemara.Result // Result is Passed if all evaluations in the suite passed
+	Name   string        `json:"name" yaml:"name"`     // Name is the name of the suite
+	Result gemara.Result `json:"result" yaml:"result"` // Result is Passed if all evaluations in the suite passed
 
-	CatalogId string `yaml:"catalog-id"` // CatalogId associates this suite with a catalog
-	StartTime string `yaml:"start-time"` // StartTime is the time the plugin started
-	EndTime   string `yaml:"end-time"`   // EndTime is the time the plugin ended
+	CatalogId string `json:"catalog-id" yaml:"catalog-id"` // CatalogId associates this suite with a catalog
+	StartTime string `json:"start-time" yaml:"start-time"` // StartTime is the time the plugin started
+	EndTime   string `json:"end-time" yaml:"end-time"`     // EndTime is the time the plugin ended
 
-	CorruptedState bool `yaml:"corrupted-state"` // CorruptedState is true if any testSet failed to revert at the end of the evaluation
+	CorruptedState bool `json:"corrupted-state" yaml:"corrupted-state"` // CorruptedState is true if any testSet failed to revert at the end of the evaluation
 
-	EvaluationLog gemara.EvaluationLog `yaml:"control-evaluations"` // EvaluationLog is a slice of evaluations to be executed
+	EvaluationLog gemara.EvaluationLog `json:"control-evaluations" yaml:"control-evaluations"` // EvaluationLog is a slice of evaluations to be executed
 
 	config *config.Config // config is the global configuration
 
 	payload       interface{}                        // payload is the data to be evaluated
 	loader        DataLoader                         // loader is the function to load the payload
 	changeManager *ChangeManager                     // changes is a list of changes made during the evaluation
-	catalog       *gemara.ControlCatalog                    // The Catalog this evaluation suite references
+	catalog       *gemara.ControlCatalog             // The Catalog this evaluation suite references
 	steps         map[string][]gemara.AssessmentStep // steps is a map of control IDs to their assessment steps
 
 	evalSuccesses int // successes is the number of successful evaluations
