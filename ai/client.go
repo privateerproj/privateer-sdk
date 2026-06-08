@@ -54,6 +54,16 @@ type Client interface {
 	Analyze(ctx context.Context, prompt, content string, schema *Schema) (*AnalyzeResponse, error)
 }
 
+// requestValidator is implemented by adapters that can reject a malformed
+// request (prompt, content, schema) without contacting the provider. Live
+// Analyze and the dry-run client both call it before any provider-specific
+// work, so dry-run rejects exactly the requests a live run would — including
+// any provider-specific validation rules that do not belong in the
+// package-level validateStructuredSchema.
+type requestValidator interface {
+	ValidateRequest(prompt, content string, schema *Schema) error
+}
+
 // Config holds the provider-neutral settings used to construct any adapter.
 // Provider-specific concerns (auth header shape, endpoint paths, request body
 // schema) are the adapter's responsibility, not this struct's.

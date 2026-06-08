@@ -151,7 +151,10 @@ func TestConfigFromSDKConfig_DryRunViaConfig(t *testing.T) {
 func TestConfigFromSDKConfig_DryRunViaCLIFlag(t *testing.T) {
 	viper.Reset()
 	t.Cleanup(viper.Reset)
-	viper.Set("dry-run-ai", true)
+	// The --dry-run-ai flag binds to the ai_dry_run viper key in
+	// command.SetBase (verified in command/base_test.go); here we set that
+	// resolved key directly to confirm ConfigFromSDKConfig reads it.
+	viper.Set("ai_dry_run", true)
 
 	aiConfig, configured, err := ConfigFromSDKConfig(sdkconfig.Config{Vars: map[string]interface{}{
 		"ai_provider": "openai",
@@ -237,4 +240,49 @@ func TestConfigFromSDKConfig_UsesViperFallback(t *testing.T) {
 	if aiConfig.MaxTokens != 512 {
 		t.Fatalf("unexpected max tokens: %d", aiConfig.MaxTokens)
 	}
+}
+
+func TestGetSDKConfigInt_ResolvesOnPresence(t *testing.T) {
+	t.Run("explicit zero in config Vars is honored over viper", func(t *testing.T) {
+		viper.Reset()
+		t.Cleanup(viper.Reset)
+		viper.Set("ai_retries", 5)
+
+		config := sdkconfig.Config{Vars: map[string]interface{}{"ai_retries": 0}}
+		if got := getSDKConfigInt(config, "ai_retries"); got != 0 {
+			t.Fatalf("expected explicit 0 from config Vars, got %d", got)
+		}
+	})
+
+	t.Run("falls through to viper when absent from config Vars", func(t *testing.T) {
+		viper.Reset()
+		t.Cleanup(viper.Reset)
+		viper.Set("ai_retries", 5)
+
+		config := sdkconfig.Config{Vars: map[string]interface{}{}}
+		if got := getSDKConfigInt(config, "ai_retries"); got != 5 {
+			t.Fatalf("expected viper fallback 5, got %d", got)
+		}
+	})
+
+	t.Run("explicit zero in viper is honored when set", func(t *testing.T) {
+		viper.Reset()
+		t.Cleanup(viper.Reset)
+		viper.Set("ai_retries", 0)
+
+		config := sdkconfig.Config{Vars: map[string]interface{}{}}
+		if got := getSDKConfigInt(config, "ai_retries"); got != 0 {
+			t.Fatalf("expected explicit viper 0, got %d", got)
+		}
+	})
+
+	t.Run("returns 0 when unset everywhere", func(t *testing.T) {
+		viper.Reset()
+		t.Cleanup(viper.Reset)
+
+		config := sdkconfig.Config{Vars: map[string]interface{}{}}
+		if got := getSDKConfigInt(config, "ai_retries"); got != 0 {
+			t.Fatalf("expected 0 when unset, got %d", got)
+		}
+	})
 }

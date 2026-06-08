@@ -166,12 +166,15 @@ func TestNewClient_DryRunFalseReturnsRealAdapter(t *testing.T) {
 }
 
 func TestDryRunAnalyze_RejectsInvalidSchema(t *testing.T) {
-	// Malformed schemas (e.g. missing Value) should fail in dry-run with
-	// the same error a live adapter would return, so callers don't
-	// discover the typo only after switching off dry-run.
+	// Malformed schemas should fail in dry-run with the same error a live
+	// adapter would return, so callers don't discover the typo only after
+	// switching off dry-run. This covers both the package-level check
+	// (missing Value) and the OpenAI-specific rule (missing Name), which
+	// dry-run reaches by delegating to the provider's ValidateRequest.
 	client := newDryRunClient(Config{Provider: ProviderOpenAI, Model: "gpt-4o-mini"})
 	cases := map[string]*Schema{
 		"missing Value": {Name: "foo"},
+		"missing Name":  {Value: json.RawMessage(`{"type":"object"}`)},
 	}
 	for name, schema := range cases {
 		t.Run(name, func(t *testing.T) {

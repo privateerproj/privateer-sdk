@@ -12,13 +12,27 @@ import (
 // inspect prompt content and model settings without spending tokens.
 type dryRunClient struct {
 	config Config
+	// validator runs the target provider's request validation so dry-run
+	// rejects the same malformed requests a live run would, including
+	// provider-specific rules. Nil when the provider exposes no validator.
+	validator requestValidator
 	// logOutput lets tests capture log output. When nil, log.Default()
 	// is used so dry-run details appear on the standard logger.
 	logOutput io.Writer
 }
 
 func newDryRunClient(config Config) *dryRunClient {
-	return &dryRunClient{config: config}
+	// Build the real adapter (a cheap struct construction, no network) purely
+	// to borrow its request validation, so dry-run mirrors the provider the
+	// caller would hit live. NewClient already rejects unregistered providers
+	// before reaching here.
+	var validator requestValidator
+	if factory, ok := clientFactories[config.Provider]; ok {
+		if v, ok := factory(config).(requestValidator); ok {
+			validator = v
+		}
+	}
+	return &dryRunClient{config: config, validator: validator}
 }
 
 // Analyze records prompt details and returns a dry-run result without
@@ -29,10 +43,14 @@ func (c *dryRunClient) Analyze(ctx context.Context, prompt, content string, sche
 		return nil, err
 	}
 
-	// Run the same schema validation a live adapter would, so a malformed
-	// schema (e.g. missing Value) fails here instead of slipping through
-	// dry-run only to break when the user switches to a live run.
-	if err := validateStructuredSchema(c.config.Provider, schema); err != nil {
+	// Run the target provider's validation (falling back to the package-level
+	// schema check) so a malformed request fails here instead of slipping
+	// through dry-run only to break when the user switches to a live run.
+	if c.validator != nil {
+		if err := c.validator.ValidateRequest(prompt, content, schema); err != nil {
+			return nil, err
+		}
+	} else if err := validateStructuredSchema(c.config.Provider, schema); err != nil {
 		return nil, err
 	}
 

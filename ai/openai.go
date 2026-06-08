@@ -77,10 +77,29 @@ func newOpenAIClient(config Config) *openAIClient {
 	}
 }
 
+// ValidateRequest rejects malformed requests before any network call,
+// applying both the package-level schema checks and OpenAI-specific rules
+// (a structured-output schema must carry a Name, which OpenAI requires as
+// the json_schema wrapper label). Live Analyze and the dry-run client both
+// call this so a request that would fail live also fails in dry-run.
+func (c *openAIClient) ValidateRequest(prompt, content string, schema *Schema) error {
+	if err := validateStructuredSchema(ProviderOpenAI, schema); err != nil {
+		return err
+	}
+	if schema != nil && strings.TrimSpace(schema.Name) == "" {
+		return &Error{
+			Kind:     ErrorKindUnsupportedConfig,
+			Provider: ProviderOpenAI,
+			Message:  "structured output schema name is required",
+		}
+	}
+	return nil
+}
+
 // Analyze implements the Client contract against OpenAI Chat Completions.
-// At a high level it: validates the optional Schema, builds the request
-// body (translating Schema into OpenAI's response_format when present),
-// POSTs to /chat/completions with a Bearer token, returns non-200
+// At a high level it: validates the request via ValidateRequest, builds the
+// request body (translating Schema into OpenAI's response_format when
+// present), POSTs to /chat/completions with a Bearer token, returns non-200
 // responses as classified *Error values, and finally maps the first
 // choice back into a provider-neutral AnalyzeResponse (parsing the
 // content as JSON when a schema was requested).
@@ -90,15 +109,8 @@ func (c *openAIClient) Analyze(ctx context.Context, prompt, content string, sche
 		Content: content,
 		Schema:  schema,
 	}
-	if err := validateStructuredSchema(ProviderOpenAI, request.Schema); err != nil {
+	if err := c.ValidateRequest(request.Prompt, request.Content, request.Schema); err != nil {
 		return nil, err
-	}
-	if request.Schema != nil && strings.TrimSpace(request.Schema.Name) == "" {
-		return nil, &Error{
-			Kind:     ErrorKindUnsupportedConfig,
-			Provider: ProviderOpenAI,
-			Message:  "structured output schema name is required",
-		}
 	}
 
 	reqBody := openAIChatCompletionsRequest{

@@ -54,8 +54,9 @@ func TestSetBase_DryRunAIFlag(t *testing.T) {
 	if err := cmd.PersistentFlags().Set("dry-run-ai", "true"); err != nil {
 		t.Fatalf("failed to set flag: %v", err)
 	}
-	if !viper.GetBool("dry-run-ai") {
-		t.Error("expected viper to reflect dry-run-ai=true after flag set")
+	// The flag is bound to the ai_dry_run viper key, not "dry-run-ai".
+	if !viper.GetBool("ai_dry_run") {
+		t.Error("expected viper ai_dry_run=true after --dry-run-ai flag set")
 	}
 }
 

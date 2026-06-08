@@ -36,10 +36,9 @@ func ConfigFromSDKConfig(config sdkconfig.Config) (Config, bool, error) {
 	baseURL := getSDKConfigString(config, "ai_base_url")
 	timeoutText := getSDKConfigString(config, "ai_timeout")
 	maxTokens := getSDKConfigInt(config, "ai_max_tokens")
-	// Dry-run is enabled by either the config-driven key (for non-CLI
-	// consumers and YAML configs) or the CLI flag (bound to viper in
-	// command.SetBase). Both sources are checked so either path works.
-	dryRun := getSDKConfigBool(config, "ai_dry_run") || viper.GetBool("dry-run-ai")
+	// ai_dry_run is one logical key fed by config Vars, top-level YAML/env, and
+	// the --dry-run-ai CLI flag (bound to ai_dry_run in command.SetBase).
+	dryRun := getSDKConfigBool(config, "ai_dry_run")
 
 	if provider == "" && model == "" && apiKey == "" && baseURL == "" && timeoutText == "" && maxTokens == 0 && !dryRun {
 		return Config{}, false, nil
@@ -72,13 +71,25 @@ func getSDKConfigString(config sdkconfig.Config, key string) string {
 	return strings.TrimSpace(viper.GetString(key))
 }
 
+// getSDKConfigInt resolves on key *presence*, not on the zero value, so an
+// explicit 0 is honored rather than treated as "unset". Per-service config
+// Vars win when the key is present as an int; otherwise viper (global YAML,
+// env, CLI flags) is consulted when it has the key set; absent everywhere it
+// returns 0. This keeps the helper reusable for future int knobs where 0 is a
+// meaningful value (e.g. 0 retries, 0 = no cap) without a silent viper inherit.
 func getSDKConfigInt(config sdkconfig.Config, key string) int {
-	if value := config.GetInt(key); value != 0 {
-		return value
+	if _, valType := config.GetVar(key); valType == "int" {
+		return config.GetInt(key)
 	}
-	return viper.GetInt(key)
+	if viper.IsSet(key) {
+		return viper.GetInt(key)
+	}
+	return 0
 }
 
+// getSDKConfigBool returns true when the key is truthy in per-service config
+// Vars or, failing that, in viper (global YAML, env, and bound CLI flags). Any
+// truthy source wins; absent everywhere it returns false.
 func getSDKConfigBool(config sdkconfig.Config, key string) bool {
 	if value := config.GetBool(key); value {
 		return true
