@@ -36,6 +36,12 @@ func SetBase(cmd *cobra.Command) {
 	cmd.PersistentFlags().BoolP("write", "", true, "Keep all of the detailed result outputs in a file. Disabling does not disable log files")
 	_ = viper.BindPFlag("write", cmd.PersistentFlags().Lookup("write"))
 
+	cmd.PersistentFlags().StringP("output", "o", "yaml", "Output format for results: yaml, json, sarif, or gemara")
+	_ = viper.BindPFlag("output", cmd.PersistentFlags().Lookup("output"))
+
+	cmd.PersistentFlags().BoolP("include-payload", "", false, "Include the raw evaluated payload in results output (large; useful for tracing)")
+	_ = viper.BindPFlag("include-payload", cmd.PersistentFlags().Lookup("include-payload"))
+
 	// User-facing flag stays --dry-run-ai, but it is bound to the ai_dry_run
 	// viper key so the CLI flag joins env (PVTR_AI_DRY_RUN) and YAML config,
 	// which already use that key, on a single logical key. Callers read only

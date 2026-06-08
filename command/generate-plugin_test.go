@@ -3,6 +3,8 @@ package command
 import (
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	hclog "github.com/hashicorp/go-hclog"
@@ -14,11 +16,13 @@ func TestResolveSourcePath(t *testing.T) {
 		name     string
 		input    string
 		expected string
+		unixOnly bool
 	}{
 		{
 			name:     "bare file path gets file:// prepended",
 			input:    "/path/to/catalog.yaml",
 			expected: "file:///path/to/catalog.yaml",
+			unixOnly: true,
 		},
 		// Relative paths are tested separately in TestResolveSourcePathRelative
 		// since the expected value depends on the current working directory.
@@ -46,6 +50,9 @@ func TestResolveSourcePath(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.unixOnly && runtime.GOOS == "windows" {
+				t.Skip("input is a Unix-absolute path; not meaningful on Windows")
+			}
 			result, err := resolveSourcePath(tc.input)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -78,14 +85,18 @@ func TestResolveSourcePathRelative(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// On macOS, t.TempDir() may return a /var path that resolves to /private/var.
-	// filepath.Abs uses the canonical (resolved) cwd, so compute the expected
-	// value the same way rather than concatenating tmp directly.
+	// Compute the expected value using the same cross-platform logic as
+	// resolveSourcePath: forward slashes, with a leading slash so Windows
+	// drive paths become file:///C:/... rather than file://C:/...
 	expectedAbs, err := filepath.Abs("catalog.yaml")
 	if err != nil {
 		t.Fatalf("filepath.Abs: %v", err)
 	}
-	want := "file://" + expectedAbs
+	slashed := filepath.ToSlash(expectedAbs)
+	if !strings.HasPrefix(slashed, "/") {
+		slashed = "/" + slashed
+	}
+	want := "file://" + slashed
 	if got != want {
 		t.Errorf("expected %q, got %q", want, got)
 	}
@@ -155,6 +166,9 @@ func TestCopyNonTemplateFile(t *testing.T) {
 }
 
 func TestCopyNonTemplateFilePreservesMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file permission bits (0755) are not modeled on Windows")
+	}
 	srcDir := t.TempDir()
 	outDir := t.TempDir()
 

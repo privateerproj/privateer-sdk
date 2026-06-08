@@ -20,7 +20,7 @@ import (
 
 const defaultServiceName = "overview"
 
-var allowedOutputTypes = []string{"json", "yaml", "sarif"}
+var allowedOutputTypes = []string{"json", "yaml", "sarif", "gemara"}
 
 var inheritedTopLevelVarKeys = []string{
 	"ai_provider",
@@ -38,6 +38,7 @@ type Config struct {
 	Logger         hclog.Logger
 	Write          bool
 	Output         string
+	IncludePayload bool
 	WriteDirectory string
 	Invasive       bool
 	Policy         Policy
@@ -59,7 +60,8 @@ func NewConfig(requiredVars []string) Config {
 	serviceName := viper.GetString("service") // the currently running service; if empty, we're probably running from core
 
 	write := viper.GetBool("write")                                         // defaults to true, but allow the user to disable file writing
-	output := strings.ToLower(strings.TrimSpace(viper.GetString("output"))) // defaults to yaml, but can be set to json
+	output := strings.ToLower(strings.TrimSpace(viper.GetString("output"))) // defaults to yaml; can be set to json, sarif, or gemara
+	includePayload := viper.GetBool("include-payload")                      // defaults to false; payload is omitted unless explicitly requested
 
 	vars := viper.GetStringMap("vars")
 	localVars := viper.GetStringMap(fmt.Sprintf("services.%s.vars", serviceName))
@@ -128,7 +130,7 @@ func NewConfig(requiredVars []string) Config {
 	if output == "" {
 		output = "yaml"
 	} else if ok := slices.Contains(allowedOutputTypes, output); !ok {
-		errString = "bad output type, allowed output types are json or yaml"
+		errString = "bad output type, allowed output types are json, yaml, sarif, or gemara"
 	}
 
 	var err error
@@ -142,6 +144,7 @@ func NewConfig(requiredVars []string) Config {
 		WriteDirectory: writeDir,
 		Write:          write,
 		Output:         output,
+		IncludePayload: includePayload,
 		Invasive:       invasive,
 		Policy: Policy{
 			ControlCatalogs: catalogs,

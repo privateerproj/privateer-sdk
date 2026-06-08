@@ -315,7 +315,12 @@ func resolveSourcePath(sourcePath string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return "file://" + abs, nil
+		// Build a well-formed file:// URL across platforms, converting OS-native separators and ensuring file:///C:/path on Windows.
+		slashed := filepath.ToSlash(abs)
+		if !strings.HasPrefix(slashed, "/") {
+			slashed = "/" + slashed
+		}
+		return "file://" + slashed, nil
 	}
 	return sourcePath, nil
 }

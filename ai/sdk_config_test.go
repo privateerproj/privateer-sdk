@@ -171,6 +171,29 @@ func TestConfigFromSDKConfig_DryRunViaCLIFlag(t *testing.T) {
 	}
 }
 
+func TestConfigFromSDKConfig_DryRunViaEnv(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	t.Setenv("PVTR_AI_DRY_RUN", "true")
+	viper.SetEnvPrefix("PVTR")
+	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+	viper.AutomaticEnv()
+
+	aiConfig, configured, err := ConfigFromSDKConfig(sdkconfig.Config{Vars: map[string]interface{}{
+		"ai_provider": "openai",
+		"ai_model":    "gpt-4o-mini",
+	}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !configured {
+		t.Fatal("expected configured result")
+	}
+	if !aiConfig.DryRun {
+		t.Fatal("expected DryRun to be true from PVTR_AI_DRY_RUN")
+	}
+}
+
 func TestNewClientFromConfig_DryRunSkipsAPIKey(t *testing.T) {
 	viper.Reset()
 	t.Cleanup(viper.Reset)
