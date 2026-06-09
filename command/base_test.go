@@ -40,6 +40,27 @@ func TestSetBase_ConfigFlagDefaultIsEmpty(t *testing.T) {
 	}
 }
 
+func TestSetBase_DryRunAIFlag(t *testing.T) {
+	resetViper()
+	cmd := &cobra.Command{Use: "test"}
+	SetBase(cmd)
+
+	flag := cmd.PersistentFlags().Lookup("dry-run-ai")
+	if flag == nil {
+		t.Fatal("expected dry-run-ai flag to be registered")
+	}
+	if flag.DefValue != "false" {
+		t.Errorf("expected dry-run-ai default to be 'false', got %q", flag.DefValue)
+	}
+	if err := cmd.PersistentFlags().Set("dry-run-ai", "true"); err != nil {
+		t.Fatalf("failed to set flag: %v", err)
+	}
+	// The flag is bound to the ai_dry_run viper key, not "dry-run-ai".
+	if !viper.GetBool("ai_dry_run") {
+		t.Error("expected viper ai_dry_run=true after --dry-run-ai flag set")
+	}
+}
+
 func TestReadConfig_ExplicitConfigPath(t *testing.T) {
 	resetViper()
 

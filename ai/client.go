@@ -28,6 +28,11 @@ const (
 const (
 	defaultTimeout   = 30 * time.Second
 	defaultMaxTokens = 256
+
+	// FinishReasonDryRun is the predictable FinishReason returned by
+	// the dry-run client so callers can distinguish a dry-run result
+	// from any real provider response.
+	FinishReasonDryRun = "dry_run"
 )
 
 // clientFactory builds a provider adapter from a normalized Config. Each
@@ -47,6 +52,16 @@ var clientFactories = map[Provider]clientFactory{
 // satisfy it so callers can swap providers without touching call sites.
 type Client interface {
 	Analyze(ctx context.Context, prompt, content string, schema *Schema) (*AnalyzeResponse, error)
+}
+
+// requestValidator is implemented by adapters that can reject a malformed
+// request (prompt, content, schema) without contacting the provider. Live
+// Analyze and the dry-run client both call it before any provider-specific
+// work, so dry-run rejects exactly the requests a live run would — including
+// any provider-specific validation rules that do not belong in the
+// package-level validateStructuredSchema.
+type requestValidator interface {
+	ValidateRequest(prompt, content string, schema *Schema) error
 }
 
 // Config holds the provider-neutral settings used to construct any adapter.
@@ -73,6 +88,10 @@ type Config struct {
 	// HTTPClient lets callers inject a custom transport (e.g. for tests or
 	// instrumentation). When nil, a client honoring Timeout is constructed.
 	HTTPClient *http.Client
+	// DryRun routes Analyze through a logging-only client that never
+	// contacts the provider. Useful for inspecting prompts and model
+	// settings without spending tokens or needing real credentials.
+	DryRun bool
 }
 
 // Schema tells the provider to return a structured JSON answer instead of
@@ -169,16 +188,25 @@ type ResponseMetadata struct {
 
 // NewClient creates a provider-specific AI client from provider-neutral
 // configuration. It validates the config, then dispatches to the adapter
-// registered for config.Provider.
+// registered for config.Provider. When config.DryRun is set, a logging-only
+// client is returned that never contacts the provider.
 func NewClient(config Config) (Client, error) {
 	config = config.normalized()
 	if err := config.validate(); err != nil {
 		return nil, err
 	}
 
+	// The provider must be registered even in dry-run mode so typos surface
+	// here instead of later when the user switches to a live run.
 	factory, ok := clientFactories[config.Provider]
 	if !ok {
 		return nil, fmt.Errorf("unsupported ai provider %q", config.Provider)
+	}
+
+	// Dry-run short-circuits the factory: return a logging-only client
+	// that never contacts the provider.
+	if config.DryRun {
+		return newDryRunClient(config), nil
 	}
 
 	return factory(config), nil
@@ -188,11 +216,13 @@ func (c Config) validate() error {
 	if strings.TrimSpace(string(c.Provider)) == "" {
 		return fmt.Errorf("ai provider is required")
 	}
-	if strings.TrimSpace(c.APIKey) == "" {
-		return fmt.Errorf("ai api key is required")
-	}
 	if strings.TrimSpace(c.Model) == "" {
 		return fmt.Errorf("ai model is required")
+	}
+	// API key is only required for live provider calls. Dry-run mode lets
+	// operators preview prompts without provisioning credentials.
+	if !c.DryRun && strings.TrimSpace(c.APIKey) == "" {
+		return fmt.Errorf("ai api key is required")
 	}
 	return nil
 }

@@ -29,6 +29,7 @@ var inheritedTopLevelVarKeys = []string{
 	"ai_base_url",
 	"ai_timeout",
 	"ai_max_tokens",
+	"ai_dry_run",
 }
 
 // Config holds the configuration for a plugin execution.
@@ -76,7 +77,8 @@ func NewConfig(requiredVars []string) Config {
 		if _, exists := vars[key]; exists {
 			continue
 		}
-		if value := viper.Get(key); value != nil {
+		if viper.IsSet(key) {
+			value := viper.Get(key)
 			vars[key] = value
 		}
 	}
