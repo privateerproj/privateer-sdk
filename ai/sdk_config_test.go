@@ -194,6 +194,28 @@ func TestConfigFromSDKConfig_DryRunViaEnv(t *testing.T) {
 	}
 }
 
+func TestConfigFromSDKConfig_DryRunConfigFalseOverridesViperTrue(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.Set("ai_dry_run", true)
+
+	aiConfig, configured, err := ConfigFromSDKConfig(sdkconfig.Config{Vars: map[string]interface{}{
+		"ai_provider": "openai",
+		"ai_model":    "gpt-4o-mini",
+		"ai_api_key":  "test-key",
+		"ai_dry_run":  false,
+	}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !configured {
+		t.Fatal("expected configured result")
+	}
+	if aiConfig.DryRun {
+		t.Fatal("expected explicit ai_dry_run=false in config Vars to override viper true")
+	}
+}
+
 func TestNewClientFromConfig_DryRunSkipsAPIKey(t *testing.T) {
 	viper.Reset()
 	t.Cleanup(viper.Reset)
@@ -265,6 +287,92 @@ func TestConfigFromSDKConfig_UsesViperFallback(t *testing.T) {
 	}
 }
 
+func TestConfigFromSDKConfig_RejectsWrongTypedVars(t *testing.T) {
+	tests := []struct {
+		name        string
+		vars        map[string]interface{}
+		wantErrText string
+	}{
+		{
+			name: "string field with int value",
+			vars: map[string]interface{}{
+				"ai_provider": 123,
+			},
+			wantErrText: "ai_provider must be a string, got int",
+		},
+		{
+			name: "int field with string value",
+			vars: map[string]interface{}{
+				"ai_provider":   "openai",
+				"ai_model":      "gpt-4o-mini",
+				"ai_api_key":    "test-key",
+				"ai_max_tokens": "512",
+			},
+			wantErrText: "ai_max_tokens must be an int, got string",
+		},
+		{
+			name: "bool field with string value",
+			vars: map[string]interface{}{
+				"ai_provider": "openai",
+				"ai_model":    "gpt-4o-mini",
+				"ai_api_key":  "test-key",
+				"ai_dry_run":  "true",
+			},
+			wantErrText: "ai_dry_run must be a bool, got string",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+			t.Cleanup(viper.Reset)
+
+			_, configured, err := ConfigFromSDKConfig(sdkconfig.Config{Vars: tt.vars})
+			if !configured {
+				t.Fatal("expected configured result for wrong-typed AI config")
+			}
+			if err == nil {
+				t.Fatal("expected wrong-type error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.wantErrText) {
+				t.Fatalf("error = %q, want substring %q", err.Error(), tt.wantErrText)
+			}
+		})
+	}
+}
+
+func TestGetSDKConfigString_ResolvesOnPresence(t *testing.T) {
+	t.Run("explicit empty string in config Vars is honored over viper", func(t *testing.T) {
+		viper.Reset()
+		t.Cleanup(viper.Reset)
+		viper.Set("ai_base_url", "http://127.0.0.1:8000/v1")
+
+		config := sdkconfig.Config{Vars: map[string]interface{}{"ai_base_url": ""}}
+		got, err := getSDKConfigString(config, "ai_base_url")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "" {
+			t.Fatalf("expected explicit empty string from config Vars, got %q", got)
+		}
+	})
+
+	t.Run("falls through to viper when absent from config Vars", func(t *testing.T) {
+		viper.Reset()
+		t.Cleanup(viper.Reset)
+		viper.Set("ai_base_url", "http://127.0.0.1:8000/v1")
+
+		config := sdkconfig.Config{Vars: map[string]interface{}{}}
+		got, err := getSDKConfigString(config, "ai_base_url")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "http://127.0.0.1:8000/v1" {
+			t.Fatalf("expected viper fallback base URL, got %q", got)
+		}
+	})
+}
+
 func TestGetSDKConfigInt_ResolvesOnPresence(t *testing.T) {
 	t.Run("explicit zero in config Vars is honored over viper", func(t *testing.T) {
 		viper.Reset()
@@ -272,7 +380,11 @@ func TestGetSDKConfigInt_ResolvesOnPresence(t *testing.T) {
 		viper.Set("ai_retries", 5)
 
 		config := sdkconfig.Config{Vars: map[string]interface{}{"ai_retries": 0}}
-		if got := getSDKConfigInt(config, "ai_retries"); got != 0 {
+		got, err := getSDKConfigInt(config, "ai_retries")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != 0 {
 			t.Fatalf("expected explicit 0 from config Vars, got %d", got)
 		}
 	})
@@ -283,7 +395,11 @@ func TestGetSDKConfigInt_ResolvesOnPresence(t *testing.T) {
 		viper.Set("ai_retries", 5)
 
 		config := sdkconfig.Config{Vars: map[string]interface{}{}}
-		if got := getSDKConfigInt(config, "ai_retries"); got != 5 {
+		got, err := getSDKConfigInt(config, "ai_retries")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != 5 {
 			t.Fatalf("expected viper fallback 5, got %d", got)
 		}
 	})
@@ -294,7 +410,11 @@ func TestGetSDKConfigInt_ResolvesOnPresence(t *testing.T) {
 		viper.Set("ai_retries", 0)
 
 		config := sdkconfig.Config{Vars: map[string]interface{}{}}
-		if got := getSDKConfigInt(config, "ai_retries"); got != 0 {
+		got, err := getSDKConfigInt(config, "ai_retries")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != 0 {
 			t.Fatalf("expected explicit viper 0, got %d", got)
 		}
 	})
@@ -304,7 +424,11 @@ func TestGetSDKConfigInt_ResolvesOnPresence(t *testing.T) {
 		t.Cleanup(viper.Reset)
 
 		config := sdkconfig.Config{Vars: map[string]interface{}{}}
-		if got := getSDKConfigInt(config, "ai_retries"); got != 0 {
+		got, err := getSDKConfigInt(config, "ai_retries")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != 0 {
 			t.Fatalf("expected 0 when unset, got %d", got)
 		}
 	})
