@@ -35,7 +35,6 @@ func newTestSDKConfig(t *testing.T, writeDir string) sdkconfig.Config {
 func TestWritePacketSucceededAttempt(t *testing.T) {
 	tempDir := t.TempDir()
 	config := newTestSDKConfig(t, tempDir)
-
 	attempt := PacketAttempt{
 		ControlID:         "OSPS-QA-06.02",
 		Outcome:           "succeeded",
@@ -113,7 +112,7 @@ func TestWritePacketSucceededAttempt(t *testing.T) {
 		`"result": "Passed"`,
 		`"verdict": "pass"`,
 		`"api_key": "REDACTED"`,
-		`"base_url": "https://REDACTED:REDACTED@example.test/v1?api_key=REDACTED\u0026mode=test"`,
+		`"base_url": "https://REDACTED:REDACTED@example.test/v1?api_key=REDACTED"`,
 	} {
 		if !strings.Contains(assessmentText, want) {
 			t.Fatalf("assessment.json missing %s; got %s", want, assessmentText)
@@ -220,6 +219,8 @@ func TestWritePacketFailedAttempt(t *testing.T) {
 func TestWritePacketFinalRedactionPassCoversMetadataSchemaAndDirectory(t *testing.T) {
 	tempDir := t.TempDir()
 	config := newTestSDKConfig(t, tempDir)
+	escapedSecret := `pa&ss"word\tail<end>`
+	config.Vars["token"] = escapedSecret
 
 	attempt := PacketAttempt{
 		ControlID:       "OSPS-QA-06.02",
@@ -228,10 +229,10 @@ func TestWritePacketFinalRedactionPassCoversMetadataSchemaAndDirectory(t *testin
 		RepositoryOwner: "test-owner",
 		RepositoryName:  "test-repo",
 		DefaultBranch:   "super-secret-key",
-		Verdict:         "ghp_verdict_secret_123456",
+		Verdict:         escapedSecret,
 		Schema: &Schema{
 			Name:        "schema_name",
-			Description: "schema description with super-secret-key",
+			Description: "schema description with super-secret-key and " + escapedSecret,
 			Strict:      true,
 			Value:       json.RawMessage(`{"type":"object","properties":{"token":{"type":"string"}},"required":["token"]}`),
 		},
@@ -273,7 +274,8 @@ func TestWritePacketFinalRedactionPassCoversMetadataSchemaAndDirectory(t *testin
 		}
 		for _, secret := range []string{
 			"super-secret-key",
-			"ghp_verdict_secret_123456",
+			escapedSecret,
+			jsonEscapedString(escapedSecret),
 			"ghp_response_secret_123456",
 			"ghp_request_secret_123456",
 		} {
@@ -357,14 +359,81 @@ func TestWritePacketNoopWhenControlIDMissing(t *testing.T) {
 	}
 }
 
+func TestCreatePacketDirectoryFailsWhenPacketDirectoryExists(t *testing.T) {
+	packetDir := filepath.Join(t.TempDir(), "my-scan", "ai-evidence", "OSPS-QA-06.02", "packet")
+	if err := createPacketDirectory(packetDir); err != nil {
+		t.Fatalf("createPacketDirectory first call: %v", err)
+	}
+	if err := createPacketDirectory(packetDir); err == nil {
+		t.Fatal("createPacketDirectory second call succeeded, want collision error")
+	}
+}
+
 func TestSanitizerRedactsConfiguredAndPatternSecrets(t *testing.T) {
 	config := newTestSDKConfig(t, t.TempDir())
+	config.Vars["token_list"] = []interface{}{"list-secret-token", 123, ""}
 	sanitizer := NewSanitizer(config, "extra-secret-token")
 
-	got := sanitizer.RedactText("super-secret-key extra-secret-token Authorization: Bearer sk-abcdefg12345 ghp_abcdefg12345")
-	for _, leaked := range []string{"super-secret-key", "extra-secret-token", "sk-abcdefg12345", "ghp_abcdefg12345"} {
+	got := sanitizer.RedactText("super-secret-key extra-secret-token list-secret-token Authorization: Bearer sk-abcdefg12345 ghp_abcdefg12345")
+	for _, leaked := range []string{"super-secret-key", "extra-secret-token", "list-secret-token", "sk-abcdefg12345", "ghp_abcdefg12345"} {
 		if strings.Contains(got, leaked) {
 			t.Fatalf("Sanitizer leaked %q in %q", leaked, got)
+		}
+	}
+}
+
+func TestNewSanitizerWithConfigReturnsAIConfigErrors(t *testing.T) {
+	config := newTestSDKConfig(t, t.TempDir())
+	config.Vars["ai_timeout"] = "bad-timeout"
+
+	sanitizer, err := NewSanitizerWithConfig(config, "extra-secret-token")
+	if err == nil {
+		t.Fatal("expected invalid AI config error, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid ai_timeout") {
+		t.Fatalf("error = %q, want invalid ai_timeout", err.Error())
+	}
+
+	got := sanitizer.RedactText("super-secret-key extra-secret-token")
+	for _, leaked := range []string{"super-secret-key", "extra-secret-token"} {
+		if strings.Contains(got, leaked) {
+			t.Fatalf("Sanitizer leaked %q in %q", leaked, got)
+		}
+	}
+}
+
+func TestNewSanitizerRemainsBestEffortWhenAIConfigIsInvalid(t *testing.T) {
+	config := newTestSDKConfig(t, t.TempDir())
+	config.Vars["ai_timeout"] = "bad-timeout"
+
+	sanitizer := NewSanitizer(config, "extra-secret-token")
+	got := sanitizer.RedactText("super-secret-key extra-secret-token")
+	for _, leaked := range []string{"super-secret-key", "extra-secret-token"} {
+		if strings.Contains(got, leaked) {
+			t.Fatalf("Sanitizer leaked %q in %q", leaked, got)
+		}
+	}
+}
+
+func TestSanitizerDoesNotTreatAuthorAsSensitiveKey(t *testing.T) {
+	config := newTestSDKConfig(t, t.TempDir())
+	config.Vars["author"] = "Jane Doe"
+	config.Vars["auth_token"] = "real-secret-token"
+	config.Vars["authorization"] = "Bearer authorization-secret"
+	config.Vars["client-secret"] = "client-secret-value"
+	config.Vars["service.api-key"] = "api-key-value"
+	config.Vars["accessToken"] = "access-token-value"
+	config.Vars["clientSecret"] = "client-secret-camel-value"
+	config.Vars["APIKey"] = "api-key-initialism-value"
+	sanitizer := NewSanitizer(config)
+
+	got := sanitizer.RedactText("Jane Doe real-secret-token Bearer authorization-secret client-secret-value api-key-value access-token-value client-secret-camel-value api-key-initialism-value")
+	if !strings.Contains(got, "Jane Doe") {
+		t.Fatalf("Sanitizer unexpectedly redacted author value: %q", got)
+	}
+	for _, leaked := range []string{"real-secret-token", "Bearer authorization-secret", "client-secret-value", "api-key-value", "access-token-value", "client-secret-camel-value", "api-key-initialism-value"} {
+		if strings.Contains(got, leaked) {
+			t.Fatalf("Sanitizer leaked sensitive key value %q in %q", leaked, got)
 		}
 	}
 }
@@ -377,6 +446,7 @@ func TestSanitizeURLRedactsCredentialsAndQuery(t *testing.T) {
 	}{
 		{name: "empty", input: "", want: ""},
 		{name: "credentials and query", input: "https://proxy-user:proxy-pass@example.test/v1?api_key=secret&mode=test", want: "https://REDACTED:REDACTED@example.test/v1?api_key=REDACTED&mode=test"},
+		{name: "authorization query preserves author", input: "https://example.test/v1?authorization=bearer-secret&author=Jane&mode=test", want: "https://example.test/v1?author=Jane&authorization=REDACTED&mode=test"},
 		{name: "invalid", input: "://bad url", want: "REDACTED"},
 	}
 	for _, tt := range tests {
@@ -392,19 +462,37 @@ func TestRedactPatterns(t *testing.T) {
 	input := strings.Join([]string{
 		"Authorization: Bearer sk-live-1234567890abcdef",
 		"api_key=plain-secret",
+		"authorization=bearer-secret",
+		"authorization=Bearer bearer-assignment-secret",
+		"password=abc,def;ghi&jkl\\tail",
+		"secret=abc&next=still-secret",
+		`token=abc\u0026mode=still-secret`,
+		`api_key=REDACTED\u0026mode=test`,
+		"password=REDACTED&still-secret",
+		"password=REDACTED&still=secret",
+		"password=REDACTED-real-secret",
+		"password=Bearer",
 		"token: ghp_secret_12345678",
-		`{"token":"ghp_json_secret_12345678","api_key":"plain-json-secret"}`,
+		`{"token":"ghp_json_secret_12345678","api_key":"plain-json-secret","authorization":"json-authorization-secret","password":"quoted\"secret-value"}`,
 	}, "\n")
 	got := RedactPatterns(input)
-	for _, leaked := range []string{"sk-live-1234567890abcdef", "plain-secret", "ghp_secret_12345678", "ghp_json_secret_12345678", "plain-json-secret"} {
+	for _, leaked := range []string{"sk-live-1234567890abcdef", "plain-secret", "bearer-secret", "bearer-assignment-secret", "abc,def;ghi&jkl\\tail", "abc&next=still-secret", `abc\u0026mode=still-secret`, "REDACTED&still-secret", "REDACTED&still=secret", "REDACTED-real-secret", "ghp_secret_12345678", "ghp_json_secret_12345678", "plain-json-secret", "json-authorization-secret", `quoted\"secret-value`} {
 		if strings.Contains(got, leaked) {
 			t.Fatalf("RedactPatterns leaked %q in %q", leaked, got)
 		}
 	}
-	for _, want := range []string{"Authorization: Bearer REDACTED", "api_key=REDACTED", "token: REDACTED", `"token":"REDACTED"`, `"api_key":"REDACTED"`} {
+	for _, want := range []string{"Authorization: Bearer REDACTED", "api_key=REDACTED", "authorization=REDACTED", "authorization=Bearer REDACTED", "password=REDACTED", "secret=REDACTED", `token=REDACTED`, "token: REDACTED", `"token":"REDACTED"`, `"api_key":"REDACTED"`, `"authorization":"REDACTED"`, `"password":"REDACTED"`} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("RedactPatterns missing %q in %q", want, got)
 		}
+	}
+	inputJSON := strings.Split(input, "\n")[13]
+	gotJSON := strings.Split(got, "\n")[13]
+	if !json.Valid([]byte(inputJSON)) {
+		t.Fatal("test fixture must remain valid JSON")
+	}
+	if !json.Valid([]byte(gotJSON)) {
+		t.Fatalf("RedactPatterns produced invalid JSON object: %q", gotJSON)
 	}
 }
 

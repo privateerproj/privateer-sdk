@@ -154,6 +154,11 @@ type AIInteractionEvidence struct {
 // configured values (APIKey, BaseURL credentials, sensitive config.Vars, and
 // any ExtraSecretValues supplied by the caller) plus pattern-based scrubbers
 // for bearer tokens and other common token-shaped values.
+//
+// When packet writing is enabled, WritePacket can return configuration errors
+// such as a wrong-typed ai_write_evidence value or invalid AI setting, packet
+// directory creation errors including collisions, file I/O errors, or an error
+// if redaction leaves a packet body as invalid JSON.
 func WritePacket(config sdkconfig.Config, attempt PacketAttempt) error {
 	if !config.Write {
 		return nil
@@ -197,7 +202,7 @@ func WritePacket(config sdkconfig.Config, attempt PacketAttempt) error {
 		controlID,
 		packetDirectoryName(sanitizer.RedactText(packetRequestID(attempt.Response))),
 	)
-	if err := os.MkdirAll(packetDir, 0o750); err != nil {
+	if err := createPacketDirectory(packetDir); err != nil {
 		return err
 	}
 
@@ -247,6 +252,13 @@ func WritePacket(config sdkconfig.Config, attempt PacketAttempt) error {
 		return err
 	}
 	return nil
+}
+
+func createPacketDirectory(packetDir string) error {
+	if err := os.MkdirAll(filepath.Dir(packetDir), 0o750); err != nil {
+		return err
+	}
+	return os.Mkdir(packetDir, 0o750)
 }
 
 func evidenceWritingEnabled(config sdkconfig.Config) (bool, error) {
@@ -364,14 +376,23 @@ type Sanitizer struct {
 	secretValues []string
 }
 
-// NewSanitizer assembles a Sanitizer for the given SDK config. It extracts
-// known sensitive values (AI API key, credentials embedded in ai_base_url,
-// and any config.Vars whose key looks sensitive) and combines them with
-// the supplied extraSecretValues. Callers can use the returned Sanitizer
-// directly to sanitize log output before WritePacket runs.
+// NewSanitizer assembles a best-effort Sanitizer for the given SDK config. It
+// preserves the original no-error API by ignoring AI config parsing errors;
+// callers that need to surface those errors should use NewSanitizerWithConfig.
 func NewSanitizer(config sdkconfig.Config, extraSecretValues ...string) Sanitizer {
-	aiConfig, _, _ := ConfigFromSDKConfig(config)
-	return newPacketSanitizer(config, aiConfig, extraSecretValues)
+	sanitizer, _ := NewSanitizerWithConfig(config, extraSecretValues...)
+	return sanitizer
+}
+
+// NewSanitizerWithConfig assembles a Sanitizer for the given SDK config and
+// returns AI config parsing errors instead of silently falling back to only the
+// sensitive values available in config.Vars and extraSecretValues.
+func NewSanitizerWithConfig(config sdkconfig.Config, extraSecretValues ...string) (Sanitizer, error) {
+	aiConfig, _, err := ConfigFromSDKConfig(config)
+	if err != nil {
+		return newPacketSanitizer(config, Config{}, extraSecretValues), err
+	}
+	return newPacketSanitizer(config, aiConfig, extraSecretValues), nil
 }
 
 func newPacketSanitizer(config sdkconfig.Config, aiConfig Config, extraSecretValues []string) Sanitizer {
@@ -417,8 +438,21 @@ func newPacketSanitizer(config sdkconfig.Config, aiConfig Config, extraSecretVal
 func (s Sanitizer) RedactText(value string) string {
 	for _, secretValue := range s.secretValues {
 		value = strings.ReplaceAll(value, secretValue, "REDACTED")
+		// Packet bytes may already be JSON-escaped when the final whole-file
+		// redaction pass runs, so scrub the representation that reaches disk too.
+		if escaped := jsonEscapedString(secretValue); escaped != secretValue {
+			value = strings.ReplaceAll(value, escaped, "REDACTED")
+		}
 	}
 	return RedactPatterns(value)
+}
+
+func jsonEscapedString(value string) string {
+	encoded, err := json.Marshal(value)
+	if err != nil || len(encoded) < 2 {
+		return value
+	}
+	return string(encoded[1 : len(encoded)-1])
 }
 
 // RedactConfigValue returns the empty string for empty input and "REDACTED"
@@ -479,15 +513,11 @@ var packetPatternRedactors = []struct {
 	replacement string
 }{
 	{
-		pattern:     regexp.MustCompile(`(?i)(authorization\s*:\s*bearer\s+)([^\s"'` + "`" + `]+)`),
+		pattern:     regexp.MustCompile(`(?i)(authorization\s*[:=]\s*bearer\s+)([^\s"'` + "`" + `]+)`),
 		replacement: `${1}REDACTED`,
 	},
 	{
-		pattern:     regexp.MustCompile(`(?i)(\b(?:api[_-]?key|token|secret|password|auth)\b\s*[:=]\s*)([^\s"'` + "`" + `,;&\\]+)`),
-		replacement: `${1}REDACTED`,
-	},
-	{
-		pattern:     regexp.MustCompile(`(?i)("(?:api[_-]?key|token|secret|password|auth)"\s*:\s*")([^"]+)(")`),
+		pattern:     regexp.MustCompile(`(?i)("(?:api[_-]?key|token|secret|password|auth|authorization)"\s*:\s*")((?:\\.|[^"\\])+)(")`),
 		replacement: `${1}REDACTED${3}`,
 	},
 	{
@@ -505,10 +535,56 @@ var packetPatternRedactors = []struct {
 // places other than the packet itself (such as scanner logs) using the same
 // rules as WritePacket.
 func RedactPatterns(value string) string {
+	value = redactAssignmentSecrets(value)
 	for _, redactor := range packetPatternRedactors {
 		value = redactor.pattern.ReplaceAllString(value, redactor.replacement)
 	}
 	return value
+}
+
+var assignmentSecretPrefixPattern = regexp.MustCompile(`(?i)\b(?:api[_-]?key|token|secret|password|auth|authorization)\b\s*[:=]\s*`)
+
+func redactAssignmentSecrets(value string) string {
+	matches := assignmentSecretPrefixPattern.FindAllStringIndex(value, -1)
+	if len(matches) == 0 {
+		return value
+	}
+
+	var builder strings.Builder
+	lastIndex := 0
+	for _, match := range matches {
+		if match[0] < lastIndex {
+			continue
+		}
+
+		secretStart := match[1]
+		secretEnd := secretStart
+		for secretEnd < len(value) {
+			switch value[secretEnd] {
+			case ' ', '\t', '\n', '\r', '"', '\'', '`':
+				goto foundEnd
+			default:
+				secretEnd++
+			}
+		}
+
+	foundEnd:
+		if secretEnd == secretStart {
+			continue
+		}
+
+		secretText := value[secretStart:secretEnd]
+		prefixText := strings.ToLower(strings.TrimSpace(value[match[0]:secretStart]))
+		if strings.EqualFold(secretText, "Bearer") && strings.HasPrefix(prefixText, "authorization") {
+			continue
+		}
+
+		builder.WriteString(value[lastIndex:secretStart])
+		builder.WriteString("REDACTED")
+		lastIndex = secretEnd
+	}
+	builder.WriteString(value[lastIndex:])
+	return builder.String()
 }
 
 func urlSecretValues(rawURL string) []string {
@@ -542,13 +618,71 @@ func urlSecretValues(rawURL string) []string {
 }
 
 func isSensitivePacketKey(key string) bool {
-	lowerKey := strings.ToLower(strings.TrimSpace(key))
-	for _, pattern := range []string{"token", "auth", "password", "secret", "apikey", "api_key"} {
-		if strings.Contains(lowerKey, pattern) {
+	tokens := packetKeyTokens(key)
+	if len(tokens) == 0 {
+		return false
+	}
+
+	for _, token := range tokens {
+		switch token {
+		case "token", "password", "secret", "apikey", "authorization", "credential", "credentials":
+			return true
+		case "auth":
+			if len(tokens) == 1 {
+				return true
+			}
+		}
+	}
+
+	for index := 0; index+1 < len(tokens); index++ {
+		phrase := tokens[index] + "_" + tokens[index+1]
+		switch phrase {
+		case "api_key", "access_token", "auth_token", "client_secret", "bearer_token":
 			return true
 		}
 	}
 	return false
+}
+
+func packetKeyTokens(key string) []string {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return nil
+	}
+
+	tokens := []string{}
+	for _, token := range strings.FieldsFunc(splitCamelCase(key), func(r rune) bool {
+		switch r {
+		case '_', '-', '.', '/', ':', ' ', '\t', '\n', '\r':
+			return true
+		default:
+			return false
+		}
+	}) {
+		if token != "" {
+			tokens = append(tokens, strings.ToLower(token))
+		}
+	}
+	return tokens
+}
+
+func splitCamelCase(value string) string {
+	var builder strings.Builder
+	runes := []rune(value)
+	for index, r := range runes {
+		if index > 0 && unicode.IsUpper(r) {
+			previous := runes[index-1]
+			nextIsLower := index+1 < len(runes) && unicode.IsLower(runes[index+1])
+			if unicode.IsLower(previous) || unicode.IsDigit(previous) || unicode.IsUpper(previous) && nextIsLower {
+				builder.WriteRune(' ')
+			}
+		}
+		if index > 0 && unicode.IsDigit(r) && unicode.IsLetter(runes[index-1]) {
+			builder.WriteRune(' ')
+		}
+		builder.WriteRune(r)
+	}
+	return builder.String()
 }
 
 func packetSecretStrings(value interface{}) []string {
@@ -564,6 +698,16 @@ func packetSecretStrings(value interface{}) []string {
 			if strings.TrimSpace(item) != "" {
 				secretValues = append(secretValues, item)
 			}
+		}
+		return secretValues
+	case []interface{}:
+		secretValues := []string{}
+		for _, item := range typed {
+			text, ok := item.(string)
+			if !ok || strings.TrimSpace(text) == "" {
+				continue
+			}
+			secretValues = append(secretValues, text)
 		}
 		return secretValues
 	case []byte:
