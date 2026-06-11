@@ -49,6 +49,9 @@ func SetBase(cmd *cobra.Command) {
 	cmd.PersistentFlags().Bool("dry-run-ai", false, "Log AI prompts and model settings without making real provider requests")
 	_ = viper.BindPFlag("ai_dry_run", cmd.PersistentFlags().Lookup("dry-run-ai"))
 
+	cmd.PersistentFlags().Bool("write-ai-evidence", false, "Write AI evidence packets when AI assessment is configured")
+	_ = viper.BindPFlag("ai_write_evidence", cmd.PersistentFlags().Lookup("write-ai-evidence"))
+
 	cmd.PersistentFlags().BoolP("help", "h", false, "Give me a heading! Help for the specified command")
 }
 
