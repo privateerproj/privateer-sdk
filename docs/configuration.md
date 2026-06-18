@@ -13,7 +13,7 @@ on the CLI root.
 
 | Config key (`config.yml`) | Flag | Env var | Default | Purpose |
 |---|---|---|---|---|
-| `hub-url` | `--hub-url` | `PVTR_HUB_URL` | `https://hub.grc.store` | grc.store hub base URL. The OCI registry host is *discovered* from it (`/.well-known/ext.grc-store`); never hardcode the registry host. |
+| `hub-url` | `--hub-url` | `PVTR_HUB_URL` | `https://hub.grc.store` | grc.store hub base URL. The OCI registry host is *discovered* from it (`/.well-known/grc-store-configuration`); never hardcode the registry host. |
 | `autoinstall` | `--autoinstall` | `PVTR_AUTOINSTALL` | `false` | When true, `pvtr run` first installs any config-requested plugins that are not yet installed — a single `pvtr run` installs-and-runs (useful in CI). |
 | `binaries-path` | — | `PVTR_BINARIES_PATH` | — | Directory where plugins are installed. (Config/env only; no flag.) |
 
