@@ -17,7 +17,7 @@ func mockInstallHub(t *testing.T, found bool, pullHit *bool) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
 	var srv *httptest.Server
-	mux.HandleFunc("/.well-known/ext.grc-store", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/.well-known/grc-store-configuration", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = fmt.Fprintf(w, `{"registry_url":%q,"hub_url":%q,"api_version":"v1"}`, srv.URL, srv.URL)
 	})
 	mux.HandleFunc("/v1/plugins/", func(w http.ResponseWriter, _ *http.Request) {
