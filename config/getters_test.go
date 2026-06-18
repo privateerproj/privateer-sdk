@@ -1,10 +1,24 @@
 package config
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/spf13/viper"
 )
+
+// withEnvAwareViper resets viper and configures it exactly as command.ReadConfig
+// does (PVTR_ env prefix, AutomaticEnv, "-"→"_" key replacer), so a test can
+// exercise the real PVTR_* env → viper path. It can't call command.ReadConfig
+// directly: command imports config, so a config test importing command cycles.
+func withEnvAwareViper(t *testing.T) {
+	t.Helper()
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.SetEnvPrefix("PVTR")
+	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+	viper.AutomaticEnv()
+}
 
 var testConfig = Config{
 	Vars: map[string]interface{}{
@@ -209,6 +223,50 @@ func TestGetBinariesPath(t *testing.T) {
 	viper.Set("binaries-path", "")
 	if got := GetBinariesPath(); got != "" {
 		t.Errorf("GetBinariesPath() = %q, want empty", got)
+	}
+}
+
+func TestAutoInstall(t *testing.T) {
+	orig := viper.GetBool("autoinstall")
+	defer viper.Set("autoinstall", orig)
+
+	viper.Set("autoinstall", true)
+	if !AutoInstall() {
+		t.Error("AutoInstall() = false, want true")
+	}
+
+	viper.Set("autoinstall", false)
+	if AutoInstall() {
+		t.Error("AutoInstall() = true, want false")
+	}
+}
+
+// The CI path: an operator enables autoinstall by exporting PVTR_AUTOINSTALL
+// rather than editing config.yml. This must feed through viper's AutomaticEnv to
+// AutoInstall(); viper.Set bypasses that binding, so it gets its own test.
+func TestAutoInstall_FromEnv(t *testing.T) {
+	withEnvAwareViper(t)
+	t.Setenv("PVTR_AUTOINSTALL", "true")
+	if !AutoInstall() {
+		t.Error("AutoInstall() = false with PVTR_AUTOINSTALL=true, want true")
+	}
+}
+
+func TestGetServiceVersion_NormalizesLeadingV(t *testing.T) {
+	t.Cleanup(viper.Reset)
+	cases := map[string]string{
+		"v1.4.0": "1.4.0", // semver "v" stripped to match bare manifest/hub versions
+		"1.4.0":  "1.4.0", // already bare, unchanged
+		"":       "",      // unpinned, unchanged
+		"vnext":  "vnext", // non-semver "v"-word left alone
+	}
+	for configured, want := range cases {
+		viper.Set("services", map[string]interface{}{
+			"svc": map[string]interface{}{"version": configured},
+		})
+		if got := GetServiceVersion("svc"); got != want {
+			t.Errorf("GetServiceVersion() for %q = %q, want %q", configured, got, want)
+		}
 	}
 }
 
