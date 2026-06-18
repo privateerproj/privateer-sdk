@@ -16,9 +16,6 @@ import (
 // 0750 = owner: rwx, group: r-x, others: --- (no access).
 const DirPermissions os.FileMode = 0750
 
-func init() {
-}
-
 // BoolPtr returns a pointer to a bool.
 func BoolPtr(b bool) *bool {
 	return &b
@@ -134,4 +131,46 @@ func StringSliceContains(arr []string, val string) bool {
 		}
 	}
 	return false
+}
+
+// WriteFileAtomic writes data to path via a same-directory temp file + rename
+// so a crash mid-write can never leave a partial file at path. The temp file
+// is removed on rename failure. This is the right tool for any file that must
+// be exec-safe or digest-stable (plugin binaries, manifests). It is NOT used
+// for credential stores — see internal/auth/store.go for why that differs.
+func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
+	dir, base := filepath.Split(path)
+	if dir == "" {
+		dir = "."
+	}
+	// A randomized temp name (not a fixed "path.tmp") avoids both reusing a
+	// stale temp file's permissions and racing a concurrent writer.
+	f, err := os.CreateTemp(dir, base+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("creating temp file in %s: %w", dir, err)
+	}
+	tmp := f.Name()
+	cleanup := func() {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+	}
+	// CreateTemp makes the file 0600; set the caller's perm explicitly (chmod is
+	// not subject to umask) so an exec bit survives the rename.
+	if err := f.Chmod(perm); err != nil {
+		cleanup()
+		return fmt.Errorf("setting permissions on %s: %w", tmp, err)
+	}
+	if _, err := f.Write(data); err != nil {
+		cleanup()
+		return fmt.Errorf("writing %s: %w", tmp, err)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("closing %s: %w", tmp, err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("renaming %s to %s: %w", tmp, path, err)
+	}
+	return nil
 }
