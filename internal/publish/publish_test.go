@@ -340,7 +340,7 @@ func mockHub(t *testing.T, tokenActions []string, pushHit *bool) *httptest.Serve
 	t.Helper()
 	mux := http.NewServeMux()
 	var srv *httptest.Server
-	mux.HandleFunc("/.well-known/ext.grc-store", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/.well-known/grc-store-configuration", func(w http.ResponseWriter, _ *http.Request) {
 		// registry_url points back at this same server (it also fields /v2/* so a
 		// stray push would be observable), api_version + oidc fields present.
 		_, _ = fmt.Fprintf(w, `{"registry_url":%q,"hub_url":%q,"api_version":"v1","oidc_issuer":"https://issuer","oidc_cli_client_id":"grcli"}`, srv.URL, srv.URL)
