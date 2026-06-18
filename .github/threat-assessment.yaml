@@ -3,7 +3,7 @@ title: Privateer SDK Self-Assessment
 metadata:
   id: PrivProj.SDK
   description: Threat catalog for Privateer SDK Self-Assessment
-  version: 2026.Feb.28
+  version: 2026.Jun.18
   author:
     id: pvtr-maintainers
     name: Privateer Maintainer Group
@@ -33,6 +33,18 @@ capabilities:
   - id: PrivProj.SDK.CP05
     title: Evaluation Framework
     description: Orchestrates assessment logic to ensure consistent machine-readable validation
+  - id: PrivProj.SDK.CP06
+    title: Verified Plugin Installation
+    description: Discovers, pulls, verifies, and installs plugins from grc.store (an OCI registry), recording provenance in a local install manifest
+  - id: PrivProj.SDK.CP07
+    title: Artifact Signature and Identity Verification
+    description: Enforces sigstore keyless signatures, signer-identity trust-on-first-use pinning, and full digest-chain verification on pulled plugin indexes before install
+  - id: PrivProj.SDK.CP08
+    title: Plugin Publishing
+    description: Signs and pushes plugin artifacts to grc.store for distribution to downstream consumers
+  - id: PrivProj.SDK.CP09
+    title: Hub Authentication
+    description: Performs OIDC login and stores credentials and tokens for authenticated grc.store operations
 
 threats:
   - id: PrivProj.SDK.TH01
@@ -66,3 +78,44 @@ threats:
       - reference-id: PrivProj.SDK
         entries:
           - reference-id: PrivProj.SDK.CP01
+  - id: PrivProj.SDK.TH04
+    title: Compromised grc.store Hub or Registry
+    description: |
+      A compromised, misconfigured, or man-in-the-middled hub or OCI registry may serve a
+      substituted or malicious plugin index, attempting to install code the maintainers never
+      published.
+    capabilities:
+      - reference-id: PrivProj.SDK
+        entries:
+          - reference-id: PrivProj.SDK.CP06
+          - reference-id: PrivProj.SDK.CP07
+  - id: PrivProj.SDK.TH05
+    title: Signature or Signer-Identity Bypass
+    description: |
+      Verification is disabled, downgraded, or satisfied by an artifact signed under an
+      unexpected identity (for example, blind trust-on-first-use or an unverified identity
+      rotation), allowing an unverified or attacker-controlled binary to be installed.
+    capabilities:
+      - reference-id: PrivProj.SDK
+        entries:
+          - reference-id: PrivProj.SDK.CP07
+  - id: PrivProj.SDK.TH06
+    title: Publishing Credential Compromise
+    description: |
+      Theft or misuse of stored OIDC tokens or keyless signing material enables an attacker to
+      publish malicious plugins to grc.store under a trusted publisher identity.
+    capabilities:
+      - reference-id: PrivProj.SDK
+        entries:
+          - reference-id: PrivProj.SDK.CP08
+          - reference-id: PrivProj.SDK.CP09
+  - id: PrivProj.SDK.TH07
+    title: Local Install Manifest Tampering
+    description: |
+      Modification of the local install manifest to alter a pinned signer identity or redirect a
+      plugin entry to a malicious binary may defeat trust-on-first-use enforcement on subsequent
+      updates.
+    capabilities:
+      - reference-id: PrivProj.SDK
+        entries:
+          - reference-id: PrivProj.SDK.CP06
