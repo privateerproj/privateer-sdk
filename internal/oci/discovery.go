@@ -3,7 +3,7 @@
 //
 // This file is the first, deliberately small member: hub discovery. A user
 // configures exactly ONE endpoint — the hub base URL — and the OCI registry
-// host is learned from the hub's /.well-known/ext.grc-store document
+// host is learned from the hub's /.well-known/grc-store-configuration document
 // (ADR-0026). Nothing in pvtr hardcodes the registry host, mirroring how the
 // hub advertises it via HUB_OCI_PUBLIC_URL.
 package oci
@@ -43,9 +43,9 @@ const hubURLEnv = "PVTR_HUB_URL"
 
 // wellKnownPath is the discovery document path served by the hub (ADR-0026)
 // this should remain consistent for self-hosted registries as well
-const wellKnownPath = "/.well-known/ext.grc-store"
+const wellKnownPath = "/.well-known/grc-store-configuration"
 
-// Discovery is the subset of the hub's /.well-known/ext.grc-store document
+// Discovery is the subset of the hub's /.well-known/grc-store-configuration document
 // that pvtr consumes. Only the fields pvtr acts on are decoded — registry_url
 // (push/pull target), hub_url (for the claim-namespace hint), and the OIDC
 // coordinates publish/login need; unknown fields are ignored.
@@ -180,7 +180,7 @@ func (c *Client) getJSON(ctx context.Context, path string, out any) error {
 	return c.doJSON(ctx, http.MethodGet, path, "", nil, out)
 }
 
-// Discover fetches and decodes the hub's /.well-known/ext.grc-store document.
+// Discover fetches and decodes the hub's /.well-known/grc-store-configuration document.
 func (c *Client) Discover(ctx context.Context) (*Discovery, error) {
 	var d Discovery
 	if err := c.getJSON(ctx, wellKnownPath, &d); err != nil {
