@@ -64,7 +64,7 @@ func (v *EvaluationOrchestrator) PublishManifest() (PublishManifest, error) {
 		return PublishManifest{}, fmt.Errorf("plugin has no PluginName to use as its grc.store plugin id")
 	}
 	if strings.Contains(publisher, "/") || strings.Contains(pluginID, "/") {
-		return PublishManifest{}, fmt.Errorf("Publisher %q and PluginName %q must not contain '/': the coordinate is exactly <publisher>/<plugin_id>", publisher, pluginID)
+		return PublishManifest{}, fmt.Errorf("publisher %q and pluginName %q must not contain '/': the coordinate is exactly <publisher>/<plugin_id>", publisher, pluginID)
 	}
 	license := strings.TrimSpace(v.License)
 	if license == "" {
