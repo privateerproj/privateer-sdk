@@ -19,8 +19,9 @@ OIDC service, and `PVTR_TOKEN` is set from the workflow's OIDC/secret.
 
 ## GitLab CI
 
-<!-- STUB — do not ship without filling in. Blocked on the hub bearer model
-     (see below); the signing half already works once SIGSTORE_ID_TOKEN is set. -->
+<!-- STUB — do not ship without filling in. Blocked on the hub
+     bearer model (see below); the signing half already works
+     once SIGSTORE_ID_TOKEN is set. -->
 
 The **signing** side works today: declare an `id_tokens` entry with audience
 `sigstore` and expose it as `SIGSTORE_ID_TOKEN`:
@@ -35,15 +36,20 @@ publish:
     - pvtr publish --dist dist
 ```
 
-> TODO (blocked): the **bearer** (`PVTR_TOKEN`) side depends on how GitLab
-> authenticates to the hub. Resolve which model applies, then document it:
-> - **OIDC trusted-publishing** — requires the hub's Keycloak to add GitLab as a
->   trusted issuer (a hub-side change, NOT in this repo). Document the
->   `id_tokens` block for the hub audience + how it maps to `PVTR_TOKEN`.
-> - **Static token secret** — document storing a hub-accepted token as a masked
->   CI variable and exporting it as `PVTR_TOKEN`.
+> TODO (blocked): the **bearer** (`PVTR_TOKEN`) side depends
+> on how GitLab authenticates to the hub. Resolve which model
+> applies, then document it:
 >
-> Confirm the model with whoever owns grc.store before finalizing this section.
+> - **OIDC trusted-publishing** -- requires the hub's Keycloak
+>   to add GitLab as a trusted issuer (a hub-side change, NOT
+>   in this repo). Document the `id_tokens` block for the hub
+>   audience + how it maps to `PVTR_TOKEN`.
+> - **Static token secret** -- document storing a hub-accepted
+>   token as a masked CI variable and exporting it as
+>   `PVTR_TOKEN`.
+>
+> Confirm the model with whoever owns grc.store before
+> finalizing this section.
 
 ## Other CI providers
 

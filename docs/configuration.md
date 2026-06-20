@@ -11,11 +11,15 @@ These drive the harness (`pvtr install` / `publish` / `run` / `list`), not a
 plugin serving itself. Their flags are registered by `harness.SetHarnessFlags`
 on the CLI root.
 
-| Config key (`config.yml`) | Flag | Env var | Default | Purpose |
-|---|---|---|---|---|
-| `hub-url` | `--hub-url` | `PVTR_HUB_URL` | `https://hub.grc.store` | grc.store hub base URL. The OCI registry host is *discovered* from it (`/.well-known/grc-store-configuration`); never hardcode the registry host. |
-| `autoinstall` | `--autoinstall` | `PVTR_AUTOINSTALL` | `false` | When true, `pvtr run` first installs any config-requested plugins that are not yet installed — a single `pvtr run` installs-and-runs (useful in CI). |
-| `binaries-path` | — | `PVTR_BINARIES_PATH` | — | Directory where plugins are installed. (Config/env only; no flag.) |
+<!-- markdownlint-disable MD013 -->
+
+| Config key | Flag | Env var | Default | Purpose |
+| --- | --- | --- | --- | --- |
+| `hub-url` | `--hub-url` | `PVTR_HUB_URL` | `https://hub.grc.store` | Hub base URL. Registry host is discovered from it. |
+| `autoinstall` | `--autoinstall` | `PVTR_AUTOINSTALL` | `false` | Auto-install missing plugins before `pvtr run`. |
+| `binaries-path` | -- | `PVTR_BINARIES_PATH` | -- | Plugin install directory. Config/env only. |
+
+<!-- markdownlint-enable MD013 -->
 
 Example `config.yml`:
 
