@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -10,6 +11,16 @@ import (
 // It reads from the same viper state as NewConfig (e.g. after command.ReadConfig()).
 func GetBinariesPath() string {
 	return viper.GetString("binaries-path")
+}
+
+// AutoInstall reports whether runtime autoinstall is enabled (the "autoinstall"
+// config key, also settable via the PVTR_AUTOINSTALL environment variable). When
+// true, a harness preflight installs any config-requested plugins that are
+// missing locally before the run, so a single `pvtr run` can install-and-run
+// without a separate `pvtr install` step (e.g. in CI).
+// It reads from the same viper state as NewConfig (e.g. after command.ReadConfig()).
+func AutoInstall() bool {
+	return viper.GetBool("autoinstall")
 }
 
 // GetServices returns the services map from config (service name -> service config).
@@ -22,6 +33,30 @@ func GetServices() map[string]interface{} {
 // It reads from the same viper state as NewConfig (e.g. after command.ReadConfig()).
 func GetServicePlugin(serviceName string) string {
 	return viper.GetString("services." + serviceName + ".plugin")
+}
+
+// GetServiceVersion returns the optional pinned plugin version for the given
+// service. An empty string means "use the latest installed version".
+// It reads from the same viper state as NewConfig (e.g. after command.ReadConfig()).
+//
+// The value is normalized to the bare form the manifest and grc.store both use
+// (a single leading "v" before a semver is stripped, so config's "v1.4.0" and
+// "1.4.0" are equivalent). Without this, an exact-match lookup against a manifest
+// keyed on bare versions would miss, and a hub release-list lookup would reject
+// the "v"-prefixed string — surfacing a confusing "no version" error for what is
+// just a formatting difference.
+func GetServiceVersion(serviceName string) string {
+	return normalizeVersion(viper.GetString("services." + serviceName + ".version"))
+}
+
+// normalizeVersion strips a single leading "v" when it precedes a digit (the
+// semver convention, e.g. "v1.4.0" -> "1.4.0"), leaving non-semver values like a
+// branch name "vnext" or an empty string untouched.
+func normalizeVersion(version string) string {
+	if len(version) >= 2 && version[0] == 'v' && version[1] >= '0' && version[1] <= '9' {
+		return strings.TrimPrefix(version, "v")
+	}
+	return version
 }
 
 // GetVar retrieves the value associated with the given key from the Config's Vars map.
