@@ -140,8 +140,8 @@ func (v *Verifier) runVerify(entity sgverify.SignedEntity, policy sgverify.Polic
 		return "", fmt.Errorf("%w: verified signature carries no certificate identity (key-based signing is not accepted for plugins)", ErrSignatureInvalid)
 	}
 	cert := result.Signature.Certificate
-	if cert.Extensions.Issuer == "" || cert.SubjectAlternativeName == "" {
+	if cert.Issuer == "" || cert.SubjectAlternativeName == "" {
 		return "", fmt.Errorf("%w: verified certificate missing OIDC issuer or SAN", ErrSignatureInvalid)
 	}
-	return identity.CanonicalKeylessIdentity(cert.Extensions.Issuer, cert.SubjectAlternativeName), nil
+	return identity.CanonicalKeylessIdentity(cert.Issuer, cert.SubjectAlternativeName), nil
 }
