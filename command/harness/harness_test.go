@@ -34,8 +34,8 @@ func TestConstructorsForward(t *testing.T) {
 // *command.PluginPkg and a *harness.PluginPkg are the same type, so values
 // returned by command flow through the harness surface without conversion.
 func TestTypeAliasIdentity(t *testing.T) {
-	var hp *PluginPkg = command.NewPluginPkg("ossf/x", "", "svc") // command -> harness type
-	var cp *command.PluginPkg = hp                                // harness  -> command type
+	var hp *PluginPkg = command.NewPluginPkg("ossf/x", "", "svc") //nolint:staticcheck // explicit type proves alias identity
+	var cp *command.PluginPkg = hp                                //nolint:staticcheck // explicit type proves alias identity
 	if cp == nil {
 		t.Fatal("expected a non-nil PluginPkg")
 	}

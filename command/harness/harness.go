@@ -63,17 +63,17 @@ const (
 
 // GetInstallCmd forwards to command.GetInstallCmd.
 func GetInstallCmd(writerFn func() Writer) *cobra.Command {
-	return command.GetInstallCmd(writerFn)
+	return command.GetInstallCmd(writerFn) //nolint:staticcheck // intentional forwarding during migration
 }
 
 // GetListCmd forwards to command.GetListCmd.
 func GetListCmd(writerFn func() Writer) *cobra.Command {
-	return command.GetListCmd(writerFn)
+	return command.GetListCmd(writerFn) //nolint:staticcheck // intentional forwarding during migration
 }
 
 // SetListCmdFlags forwards to command.SetListCmdFlags.
 func SetListCmdFlags(cmd *cobra.Command) {
-	command.SetListCmdFlags(cmd)
+	command.SetListCmdFlags(cmd) //nolint:staticcheck // intentional forwarding during migration
 }
 
 // GetPublishCmd returns the `pvtr publish` command. Its implementation has
@@ -96,7 +96,7 @@ func GetLogoutCmd(writerFn func() Writer) *cobra.Command {
 
 // GeneratePlugin forwards to command.GeneratePlugin.
 func GeneratePlugin(logger hclog.Logger) (exitCode int) {
-	return command.GeneratePlugin(logger)
+	return command.GeneratePlugin(logger) //nolint:staticcheck // intentional forwarding during migration
 }
 
 // --- plugin execution -------------------------------------------------------
@@ -118,7 +118,7 @@ func Run(ctx context.Context, w Writer, logger hclog.Logger, getPlugins func() [
 		return command.BadUsage
 	}
 	_ = w.Flush()
-	return command.Run(logger, getPlugins)
+	return command.Run(logger, getPlugins) //nolint:staticcheck // intentional forwarding during migration
 }
 
 // GetPlugins forwards to command.GetPlugins.
