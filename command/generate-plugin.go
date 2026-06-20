@@ -50,6 +50,9 @@ type Req struct {
 // exit code from the same set used by Run (TestPass, TestFail, InternalError,
 // BadUsage). Mirrors Run's shape: classification + logging happen here so the
 // CLI just calls os.Exit(GeneratePlugin(logger)).
+//
+// Deprecated: use harness.GeneratePlugin instead. This will be removed once the
+// pvtr CLI migrates to the command/harness import path.
 func GeneratePlugin(logger hclog.Logger) (exitCode int) {
 	cfg, exitCode := setupTemplatingEnvironment(logger)
 	if exitCode != TestPass {

@@ -9,6 +9,7 @@ import (
 	hcplugin "github.com/hashicorp/go-plugin"
 	"github.com/spf13/viper"
 
+	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/privateerproj/privateer-sdk/shared"
 )
 
@@ -39,6 +40,9 @@ func mergeExitCode(prev, next int) int {
 }
 
 // Run executes all plugins with handling for the command line.
+//
+// Deprecated: use harness.Run instead. This will be removed once the pvtr CLI
+// migrates to the command/harness import path.
 func Run(logger hclog.Logger, getPlugins func() []*PluginPkg) (exitCode int) {
 	logger.Trace(fmt.Sprintf(
 		"Using bin: %s", viper.GetString("binaries-path")))
@@ -52,9 +56,14 @@ func Run(logger hclog.Logger, getPlugins func() []*PluginPkg) (exitCode int) {
 	// Run all plugins
 	var runCount int
 	for serviceName := range viper.GetStringMap("services") {
-		servicePluginName := viper.GetString(fmt.Sprintf("services.%s.plugin", serviceName))
+		// Resolve via the config getters (not raw viper) so the version matches the
+		// normalized value getRequestedPlugins stored on each PluginPkg — otherwise a
+		// "v"-prefixed config version would never equal the bare resolved version and
+		// the plugin would silently never run.
+		servicePluginName := config.GetServicePlugin(serviceName)
+		servicePluginVersion := config.GetServiceVersion(serviceName)
 		for _, pluginPkg := range plugins {
-			if pluginPkg.Name == servicePluginName {
+			if pluginPkg.Name == servicePluginName && pluginPkg.Version == servicePluginVersion {
 				if !pluginPkg.Installed {
 					logger.Error(fmt.Sprintf("requested plugin that is not installed: %s", pluginPkg.Name))
 					return BadUsage

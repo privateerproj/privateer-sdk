@@ -1,6 +1,7 @@
 package command
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/privateerproj/privateer-sdk/pluginkit"
@@ -58,6 +59,25 @@ func TestDebugCommand(t *testing.T) {
 	}
 	if cmd.Run == nil {
 		t.Error("Expected cmd.Run to be set")
+	}
+}
+
+func TestPublishManifestCommand(t *testing.T) {
+	cmd := publishManifestCommand()
+	if cmd.Use != pluginkit.PublishManifestCommand {
+		t.Errorf("Expected cmd.Use to be %q, but got %s", pluginkit.PublishManifestCommand, cmd.Use)
+	}
+	if cmd.RunE == nil {
+		t.Fatal("Expected cmd.RunE to be set")
+	}
+
+	// The command surfaces PublishManifest's fail-closed errors (here: a plugin
+	// that declares no Publisher). The manifest-derivation + JSON shape itself is
+	// covered by pluginkit's TestPublishManifest_*; this asserts the wiring.
+	ActiveEvaluationOrchestrator = &pluginkit.EvaluationOrchestrator{}
+	t.Cleanup(func() { ActiveEvaluationOrchestrator = nil })
+	if err := cmd.RunE(cmd, nil); err == nil || !strings.Contains(err.Error(), "Publisher") {
+		t.Fatalf("expected the command to surface the no-Publisher error, got %v", err)
 	}
 }
 
