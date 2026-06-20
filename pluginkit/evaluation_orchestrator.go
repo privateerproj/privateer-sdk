@@ -18,10 +18,29 @@ import (
 
 // EvaluationOrchestrator gets the plugin in position to execute the specified evaluation suites.
 type EvaluationOrchestrator struct {
-	ServiceName       string             `json:"service-name" yaml:"service-name"`
-	PluginName        string             `json:"plugin-name" yaml:"plugin-name"`
-	PluginUri         string             `json:"plugin-uri" yaml:"plugin-uri"`
-	PluginVersion     string             `json:"plugin-version" yaml:"plugin-version"`
+	ServiceName   string `json:"service-name" yaml:"service-name"`
+	PluginName    string `json:"plugin-name" yaml:"plugin-name"`
+	PluginUri     string `json:"plugin-uri" yaml:"plugin-uri"`
+	PluginVersion string `json:"plugin-version" yaml:"plugin-version"`
+	// Publisher is the grc.store author/org id that owns this plugin (and, by
+	// convention, the catalogs it evaluates). With PluginName it forms the publish
+	// coordinate <Publisher>/<PluginName>, and it is the namespace of every
+	// evaluated catalog in the publish manifest. Inert at run time; required only
+	// to publish (a plugin runs without it, but cannot be published without it).
+	Publisher string `json:"publisher,omitempty" yaml:"publisher,omitempty"`
+	// License is the plugin's publication license as an SPDX expression
+	// (e.g. "Apache-2.0", or "Apache-2.0 OR MIT"; use a LicenseRef-… token for a
+	// custom license). grc.store requires it on every publication and it is
+	// recorded in the signed plugin config. Like Publisher it is inert at run time
+	// and required only to publish; pvtr validates and canonicalizes it (via
+	// grc-store-protocol/spdx) at publish time, so the plugin only declares the
+	// raw string here.
+	License string `json:"license,omitempty" yaml:"license,omitempty"`
+	// CatalogNamespaces optionally maps a reference-catalog id to the grc.store
+	// namespace that owns it, for plugins that evaluate catalogs published by
+	// someone else (e.g. a community plugin evaluating ossf/osps-baseline).
+	// Catalogs not listed here are assumed to live under Publisher.
+	CatalogNamespaces map[string]string  `json:"catalog-namespaces,omitempty" yaml:"catalog-namespaces,omitempty"`
 	Payload           any                `json:"payload,omitempty" yaml:"payload,omitempty"`
 	Evaluation_Suites []*EvaluationSuite `json:"evaluation-suites" yaml:"evaluation-suites"` // EvaluationSuite is a map of evaluations to their catalog names
 
@@ -127,11 +146,20 @@ func (v *EvaluationOrchestrator) addEvaluationSuite(catalog *gemara.ControlCatal
 	}
 
 	importedControls := getImportedControls(catalog, v.referenceCatalogs)
-	catalog.Controls = append(catalog.Controls, importedControls...)
+	suiteCatalog := catalog
+	if len(importedControls) > 0 {
+		// Copy-on-import: the suite evaluates its own + imported controls, but the
+		// shared referenceCatalogs entry must stay pristine — PublishManifest reads
+		// it, and the published requirement_ids must list only the catalog's OWN
+		// control ids, deterministically, regardless of suite registration order.
+		combined := *catalog
+		combined.Controls = append(append([]gemara.Control{}, catalog.Controls...), importedControls...)
+		suiteCatalog = &combined
+	}
 
 	suite := EvaluationSuite{
 		CatalogId: catalog.Metadata.Id,
-		catalog:   catalog,
+		catalog:   suiteCatalog,
 		steps:     steps,
 		config:    v.config,
 	}
@@ -330,13 +358,7 @@ func (v *EvaluationOrchestrator) writeResultsToFile(serviceName string, result [
 		v.config.Logger.Warn("write directory for this plugin created for results, but should have been created when initializing logs", "directory", dir)
 	}
 
-	_, err := os.Create(filepath)
-	if err != nil {
-		v.config.Logger.Error("Error creating file", "filepath", filepath)
-		return err
-	}
-
-	file, err := os.OpenFile(filepath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
+	file, err := os.OpenFile(filepath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o640)
 	if err != nil {
 		v.config.Logger.Error("Error opening file", "filepath", filepath)
 		return err
