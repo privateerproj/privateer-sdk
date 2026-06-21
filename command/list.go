@@ -123,22 +123,16 @@ func writePluginDetails(ctx context.Context, writer Writer) {
 	}
 }
 
-// getRequestedPlugins returns the plugins requested in the config, deduplicated
-// by name+version so two services pinning different versions of the same plugin
-// each materialize (while two services sharing the same plugin+version collapse
-// to one entry).
+// getRequestedPlugins returns one PluginPkg per service in the config. Each
+// service gets its own entry (and its own exec.Cmd with the correct --service
+// flag), even when two services share the same plugin+version. This is required
+// so Run invokes the plugin once per service with the right service context.
 func getRequestedPlugins() []*PluginPkg {
 	services := config.GetServices()
-	seen := make(map[string]bool)
 	var out []*PluginPkg
 	for serviceName := range services {
 		pluginName := config.GetServicePlugin(serviceName)
 		version := config.GetServiceVersion(serviceName)
-		dedupKey := pluginName + "@" + version
-		if seen[dedupKey] {
-			continue
-		}
-		seen[dedupKey] = true
 		pluginPkg := NewPluginPkg(pluginName, version, serviceName)
 		pluginPkg.Requested = true
 		out = append(out, pluginPkg)

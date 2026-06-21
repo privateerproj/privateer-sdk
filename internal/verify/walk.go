@@ -162,7 +162,7 @@ func (v *Verifier) walkVerifiedIndex(ctx context.Context, fetched *oci.FetchedIn
 	// 5. index → child: fetch + digest-check the child manifest.
 	childBytes, err := oci.FetchBytes(ctx, fetched.Target(), childDesc, maxBlobBytes)
 	if err != nil {
-		return nil, fmt.Errorf("%w: fetch child manifest: %v", ErrDigestMismatch, err)
+		return nil, fmt.Errorf("fetch child manifest: %w", err)
 	}
 	if err := checkDigest(childDesc.Digest, childBytes, "child manifest"); err != nil {
 		return nil, err
@@ -178,7 +178,7 @@ func (v *Verifier) walkVerifiedIndex(ctx context.Context, fetched *oci.FetchedIn
 	}
 	configBytes, err := oci.FetchBytes(ctx, fetched.Target(), child.Config, maxBlobBytes)
 	if err != nil {
-		return nil, fmt.Errorf("%w: fetch config blob: %v", ErrDigestMismatch, err)
+		return nil, fmt.Errorf("fetch config blob: %w", err)
 	}
 	if err := checkDigest(child.Config.Digest, configBytes, "config blob"); err != nil {
 		return nil, err
@@ -195,7 +195,7 @@ func (v *Verifier) walkVerifiedIndex(ctx context.Context, fetched *oci.FetchedIn
 	}
 	binBytes, err := oci.FetchBytes(ctx, fetched.Target(), layerDesc, maxBinaryBytes)
 	if err != nil {
-		return nil, fmt.Errorf("%w: fetch binary layer: %v", ErrDigestMismatch, err)
+		return nil, fmt.Errorf("fetch binary layer: %w", err)
 	}
 	if err := checkDigest(layerDesc.Digest, binBytes, "binary layer"); err != nil {
 		return nil, err

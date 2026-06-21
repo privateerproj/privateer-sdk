@@ -149,13 +149,16 @@ func PollForToken(ctx context.Context, meta *OIDCMetadata, clientID string, da *
 			return nil, ctx.Err()
 		case <-time.After(interval):
 		}
-		_, body, err := postForm(ctx, meta.TokenEndpoint, form)
+		resp, body, err := postForm(ctx, meta.TokenEndpoint, form)
 		if err != nil {
 			return nil, fmt.Errorf("polling token endpoint: %w", err)
 		}
+		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusBadRequest {
+			return nil, fmt.Errorf("token endpoint returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		}
 		tr := tokenResponse{}
 		if err := json.Unmarshal(body, &tr); err != nil {
-			return nil, fmt.Errorf("decoding token response: %w (body: %s)", err, strings.TrimSpace(string(body)))
+			return nil, fmt.Errorf("decoding token response (HTTP %d): %w", resp.StatusCode, err)
 		}
 		switch tr.Error {
 		case "":
@@ -188,13 +191,16 @@ func refreshToken(ctx context.Context, meta *OIDCMetadata, clientID, refresh str
 	form.Set("grant_type", "refresh_token")
 	form.Set("refresh_token", refresh)
 
-	_, body, err := postForm(ctx, meta.TokenEndpoint, form)
+	resp, body, err := postForm(ctx, meta.TokenEndpoint, form)
 	if err != nil {
 		return nil, fmt.Errorf("refresh request: %w", err)
 	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("refresh request returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
 	tr := tokenResponse{}
 	if err := json.Unmarshal(body, &tr); err != nil {
-		return nil, fmt.Errorf("decoding refresh response: %w (body: %s)", err, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("decoding refresh response: %w", err)
 	}
 	if tr.Error != "" {
 		if tr.ErrorDescription != "" {

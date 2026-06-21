@@ -9,7 +9,6 @@ import (
 	hcplugin "github.com/hashicorp/go-plugin"
 	"github.com/spf13/viper"
 
-	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/privateerproj/privateer-sdk/shared"
 )
 
@@ -53,53 +52,40 @@ func Run(logger hclog.Logger, getPlugins func() []*PluginPkg) (exitCode int) {
 		return NoTests
 	}
 
-	// Run all plugins
 	var runCount int
-	for serviceName := range viper.GetStringMap("services") {
-		// Resolve via the config getters (not raw viper) so the version matches the
-		// normalized value getRequestedPlugins stored on each PluginPkg — otherwise a
-		// "v"-prefixed config version would never equal the bare resolved version and
-		// the plugin would silently never run.
-		servicePluginName := config.GetServicePlugin(serviceName)
-		servicePluginVersion := config.GetServiceVersion(serviceName)
-		for _, pluginPkg := range plugins {
-			if pluginPkg.Name == servicePluginName && pluginPkg.Version == servicePluginVersion {
-				if !pluginPkg.Installed {
-					logger.Error(fmt.Sprintf("requested plugin that is not installed: %s", pluginPkg.Name))
-					return BadUsage
-				}
-				runCount++
-				client := newClient(pluginPkg.Command, logger)
-				// Connect via RPC
-				var rpcClient hcplugin.ClientProtocol
-				rpcClient, err := client.Client()
-				if err != nil {
-					logger.Error(fmt.Sprintf("internal error while initializing %s RPC client: %s", serviceName, err))
-					pluginPkg.closeClient(serviceName, client, logger)
-					return InternalError
-				}
-				// Request the plugin
-				var rawPlugin interface{}
-				rawPlugin, err = rpcClient.Dispense(shared.PluginName)
-				if err != nil {
-					logger.Error(fmt.Sprintf("internal error while dispensing RPC client: %s", err.Error()))
-					pluginPkg.closeClient(serviceName, client, logger)
-					return InternalError
-				}
-				// Execute plugin
-				plugin := rawPlugin.(shared.Pluginer)
-				logger.Trace(fmt.Sprintf("Starting Plugin %v: %s", runCount, pluginPkg.Name))
-				pluginExitCode, response := plugin.Start()
-				if response != nil {
-					pluginPkg.Error = fmt.Errorf("plugin %s: %v", serviceName, response)
-				}
-				pluginPkg.Successful = pluginExitCode == TestPass
-				if !pluginPkg.Successful {
-					exitCode = mergeExitCode(exitCode, pluginExitCode)
-				}
-				pluginPkg.closeClient(serviceName, client, logger)
-			}
+	for _, pluginPkg := range plugins {
+		serviceName := pluginPkg.ServiceTarget
+		if !pluginPkg.Installed {
+			logger.Error(fmt.Sprintf("requested plugin that is not installed: %s", pluginPkg.Name))
+			return BadUsage
 		}
+		runCount++
+		client := newClient(pluginPkg.Command, logger)
+		var rpcClient hcplugin.ClientProtocol
+		rpcClient, err := client.Client()
+		if err != nil {
+			logger.Error(fmt.Sprintf("internal error while initializing %s RPC client: %s", serviceName, err))
+			pluginPkg.closeClient(serviceName, client, logger)
+			return InternalError
+		}
+		var rawPlugin interface{}
+		rawPlugin, err = rpcClient.Dispense(shared.PluginName)
+		if err != nil {
+			logger.Error(fmt.Sprintf("internal error while dispensing RPC client: %s", err.Error()))
+			pluginPkg.closeClient(serviceName, client, logger)
+			return InternalError
+		}
+		plugin := rawPlugin.(shared.Pluginer)
+		logger.Trace(fmt.Sprintf("Starting Plugin %v: %s", runCount, pluginPkg.Name))
+		pluginExitCode, response := plugin.Start()
+		if response != nil {
+			pluginPkg.Error = fmt.Errorf("plugin %s: %v", serviceName, response)
+		}
+		pluginPkg.Successful = pluginExitCode == TestPass
+		if !pluginPkg.Successful {
+			exitCode = mergeExitCode(exitCode, pluginExitCode)
+		}
+		pluginPkg.closeClient(serviceName, client, logger)
 	}
 	return exitCode
 }

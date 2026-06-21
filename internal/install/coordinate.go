@@ -20,7 +20,7 @@ func parseCoordinate(arg string) (namespace, pluginId, version string, err error
 	}
 	coord, ver, _ := strings.Cut(arg, "@") // version is optional
 	coord = strings.TrimSpace(coord)
-	version = strings.TrimSpace(ver)
+	version = normalizeVersion(strings.TrimSpace(ver))
 
 	namespace, pluginId, ok := strings.Cut(coord, "/")
 	if !ok {
@@ -36,4 +36,13 @@ func parseCoordinate(arg string) (namespace, pluginId, version string, err error
 		return
 	}
 	return
+}
+
+// normalizeVersion strips a leading "v" before a digit so "v1.4.0" and "1.4.0"
+// resolve identically against the hub and manifest.
+func normalizeVersion(v string) string {
+	if len(v) >= 2 && v[0] == 'v' && v[1] >= '0' && v[1] <= '9' {
+		return v[1:]
+	}
+	return v
 }

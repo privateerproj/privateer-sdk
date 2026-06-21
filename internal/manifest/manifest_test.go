@@ -75,6 +75,51 @@ func TestLoad_CorruptFile(t *testing.T) {
 	}
 }
 
+func TestLoad_LegacyArrayFormat(t *testing.T) {
+	dir := t.TempDir()
+	legacy := `{"plugins":[{"name":"ossf/pvtr-scanner","version":"1.0.0","binaryPath":"pvtr-scanner"},{"name":"acme/foo","version":"2.0.0","binaryPath":"foo"}]}`
+	if err := os.WriteFile(filepath.Join(dir, "plugins.json"), []byte(legacy), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := Load(dir)
+	if err != nil {
+		t.Fatalf("expected legacy array to migrate successfully, got: %v", err)
+	}
+	if len(m.Plugins) != 2 {
+		t.Fatalf("expected 2 migrated plugins, got %d", len(m.Plugins))
+	}
+	if p := m.Find("ossf/pvtr-scanner"); p == nil || p.Version != "1.0.0" {
+		t.Errorf("expected migrated ossf/pvtr-scanner@1.0.0, got %+v", p)
+	}
+	if p := m.Find("acme/foo"); p == nil || p.Version != "2.0.0" {
+		t.Errorf("expected migrated acme/foo@2.0.0, got %+v", p)
+	}
+}
+
+func TestLoad_LegacyArrayFormat_RoundTrips(t *testing.T) {
+	dir := t.TempDir()
+	legacy := `{"plugins":[{"name":"ossf/pvtr-scanner","version":"1.0.0","binaryPath":"pvtr-scanner"}]}`
+	if err := os.WriteFile(filepath.Join(dir, "plugins.json"), []byte(legacy), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load legacy: %v", err)
+	}
+	if err := m.Save(dir); err != nil {
+		t.Fatalf("Save after migration: %v", err)
+	}
+	m2, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Re-load after save: %v", err)
+	}
+	if len(m2.Plugins) != 1 {
+		t.Fatalf("expected 1 plugin after round-trip, got %d", len(m2.Plugins))
+	}
+}
+
 func TestSaveAndLoad(t *testing.T) {
 	dir := t.TempDir()
 	m := &Manifest{}
