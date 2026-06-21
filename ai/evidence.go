@@ -26,7 +26,7 @@ const DefaultPacketVersion = "1"
 // are intentionally generic so future AI-assisted controls (and future
 // providers) can reuse the same writer without modification.
 type PacketAttempt struct {
-	// ControlID is the OSPS control identifier (e.g. "OSPS-QA-06.02").
+	// ControlID is the catalog control identifier (e.g. "AC-01.02").
 	// Required: it becomes the parent directory under ai-evidence/.
 	ControlID string
 
