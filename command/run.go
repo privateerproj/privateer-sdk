@@ -23,6 +23,19 @@ const (
 	NoTests       = shared.NoTests
 )
 
+// pluginClient abstracts the go-plugin Client so Run can be tested without
+// spawning real plugin subprocesses.
+type pluginClient interface {
+	Client() (hcplugin.ClientProtocol, error)
+	Kill()
+}
+
+// newClientFn creates a pluginClient for a plugin command. Tests replace this
+// with a fake to avoid subprocess overhead.
+var newClientFn = func(cmd *exec.Cmd, logger hclog.Logger) pluginClient {
+	return newClient(cmd, logger)
+}
+
 // Across multi-plugin runs the most severe outcome wins.
 var exitSeverity = map[int]int{
 	TestPass:      0,
@@ -63,7 +76,7 @@ func Run(logger hclog.Logger, getPlugins func() []*PluginPkg) (exitCode int) {
 			return BadUsage
 		}
 		runCount++
-		client := newClient(pluginPkg.Command, logger)
+		client := newClientFn(pluginPkg.Command, logger)
 		var rpcClient hcplugin.ClientProtocol
 		rpcClient, err := client.Client()
 		if err != nil {

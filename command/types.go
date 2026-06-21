@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 
 	hclog "github.com/hashicorp/go-hclog"
-	hcplugin "github.com/hashicorp/go-plugin"
 	"github.com/spf13/viper"
 
 	"github.com/privateerproj/privateer-sdk/internal/manifest"
@@ -78,7 +77,7 @@ func (p *PluginPkg) queueCmd() {
 }
 
 // closeClient logs the plugin result and kills the process.
-func (p *PluginPkg) closeClient(serviceName string, client *hcplugin.Client, logger hclog.Logger) {
+func (p *PluginPkg) closeClient(serviceName string, client pluginClient, logger hclog.Logger) {
 	if p.Successful {
 		logger.Info(fmt.Sprintf("Plugin for %s completed successfully", serviceName))
 	} else if p.Error != nil {
