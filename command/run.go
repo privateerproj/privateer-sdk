@@ -54,6 +54,9 @@ func Run(logger hclog.Logger, getPlugins func() []*PluginPkg) (exitCode int) {
 
 	var runCount int
 	for _, pluginPkg := range plugins {
+		if !pluginPkg.Requested {
+			continue
+		}
 		serviceName := pluginPkg.ServiceTarget
 		if !pluginPkg.Installed {
 			logger.Error(fmt.Sprintf("requested plugin that is not installed: %s", pluginPkg.Name))
