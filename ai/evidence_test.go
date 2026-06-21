@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	gemara "github.com/gemaraproj/go-gemara"
 	sdkconfig "github.com/privateerproj/privateer-sdk/config"
 )
 
@@ -43,12 +44,12 @@ func TestWritePacketSucceededAttempt(t *testing.T) {
 		RepositoryName:    "test-repo",
 		DefaultBranch:     "main",
 		CommitSHA:         "abc123def456",
-		Result:            "Passed",
-		Confidence:        "High",
+		StepResult:        gemara.Passed,
+		StepConfidence:    gemara.High,
 		Verdict:           "pass",
 		Reasoning:         "README explains contributors should run go test before opening a PR. Authorization: Bearer sk-live-1234567890abcdef",
 		EvidenceLocation:  "README#testing ghp_var_secret_123456",
-		AssessmentMessage: "[AI-Assisted] verdict=pass confidence=0.91",
+		StepMessage: "[AI-Assisted] verdict=pass confidence=0.91",
 		Prompt:            "You are assessing test execution documentation with super-secret-key.",
 		Schema: &Schema{
 			Name:        "test_execution_documentation_assessment",
@@ -180,7 +181,7 @@ func TestWritePacketFailedAttempt(t *testing.T) {
 		ControlID:         "CTL-QA-06.02",
 		Outcome:           "failed",
 		AttemptStage:      "provider_call",
-		AssessmentMessage: "Review project documentation to ensure it explains when and how tests are run",
+		StepMessage: "Review project documentation to ensure it explains when and how tests are run",
 		Failure:           errors.New("provider unavailable"),
 		Prompt:            "prompt",
 		Evidence:          "README\nbody",
@@ -212,6 +213,11 @@ func TestWritePacketFailedAttempt(t *testing.T) {
 	} {
 		if !strings.Contains(string(body), want) {
 			t.Fatalf("assessment.json missing %s; got %s", want, string(body))
+		}
+	}
+	for _, absent := range []string{`"result"`, `"confidence"`} {
+		if strings.Contains(string(body), absent) {
+			t.Fatalf("assessment.json should omit %s when step result/confidence are zero-valued; got %s", absent, string(body))
 		}
 	}
 }

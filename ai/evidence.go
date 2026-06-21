@@ -13,6 +13,7 @@ import (
 	"time"
 	"unicode"
 
+	gemara "github.com/gemaraproj/go-gemara"
 	sdkconfig "github.com/privateerproj/privateer-sdk/config"
 )
 
@@ -47,12 +48,18 @@ type PacketAttempt struct {
 	Outcome      string
 	AttemptStage string
 
-	// Result, Confidence, and Verdict are the caller-domain summary fields
-	// rendered into assessment.json. They are strings so the SDK does not
-	// depend on any particular verdict type.
-	Result     string
-	Confidence string
-	Verdict    string
+	// StepResult and StepConfidence carry the gemara-typed assessment
+	// outcome from the evaluation step. WritePacket renders their
+	// .String() representations into assessment.json so the on-disk
+	// format stays human-readable. Zero values (NotRun / Undetermined)
+	// are treated as unset and omitted from the JSON output.
+	StepResult     gemara.Result
+	StepConfidence gemara.ConfidenceLevel
+
+	// Verdict comes from the AI model's structured response (e.g.
+	// "pass"). It is the raw AI output, distinct from StepResult which
+	// is the evaluation pipeline's typed outcome.
+	Verdict string
 
 	// Reasoning and EvidenceLocation come from the parsed structured AI
 	// response. The writer sanitizes them using configured values and
@@ -60,11 +67,11 @@ type PacketAttempt struct {
 	Reasoning        string
 	EvidenceLocation string
 
-	// AssessmentMessage is the human-readable summary that the caller
-	// surfaces (e.g. in scanner logs). FailureMessage is derived from
-	// Failure when set.
-	AssessmentMessage string
-	Failure           error
+	// StepMessage is the human-readable summary that the caller surfaces
+	// (e.g. in scanner logs). FailureMessage is derived from Failure
+	// when set.
+	StepMessage string
+	Failure     error
 
 	// Provider interaction artifacts. The writer sanitizes prompt, evidence,
 	// and response content before persistence. Schema is copied for
@@ -226,9 +233,9 @@ func WritePacket(config sdkconfig.Config, attempt PacketAttempt) error {
 		FinishReason:      packetFinishReason(attempt.Response),
 		Outcome:           strings.TrimSpace(attempt.Outcome),
 		AttemptStage:      strings.TrimSpace(attempt.AttemptStage),
-		Result:            strings.TrimSpace(attempt.Result),
-		Confidence:        strings.TrimSpace(attempt.Confidence),
-		AssessmentMessage: sanitizer.RedactText(attempt.AssessmentMessage),
+		Result:            gemaraResultString(attempt.StepResult),
+		Confidence:        gemaraConfidenceString(attempt.StepConfidence),
+		AssessmentMessage: sanitizer.RedactText(attempt.StepMessage),
 		FailureMessage:    sanitizer.RedactText(errorMessage(attempt.Failure)),
 		Verdict:           strings.TrimSpace(attempt.Verdict),
 		Reasoning:         sanitizer.RedactText(attempt.Reasoning),
@@ -331,6 +338,20 @@ func packetDirectoryName(requestID string) string {
 		safe = safe[:48]
 	}
 	return base + "-" + safe
+}
+
+func gemaraResultString(r gemara.Result) string {
+	if r == gemara.NotRun {
+		return ""
+	}
+	return r.String()
+}
+
+func gemaraConfidenceString(c gemara.ConfidenceLevel) string {
+	if c == gemara.Undetermined {
+		return ""
+	}
+	return c.String()
 }
 
 func packetProvider(response *AnalyzeResponse, config Config) Provider {
