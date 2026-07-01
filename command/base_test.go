@@ -34,8 +34,7 @@ func TestSetBase_ConfigFlagDefaultIsEmpty(t *testing.T) {
 	flag := cmd.PersistentFlags().Lookup("config")
 	if flag == nil {
 		t.Fatal("expected config flag to be registered")
-	}
-	if flag.DefValue != "" {
+	} else if flag.DefValue != "" {
 		t.Errorf("expected config flag default to be empty, got %q", flag.DefValue)
 	}
 }
@@ -48,8 +47,7 @@ func TestSetBase_DryRunAIFlag(t *testing.T) {
 	flag := cmd.PersistentFlags().Lookup("dry-run-ai")
 	if flag == nil {
 		t.Fatal("expected dry-run-ai flag to be registered")
-	}
-	if flag.DefValue != "false" {
+	} else if flag.DefValue != "false" {
 		t.Errorf("expected dry-run-ai default to be 'false', got %q", flag.DefValue)
 	}
 	if err := cmd.PersistentFlags().Set("dry-run-ai", "true"); err != nil {
