@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	gemara "github.com/gemaraproj/go-gemara"
 	sdkconfig "github.com/privateerproj/privateer-sdk/config"
 )
 
@@ -36,19 +37,19 @@ func TestWritePacketSucceededAttempt(t *testing.T) {
 	tempDir := t.TempDir()
 	config := newTestSDKConfig(t, tempDir)
 	attempt := PacketAttempt{
-		ControlID:         "OSPS-QA-06.02",
+		ControlID:         "CTL-QA-06.02",
 		Outcome:           "succeeded",
 		AttemptStage:      "assessment_completed",
 		RepositoryOwner:   "test-owner",
 		RepositoryName:    "test-repo",
 		DefaultBranch:     "main",
 		CommitSHA:         "abc123def456",
-		Result:            "Passed",
-		Confidence:        "High",
+		StepResult:        gemara.Passed,
+		StepConfidence:    gemara.High,
 		Verdict:           "pass",
 		Reasoning:         "README explains contributors should run go test before opening a PR. Authorization: Bearer sk-live-1234567890abcdef",
 		EvidenceLocation:  "README#testing ghp_var_secret_123456",
-		AssessmentMessage: "[AI-Assisted] verdict=pass confidence=0.91",
+		StepMessage: "[AI-Assisted] verdict=pass confidence=0.91",
 		Prompt:            "You are assessing test execution documentation with super-secret-key.",
 		Schema: &Schema{
 			Name:        "test_execution_documentation_assessment",
@@ -78,7 +79,7 @@ func TestWritePacketSucceededAttempt(t *testing.T) {
 		t.Fatalf("WritePacket: %v", err)
 	}
 
-	matches, err := filepath.Glob(filepath.Join(tempDir, "my-scan", "ai-evidence", "OSPS-QA-06.02", "*"))
+	matches, err := filepath.Glob(filepath.Join(tempDir, "my-scan", "ai-evidence", "CTL-QA-06.02", "*"))
 	if err != nil {
 		t.Fatalf("glob: %v", err)
 	}
@@ -100,7 +101,7 @@ func TestWritePacketSucceededAttempt(t *testing.T) {
 	assessmentText := string(assessmentBytes)
 	for _, want := range []string{
 		`"packet_version": "1"`,
-		`"control_id": "OSPS-QA-06.02"`,
+		`"control_id": "CTL-QA-06.02"`,
 		`"service_name": "my-scan"`,
 		`"repository_owner": "test-owner"`,
 		`"commit_sha": "abc123def456"`,
@@ -177,10 +178,10 @@ func TestWritePacketFailedAttempt(t *testing.T) {
 	config := newTestSDKConfig(t, tempDir)
 
 	attempt := PacketAttempt{
-		ControlID:         "OSPS-QA-06.02",
+		ControlID:         "CTL-QA-06.02",
 		Outcome:           "failed",
 		AttemptStage:      "provider_call",
-		AssessmentMessage: "Review project documentation to ensure it explains when and how tests are run",
+		StepMessage: "Review project documentation to ensure it explains when and how tests are run",
 		Failure:           errors.New("provider unavailable"),
 		Prompt:            "prompt",
 		Evidence:          "README\nbody",
@@ -191,7 +192,7 @@ func TestWritePacketFailedAttempt(t *testing.T) {
 		t.Fatalf("WritePacket: %v", err)
 	}
 
-	matches, err := filepath.Glob(filepath.Join(tempDir, "my-scan", "ai-evidence", "OSPS-QA-06.02", "*"))
+	matches, err := filepath.Glob(filepath.Join(tempDir, "my-scan", "ai-evidence", "CTL-QA-06.02", "*"))
 	if err != nil {
 		t.Fatalf("glob: %v", err)
 	}
@@ -214,6 +215,11 @@ func TestWritePacketFailedAttempt(t *testing.T) {
 			t.Fatalf("assessment.json missing %s; got %s", want, string(body))
 		}
 	}
+	for _, absent := range []string{`"result"`, `"confidence"`} {
+		if strings.Contains(string(body), absent) {
+			t.Fatalf("assessment.json should omit %s when step result/confidence are zero-valued; got %s", absent, string(body))
+		}
+	}
 }
 
 func TestWritePacketFinalRedactionPassCoversMetadataSchemaAndDirectory(t *testing.T) {
@@ -223,7 +229,7 @@ func TestWritePacketFinalRedactionPassCoversMetadataSchemaAndDirectory(t *testin
 	config.Vars["token"] = escapedSecret
 
 	attempt := PacketAttempt{
-		ControlID:       "OSPS-QA-06.02",
+		ControlID:       "CTL-QA-06.02",
 		Outcome:         "succeeded",
 		AttemptStage:    "assessment_completed",
 		RepositoryOwner: "test-owner",
@@ -250,7 +256,7 @@ func TestWritePacketFinalRedactionPassCoversMetadataSchemaAndDirectory(t *testin
 		t.Fatalf("WritePacket: %v", err)
 	}
 
-	matches, err := filepath.Glob(filepath.Join(tempDir, "my-scan", "ai-evidence", "OSPS-QA-06.02", "*"))
+	matches, err := filepath.Glob(filepath.Join(tempDir, "my-scan", "ai-evidence", "CTL-QA-06.02", "*"))
 	if err != nil {
 		t.Fatalf("glob: %v", err)
 	}
@@ -294,7 +300,7 @@ func TestWritePacketNoopWhenWriteDisabled(t *testing.T) {
 	config := newTestSDKConfig(t, tempDir)
 	config.Write = false
 
-	if err := WritePacket(config, PacketAttempt{ControlID: "OSPS-QA-06.02"}); err != nil {
+	if err := WritePacket(config, PacketAttempt{ControlID: "CTL-QA-06.02"}); err != nil {
 		t.Fatalf("WritePacket: %v", err)
 	}
 	if entries, _ := os.ReadDir(tempDir); len(entries) != 0 {
@@ -307,7 +313,7 @@ func TestWritePacketNoopWhenEvidenceWritingDisabled(t *testing.T) {
 	config := newTestSDKConfig(t, tempDir)
 	config.Vars["ai_write_evidence"] = false
 
-	if err := WritePacket(config, PacketAttempt{ControlID: "OSPS-QA-06.02"}); err != nil {
+	if err := WritePacket(config, PacketAttempt{ControlID: "CTL-QA-06.02"}); err != nil {
 		t.Fatalf("WritePacket: %v", err)
 	}
 	if entries, _ := os.ReadDir(tempDir); len(entries) != 0 {
@@ -320,7 +326,7 @@ func TestWritePacketRejectsWrongTypedEvidenceWritingConfig(t *testing.T) {
 	config := newTestSDKConfig(t, tempDir)
 	config.Vars["ai_write_evidence"] = "true"
 
-	err := WritePacket(config, PacketAttempt{ControlID: "OSPS-QA-06.02"})
+	err := WritePacket(config, PacketAttempt{ControlID: "CTL-QA-06.02"})
 	if err == nil {
 		t.Fatal("expected wrong-typed ai_write_evidence error, got nil")
 	}
@@ -339,7 +345,7 @@ func TestWritePacketNoopWhenAIUnconfigured(t *testing.T) {
 		"ai_write_evidence": true,
 	}
 
-	if err := WritePacket(config, PacketAttempt{ControlID: "OSPS-QA-06.02"}); err != nil {
+	if err := WritePacket(config, PacketAttempt{ControlID: "CTL-QA-06.02"}); err != nil {
 		t.Fatalf("WritePacket: %v", err)
 	}
 	if entries, _ := os.ReadDir(tempDir); len(entries) != 0 {
@@ -360,7 +366,7 @@ func TestWritePacketNoopWhenControlIDMissing(t *testing.T) {
 }
 
 func TestCreatePacketDirectoryFailsWhenPacketDirectoryExists(t *testing.T) {
-	packetDir := filepath.Join(t.TempDir(), "my-scan", "ai-evidence", "OSPS-QA-06.02", "packet")
+	packetDir := filepath.Join(t.TempDir(), "my-scan", "ai-evidence", "CTL-QA-06.02", "packet")
 	if err := createPacketDirectory(packetDir); err != nil {
 		t.Fatalf("createPacketDirectory first call: %v", err)
 	}
