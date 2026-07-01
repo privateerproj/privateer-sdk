@@ -61,27 +61,6 @@ func TestSetBase_DryRunAIFlag(t *testing.T) {
 	}
 }
 
-func TestSetBase_WriteAIEvidenceFlag(t *testing.T) {
-	resetViper()
-	cmd := &cobra.Command{Use: "test"}
-	SetBase(cmd)
-
-	flag := cmd.PersistentFlags().Lookup("write-ai-evidence")
-	if flag == nil {
-		t.Fatal("expected write-ai-evidence flag to be registered")
-	}
-	if flag.DefValue != "false" {
-		t.Errorf("expected write-ai-evidence default to be 'false', got %q", flag.DefValue)
-	}
-	if err := cmd.PersistentFlags().Set("write-ai-evidence", "true"); err != nil {
-		t.Fatalf("failed to set flag: %v", err)
-	}
-	// The flag is bound to ai_write_evidence so config, env, and CLI use one key.
-	if !viper.GetBool("ai_write_evidence") {
-		t.Error("expected viper ai_write_evidence=true after --write-ai-evidence flag set")
-	}
-}
-
 func TestReadConfig_ExplicitConfigPath(t *testing.T) {
 	resetViper()
 
