@@ -30,7 +30,6 @@ var inheritedTopLevelVarKeys = []string{
 	"ai_timeout",
 	"ai_max_tokens",
 	"ai_dry_run",
-	"ai_write_evidence",
 }
 
 // Config holds the configuration for a plugin execution.

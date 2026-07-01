@@ -517,7 +517,6 @@ ai_base_url: http://127.0.0.1:8000/v1
 ai_timeout: 45s
 ai_max_tokens: 1024
 ai_dry_run: true
-ai_write_evidence: true
 services:
   my-service-1:
     policy:
@@ -540,7 +539,6 @@ services:
 		"ai_timeout":        "45s",
 		"ai_max_tokens":     1024,
 		"ai_dry_run":        true,
-		"ai_write_evidence": true,
 	} {
 		if got, ok := c.Vars[key]; !ok || got != want {
 			t.Fatalf("Vars[%q] = %#v, want %#v", key, got, want)
@@ -552,12 +550,8 @@ func TestNewConfig_DoesNotInheritBoundFlagDefaultIntoVars(t *testing.T) {
 	viper.Reset()
 	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
 	flags.Bool("dry-run-ai", false, "")
-	flags.Bool("write-ai-evidence", false, "")
 	if err := viper.BindPFlag("ai_dry_run", flags.Lookup("dry-run-ai")); err != nil {
 		t.Fatalf("failed to bind dry-run flag: %v", err)
-	}
-	if err := viper.BindPFlag("ai_write_evidence", flags.Lookup("write-ai-evidence")); err != nil {
-		t.Fatalf("failed to bind write AI evidence flag: %v", err)
 	}
 	viper.Set("service", "my-service-1")
 	viper.Set("services.my-service-1.policy.catalogs", []string{"FINOS-CCC"})
