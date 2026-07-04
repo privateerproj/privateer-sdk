@@ -85,16 +85,16 @@ func HasUserGuides(payload any) (gemara.Result, string, gemara.ConfidenceLevel) 
     }
 
     // Deterministic check was inconclusive: run the AI-assisted follow-up.
-    verdict, evidence, err := ai.Assist(context.Background(), p.AIClient, ai.Question{
-        Prompt:  "Does this repository document a user guide? Cite where you found it.",
-        Content: p.Readme,
+    response, evidence, err := ai.Assist(context.Background(), p.AIClient, ai.Question{
+        Prompt:   "Does this repository document a user guide? Cite where you found it.",
+        Material: p.Readme,
     })
     if err != nil {
         return gemara.Unknown, err.Error(), gemara.Undetermined
     }
 
     p.AddEvidence(evidence) // p embeds gemara.EvidenceCollector
-    return verdict.GemaraResult(), verdict.Reasoning, verdict.GemaraConfidence()
+    return response.GemaraResult(), response.Reasoning, response.GemaraConfidence()
 }
 ```
 
@@ -111,10 +111,10 @@ type Payload struct {
 }
 ```
 
-## The verdict and evidence
+## The response and evidence
 
 `Assist` requests an SDK-owned JSON Schema, so plugin authors never write one.
-The parsed answer is `ai.Verdict`:
+The parsed answer is `ai.Response`:
 
 <!-- markdownlint-disable MD013 -->
 
@@ -122,28 +122,35 @@ The parsed answer is `ai.Verdict`:
 | --- | --- | --- |
 | `Result` | `pass` / `fail` / `needs_review` | `GemaraResult()` maps to `Passed` / `Failed` / `NeedsReview`. |
 | `Confidence` | `low` / `medium` / `high` | `GemaraConfidence()` maps to the matching `gemara.ConfidenceLevel`. |
-| `Reasoning` | free text | Short justification; used as the evidence description by default. |
+| `Reasoning` | free text | Short justification. |
 | `Citations` | strings | Optional pointers to where support was found. |
 
 <!-- markdownlint-enable MD013 -->
 
-Anything other than an explicit `pass`/`fail` — an unrecognized value, a provider
-error, an unparseable response, or a dry run — maps to `NeedsReview`. An
-AI-assisted check therefore **never silently passes a control**; the worst case
-is that a human is asked to review.
+Anything other than an explicit `pass`/`fail` — an unrecognized value or a dry
+run — maps to `NeedsReview` via `GemaraResult()`. An AI-assisted check therefore
+**never silently passes a control**; the worst case is that a human is asked to
+review.
 
-The returned `gemara.Evidence` is self-describing:
+When `Assist` gets a usable response from the provider (a live structured
+answer, or a dry run), it returns a self-describing `gemara.Evidence`:
 
 - `Type` is `ai-assessment`, marking the record as software-assisted rather than
   directly observed.
-- `Payload` is an `ai.EvidencePayload` carrying the `Verdict`, the exact
-  question asked (prompt and content), and provenance (provider, model, request
-  id) — so a reviewer can see precisely what the model was shown and audit or
-  reproduce the answer without provider-side request logs.
-- `Description` is the verdict's `Reasoning`, unless you set `Question.Description`.
+- `Payload` is an `ai.EvidencePayload` carrying the `Response`, the exact
+  question asked (prompt and material), and provenance (provider, model,
+  request id) — so a reviewer can see precisely what the model was shown and
+  audit or reproduce the answer without provider-side request logs.
+- `Description` is fixed to `"AI Assisted Review"`.
 
-Because the prompt and content are recorded verbatim in the evaluation output,
-**never put secrets in `Question.Content`** — anything sent to the model also
+If `Assist` never got a response at all — nil client, a provider error, a nil
+response, or an unparseable body — it returns a zero `Response`, a zero
+`gemara.Evidence`, and a non-nil `error`. There is nothing to record as
+evidence in that case; callers should fold the error into the step's own
+result (see the example above) rather than looking for evidence.
+
+Because the prompt and material are recorded verbatim in the evaluation output,
+**never put secrets in `Question.Material`** — anything sent to the model also
 lands in the results file.
 
 ## Advanced: custom schemas

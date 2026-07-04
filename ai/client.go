@@ -28,11 +28,6 @@ const (
 const (
 	defaultTimeout   = 30 * time.Second
 	defaultMaxTokens = 256
-
-	// FinishReasonDryRun is the predictable FinishReason returned by
-	// the dry-run client so callers can distinguish a dry-run result
-	// from any real provider response.
-	FinishReasonDryRun = "dry_run"
 )
 
 // clientFactory builds a provider adapter from a normalized Config. Each

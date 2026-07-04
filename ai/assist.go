@@ -25,7 +25,7 @@ type Question struct {
 // Response is a structured answer from the assistant
 type Response struct {
 	// Result is the model's disposition: "pass", "fail", or "needs_review".
-	Result gemara.Result `json:"result" yaml:"result"`
+	Result string `json:"result" yaml:"result"`
 	// Confidence is how sure the model is: "low", "medium", or "high".
 	Confidence string `json:"confidence" yaml:"confidence"`
 	// Reasoning is the model's short justification for the verdict.
@@ -71,7 +71,7 @@ func Assist(ctx context.Context, client Client, q Question) (Response, gemara.Ev
 
 	aResp, err := client.Analyze(ctx, q.Prompt, q.Material, responseSchema)
 	if err != nil {
-		return Response{}, gemara.Evidence{}, fmt.Errorf("AI assessment failed: " + err.Error())
+		return Response{}, gemara.Evidence{}, fmt.Errorf("AI assessment failed: %w", err)
 	}
 	if aResp == nil {
 		return Response{}, gemara.Evidence{}, fmt.Errorf("AI assessment failed: provider returned no response")
@@ -80,7 +80,7 @@ func Assist(ctx context.Context, client Client, q Question) (Response, gemara.Ev
 	// Dry-run returns only Text (no structured body)
 	if aResp.Metadata.FinishReason == FinishReasonDryRun {
 		response := Response{
-			Result: gemara.NeedsReview, Confidence: "low",
+			Result: "needs_review", Confidence: "low",
 			Reasoning: "AI dry-run: no live assessment performed",
 		}
 		return response, newEvidence(response, aResp, q), nil
@@ -88,7 +88,7 @@ func Assist(ctx context.Context, client Client, q Question) (Response, gemara.Ev
 
 	var response Response
 	if err := json.Unmarshal(aResp.JSON, &response); err != nil {
-		return Response{}, gemara.Evidence{}, fmt.Errorf("AI response was not valid structured JSON", err)
+		return Response{}, gemara.Evidence{}, fmt.Errorf("AI response was not valid structured JSON: %w", err)
 	}
 
 	return response, newEvidence(response, aResp, q), nil
@@ -121,20 +121,19 @@ func evidenceID(resp *AnalyzeResponse, timeNow string) string {
 			return id
 		}
 	}
-	return fmt.Sprintf("ai-%d", timeNow)
+	return fmt.Sprintf("ai-%s", timeNow)
 }
 
 // GemaraResult maps the assistant's verdict onto a gemara.Result. Anything other
 // than an explicit pass/fail maps to NeedsReview.
 func (v Response) GemaraResult() gemara.Result {
-	switch v.Result {
-	case gemara.Passed:
+	if strings.Contains(strings.ToLower(strings.TrimSpace(v.Result)), "pass") {
 		return gemara.Passed
-	case gemara.Failed:
-		return gemara.Failed
-	default:
-		return gemara.NeedsReview
 	}
+	if strings.Contains(strings.ToLower(strings.TrimSpace(v.Result)), "fail") {
+		return gemara.Failed
+	}
+	return gemara.NeedsReview
 }
 
 // GemaraConfidence maps the model's confidence onto a gemara.ConfidenceLevel.

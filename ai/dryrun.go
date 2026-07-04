@@ -7,6 +7,8 @@ import (
 	"log"
 )
 
+const FinishReasonDryRun = "dry_run"
+
 // dryRunClient implements Client without contacting any provider. It logs
 // what would be sent and returns a predictable response so callers can
 // inspect prompt content and model settings without spending tokens.
