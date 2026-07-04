@@ -69,6 +69,8 @@ deterministic check cannot answer. The step decides whether to record the
 evidence and how the verdict folds into its result — `Assist` never calls
 `AddEvidence` and never chooses the result for you.
 
+<!-- markdownlint-disable MD013 -->
+
 ```go
 // HasUserGuides passes when a user guide is declared in Security Insights, and
 // otherwise asks the model to look for one before giving up.
@@ -96,6 +98,8 @@ func HasUserGuides(payload any) (gemara.Result, string, gemara.ConfidenceLevel) 
 }
 ```
 
+<!-- markdownlint-enable MD013 -->
+
 For the payload to carry evidence, embed `gemara.EvidenceCollector` in it; the
 `AssessmentLog` harvests whatever a step adds after the step runs:
 
@@ -112,12 +116,16 @@ type Payload struct {
 `Assist` requests an SDK-owned JSON Schema, so plugin authors never write one.
 The parsed answer is `ai.Verdict`:
 
+<!-- markdownlint-disable MD013 -->
+
 | Field | Values | Notes |
 | --- | --- | --- |
 | `Result` | `pass` / `fail` / `needs_review` | `GemaraResult()` maps to `Passed` / `Failed` / `NeedsReview`. |
 | `Confidence` | `low` / `medium` / `high` | `GemaraConfidence()` maps to the matching `gemara.ConfidenceLevel`. |
 | `Reasoning` | free text | Short justification; used as the evidence description by default. |
 | `Citations` | strings | Optional pointers to where support was found. |
+
+<!-- markdownlint-enable MD013 -->
 
 Anything other than an explicit `pass`/`fail` — an unrecognized value, a provider
 error, an unparseable response, or a dry run — maps to `NeedsReview`. An
@@ -128,9 +136,15 @@ The returned `gemara.Evidence` is self-describing:
 
 - `Type` is `ai-assessment`, marking the record as software-assisted rather than
   directly observed.
-- `Payload` is an `ai.EvidencePayload` carrying the `Verdict` plus provenance
-  (provider, model, request id) so the answer can be audited or reproduced.
+- `Payload` is an `ai.EvidencePayload` carrying the `Verdict`, the exact
+  question asked (prompt and content), and provenance (provider, model, request
+  id) — so a reviewer can see precisely what the model was shown and audit or
+  reproduce the answer without provider-side request logs.
 - `Description` is the verdict's `Reasoning`, unless you set `Question.Description`.
+
+Because the prompt and content are recorded verbatim in the evaluation output,
+**never put secrets in `Question.Content`** — anything sent to the model also
+lands in the results file.
 
 ## Advanced: custom schemas
 

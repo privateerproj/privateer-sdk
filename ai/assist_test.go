@@ -81,6 +81,11 @@ func TestAssist_ParsesVerdictAndBuildsEvidence(t *testing.T) {
 	if payload.Verdict.Result != "pass" || payload.Model != "gpt-4o-mini" || payload.RequestID != "req-123" {
 		t.Errorf("payload = %+v", payload)
 	}
+	// The question itself is preserved so the verdict is auditable without
+	// provider-side request logs.
+	if payload.Prompt != "Does this repo document a user guide?" || payload.Content != "README body" {
+		t.Errorf("payload prompt/content = %q / %q, want the question verbatim", payload.Prompt, payload.Content)
+	}
 }
 
 func TestAssist_DescriptionOverride(t *testing.T) {
@@ -110,6 +115,22 @@ func TestAssist_ProviderErrorYieldsNeedsReview(t *testing.T) {
 	}
 	if ev.Type != EvidenceType {
 		t.Errorf("expected an evidence record even on failure, got type %q", ev.Type)
+	}
+}
+
+func TestAssist_NilResponseYieldsNeedsReview(t *testing.T) {
+	// An adapter that returns (nil, nil) must degrade to needs_review, not panic.
+	client := &stubClient{}
+
+	verdict, ev, err := Assist(context.Background(), client, Question{Prompt: "check"})
+	if err == nil {
+		t.Fatal("expected error for nil response")
+	}
+	if verdict.GemaraResult() != gemara.NeedsReview {
+		t.Errorf("result = %v, want NeedsReview", verdict.GemaraResult())
+	}
+	if ev.Type != EvidenceType {
+		t.Errorf("expected an evidence record even on nil response, got type %q", ev.Type)
 	}
 }
 

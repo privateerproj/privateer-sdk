@@ -21,8 +21,9 @@ type Question struct {
 	// Prompt tells the model what to decide and how to decide it.
 	Prompt string
 	// Content is the material the model inspects — file contents, config, a
-	// rendered API response, etc. It is sent verbatim; the caller decides what
-	// (and how much) to include.
+	// rendered API response, etc. It is sent to the provider verbatim and
+	// recorded verbatim in the evidence payload; the caller decides what (and
+	// how much) to include, and must never include secrets.
 	Content string
 	// Description overrides the human-readable summary on the returned
 	// gemara.Evidence. When empty, the model's Reasoning is used.
@@ -34,14 +35,14 @@ type Question struct {
 // becomes the gemara.Evidence payload so the record is self-describing.
 type Verdict struct {
 	// Result is the model's disposition: "pass", "fail", or "needs_review".
-	Result string `json:"result"`
+	Result string `json:"result" yaml:"result"`
 	// Confidence is how sure the model is: "low", "medium", or "high".
-	Confidence string `json:"confidence"`
+	Confidence string `json:"confidence" yaml:"confidence"`
 	// Reasoning is the model's short justification for the verdict.
-	Reasoning string `json:"reasoning"`
+	Reasoning string `json:"reasoning" yaml:"reasoning"`
 	// Citations optionally points at where in Content the model found support
 	// (e.g. file paths, URLs, line references).
-	Citations []string `json:"citations,omitempty"`
+	Citations []string `json:"citations,omitempty" yaml:"citations,omitempty"`
 }
 
 // verdictSchema is the SDK-owned JSON Schema that pins the model to the Verdict
@@ -57,21 +58,25 @@ var verdictSchema = &Schema{
 			"result":     {"type": "string", "enum": ["pass", "fail", "needs_review"]},
 			"confidence": {"type": "string", "enum": ["low", "medium", "high"]},
 			"reasoning":  {"type": "string"},
-			"citations":  {"type": "array", "items": {"type": "string"}}
+			"citations":  {"type": ["array", "null"], "items": {"type": "string"}}
 		},
-		"required": ["result", "confidence", "reasoning"],
+		"required": ["result", "confidence", "reasoning", "citations"],
 		"additionalProperties": false
 	}`),
 }
 
 // EvidencePayload is the structured body stored in gemara.Evidence.Payload. It
-// pairs the model's Verdict with the provenance a reviewer needs to trust or
-// reproduce it.
+// pairs the model's Verdict with the exact question asked (Prompt and Content)
+// and the provenance a reviewer needs to audit or reproduce the verdict without
+// relying on provider-side request logs. Content lands verbatim in evaluation
+// output — callers must not put secrets in Question.Content.
 type EvidencePayload struct {
-	Verdict   Verdict  `json:"verdict"`
-	Provider  Provider `json:"provider,omitempty"`
-	Model     string   `json:"model,omitempty"`
-	RequestID string   `json:"request-id,omitempty"`
+	Verdict   Verdict  `json:"verdict" yaml:"verdict"`
+	Prompt    string   `json:"prompt,omitempty" yaml:"prompt,omitempty"`
+	Content   string   `json:"content,omitempty" yaml:"content,omitempty"`
+	Provider  Provider `json:"provider,omitempty" yaml:"provider,omitempty"`
+	Model     string   `json:"model,omitempty" yaml:"model,omitempty"`
+	RequestID string   `json:"request-id,omitempty" yaml:"request-id,omitempty"`
 }
 
 // Assist runs an AI-assisted assessment: it asks client for a structured Verdict
@@ -81,8 +86,9 @@ type EvidencePayload struct {
 // the Verdict (map it with GemaraResult/GemaraConfidence) and the Evidence, so
 // the caller stays in control of how the AI outcome folds into its assessment.
 //
-// Assist never panics. A nil client, provider error, or unparseable response is
-// returned as an error alongside a needs_review Verdict and an Evidence record
+// Assist never panics. A nil client, provider error, nil response, or
+// unparseable response is returned as an error alongside a needs_review
+// Verdict and an Evidence record
 // noting the attempt, so a step can still show that an AI check was tried.
 //
 // Under --dry-run-ai the client returns no structured body; Assist recognizes
@@ -99,10 +105,14 @@ func Assist(ctx context.Context, client Client, q Question) (Verdict, gemara.Evi
 		v := failVerdict("AI assessment failed: " + err.Error())
 		return v, newEvidence(v, resp, q), fmt.Errorf("ai: analyze: %w", err)
 	}
+	if resp == nil {
+		v := failVerdict("AI assessment failed: provider returned no response")
+		return v, newEvidence(v, nil, q), fmt.Errorf("ai: analyze returned no response")
+	}
 
 	// Dry-run returns only Text (no structured body). Treat it as a clean,
 	// no-spend path rather than a parse failure.
-	if resp != nil && resp.Metadata.FinishReason == FinishReasonDryRun {
+	if resp.Metadata.FinishReason == FinishReasonDryRun {
 		v := failVerdict("AI dry-run: no live assessment performed")
 		return v, newEvidence(v, resp, q), nil
 	}
@@ -132,7 +142,7 @@ func newEvidence(v Verdict, resp *AnalyzeResponse, q Question) gemara.Evidence {
 		description = v.Reasoning
 	}
 
-	payload := EvidencePayload{Verdict: v}
+	payload := EvidencePayload{Verdict: v, Prompt: q.Prompt, Content: q.Content}
 	if resp != nil {
 		payload.Provider = resp.Metadata.Provider
 		payload.Model = resp.Metadata.Model
