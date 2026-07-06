@@ -9,15 +9,16 @@ piece of evidence.
 
 The SDK provides two things:
 
-- a provider-neutral **client** (`ai.NewClientFromConfig`) that talks to a model,
+- a provider-neutral **client** (`ai.NewClient`) that talks to a model,
   driven entirely by config so operators, not plugin authors, choose the
-  provider, model, and credentials; and
+  provider, model, and credentials — see
+  [The AI client contract](ai-client.md); and
 - an **accelerator** (`ai.Assist`) that asks the model for a structured verdict
   against an SDK-owned schema and hands back a ready-to-record `gemara.Evidence`.
 
 ## Configuration
 
-AI is opt-in. When none of the `ai_*` keys are set, `NewClientFromConfig` returns
+AI is opt-in. When none of the `ai_*` keys are set, `ai.NewClient` returns
 `(nil, nil)` and a plugin should simply skip its AI-assisted paths. Keys set at
 the top level of the config file are inherited into every service.
 
@@ -27,11 +28,10 @@ the top level of the config file are inherited into every service.
 | --- | --- | --- | --- |
 | `ai_provider` | `PVTR_AI_PROVIDER` | -- | Backend adapter. Currently `openai`. |
 | `ai_model` | `PVTR_AI_MODEL` | -- | Provider model id (e.g. `gpt-4o-mini`). |
-| `ai_api_key` | `PVTR_AI_API_KEY` | -- | Provider credential. Not required in dry-run. |
+| `ai_api_key` | `PVTR_AI_API_KEY` | -- | Provider credential. |
 | `ai_base_url` | `PVTR_AI_BASE_URL` | adapter default | Override endpoint (proxy, gateway, self-hosted). |
 | `ai_timeout` | `PVTR_AI_TIMEOUT` | `30s` | Per-call timeout (Go duration string). |
 | `ai_max_tokens` | `PVTR_AI_MAX_TOKENS` | `256` | Response length cap. |
-| `ai_dry_run` | `PVTR_AI_DRY_RUN` (or `--dry-run-ai`) | `false` | Log prompts and settings without contacting the provider. |
 
 <!-- markdownlint-enable MD013 -->
 
@@ -46,17 +46,13 @@ services:
     plugin: ossf/pvtr-github-repo-scanner
 ```
 
-Set `--dry-run-ai` (or `ai_dry_run: true`) to exercise every AI-assisted path
-without spending tokens or provisioning a key: `Assist` logs the prompt and
-returns a `needs_review` verdict.
-
 ## Adding an AI-assisted step
 
 Build the client once at plugin startup and make it reachable from the payload
 your steps receive:
 
 ```go
-client, err := ai.NewClientFromConfig(cfg)
+client, err := ai.NewClient(cfg)
 if err != nil {
     return err
 }
@@ -127,13 +123,13 @@ The parsed answer is `ai.Response`:
 
 <!-- markdownlint-enable MD013 -->
 
-Anything other than an explicit `pass`/`fail` — an unrecognized value or a dry
-run — maps to `NeedsReview` via `GemaraResult()`. An AI-assisted check therefore
+Anything other than an explicit `pass`/`fail` — including an unrecognized value
+— maps to `NeedsReview` via `GemaraResult()`. An AI-assisted check therefore
 **never silently passes a control**; the worst case is that a human is asked to
 review.
 
-When `Assist` gets a usable response from the provider (a live structured
-answer, or a dry run), it returns a self-describing `gemara.Evidence`:
+When `Assist` gets a usable structured response from the provider, it returns a
+self-describing `gemara.Evidence`:
 
 - `Type` is `ai-assessment`, marking the record as software-assisted rather than
   directly observed.

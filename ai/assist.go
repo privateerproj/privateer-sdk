@@ -77,15 +77,6 @@ func Assist(ctx context.Context, client Client, q Question) (Response, gemara.Ev
 		return Response{}, gemara.Evidence{}, fmt.Errorf("AI assessment failed: provider returned no response")
 	}
 
-	// Dry-run returns only Text (no structured body)
-	if aResp.Metadata.FinishReason == FinishReasonDryRun {
-		response := Response{
-			Result: "needs_review", Confidence: "low",
-			Reasoning: "AI dry-run: no live assessment performed",
-		}
-		return response, newEvidence(response, aResp, q), nil
-	}
-
 	var response Response
 	if err := json.Unmarshal(aResp.JSON, &response); err != nil {
 		return Response{}, gemara.Evidence{}, fmt.Errorf("AI response was not valid structured JSON: %w", err)

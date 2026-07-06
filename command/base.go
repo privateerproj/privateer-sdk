@@ -42,13 +42,6 @@ func SetBase(cmd *cobra.Command) {
 	cmd.PersistentFlags().BoolP("include-payload", "", false, "Include the raw evaluated payload in results output (large; useful for tracing)")
 	_ = viper.BindPFlag("include-payload", cmd.PersistentFlags().Lookup("include-payload"))
 
-	// User-facing flag stays --dry-run-ai, but it is bound to the ai_dry_run
-	// viper key so the CLI flag joins env (PVTR_AI_DRY_RUN) and YAML config,
-	// which already use that key, on a single logical key. Callers read only
-	// ai_dry_run.
-	cmd.PersistentFlags().Bool("dry-run-ai", false, "Log AI prompts and model settings without making real provider requests")
-	_ = viper.BindPFlag("ai_dry_run", cmd.PersistentFlags().Lookup("dry-run-ai"))
-
 	cmd.PersistentFlags().BoolP("help", "h", false, "Give me a heading! Help for the specified command")
 }
 

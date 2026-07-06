@@ -139,24 +139,6 @@ func TestAssist_NilClient(t *testing.T) {
 	}
 }
 
-func TestAssist_DryRunIsCleanNoSpendPath(t *testing.T) {
-	client, err := NewClient(Config{Provider: ProviderOpenAI, Model: "gpt-4o-mini", DryRun: true})
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
-
-	response, ev, err := Assist(context.Background(), client, Question{Prompt: "check", Material: "x"})
-	if err != nil {
-		t.Fatalf("dry-run Assist should not error: %v", err)
-	}
-	if response.GemaraResult() != gemara.NeedsReview {
-		t.Errorf("dry-run result = %v, want NeedsReview", response.GemaraResult())
-	}
-	if ev.Type != EvidenceType {
-		t.Errorf("expected an evidence record for the dry-run attempt, got %q", ev.Type)
-	}
-}
-
 // assistTarget is a gemara payload that collects evidence via method promotion.
 type assistTarget struct {
 	gemara.EvidenceCollector

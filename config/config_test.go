@@ -516,7 +516,6 @@ ai_api_key: top-level-key
 ai_base_url: http://127.0.0.1:8000/v1
 ai_timeout: 45s
 ai_max_tokens: 1024
-ai_dry_run: true
 services:
   my-service-1:
     policy:
@@ -532,13 +531,12 @@ services:
 	c := NewConfig(nil)
 
 	for key, want := range map[string]interface{}{
-		"ai_provider":       "openai",
-		"ai_model":          "gpt-5.4-mini",
-		"ai_api_key":        "top-level-key",
-		"ai_base_url":       "http://127.0.0.1:8000/v1",
-		"ai_timeout":        "45s",
-		"ai_max_tokens":     1024,
-		"ai_dry_run":        true,
+		"ai_provider":   "openai",
+		"ai_model":      "gpt-5.4-mini",
+		"ai_api_key":    "top-level-key",
+		"ai_base_url":   "http://127.0.0.1:8000/v1",
+		"ai_timeout":    "45s",
+		"ai_max_tokens": 1024,
 	} {
 		if got, ok := c.Vars[key]; !ok || got != want {
 			t.Fatalf("Vars[%q] = %#v, want %#v", key, got, want)
@@ -549,19 +547,16 @@ services:
 func TestNewConfig_DoesNotInheritBoundFlagDefaultIntoVars(t *testing.T) {
 	viper.Reset()
 	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
-	flags.Bool("dry-run-ai", false, "")
-	if err := viper.BindPFlag("ai_dry_run", flags.Lookup("dry-run-ai")); err != nil {
-		t.Fatalf("failed to bind dry-run flag: %v", err)
+	flags.String("ai-model", "", "")
+	if err := viper.BindPFlag("ai_model", flags.Lookup("ai-model")); err != nil {
+		t.Fatalf("failed to bind ai-model flag: %v", err)
 	}
 	viper.Set("service", "my-service-1")
 	viper.Set("services.my-service-1.policy.catalogs", []string{"FINOS-CCC"})
 	viper.Set("services.my-service-1.policy.applicability", []string{"tlp_green"})
 
 	c := NewConfig(nil)
-	if got, ok := c.Vars["ai_dry_run"]; ok {
-		t.Fatalf("did not expect bound flag default to be inherited into Vars, got %#v", got)
-	}
-	if got, ok := c.Vars["ai_write_evidence"]; ok {
+	if got, ok := c.Vars["ai_model"]; ok {
 		t.Fatalf("did not expect bound flag default to be inherited into Vars, got %#v", got)
 	}
 }

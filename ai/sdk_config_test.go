@@ -62,8 +62,8 @@ func TestConfigFromSDKConfig_InvalidTimeout(t *testing.T) {
 	}
 }
 
-func TestNewClientFromConfig(t *testing.T) {
-	client, err := NewClientFromConfig(sdkconfig.Config{Vars: map[string]interface{}{
+func TestNewClient(t *testing.T) {
+	client, err := NewClient(sdkconfig.Config{Vars: map[string]interface{}{
 		"ai_provider": "openai",
 		"ai_model":    "gpt-4o-mini",
 		"ai_api_key":  "test-key",
@@ -79,7 +79,7 @@ func TestNewClientFromConfig(t *testing.T) {
 	}
 }
 
-func TestNewClientFromConfig_PartialLiveConfigErrors(t *testing.T) {
+func TestNewClient_PartialLiveConfigErrors(t *testing.T) {
 	tests := []struct {
 		name        string
 		vars        map[string]interface{}
@@ -114,7 +114,7 @@ func TestNewClientFromConfig_PartialLiveConfigErrors(t *testing.T) {
 			viper.Reset()
 			t.Cleanup(viper.Reset)
 
-			client, err := NewClientFromConfig(sdkconfig.Config{Vars: tt.vars})
+			client, err := NewClient(sdkconfig.Config{Vars: tt.vars})
 			if err == nil {
 				t.Fatal("expected error, got nil")
 			}
@@ -125,131 +125,6 @@ func TestNewClientFromConfig_PartialLiveConfigErrors(t *testing.T) {
 				t.Fatalf("expected nil client, got %T", client)
 			}
 		})
-	}
-}
-
-func TestConfigFromSDKConfig_DryRunViaConfig(t *testing.T) {
-	viper.Reset()
-	t.Cleanup(viper.Reset)
-
-	aiConfig, configured, err := ConfigFromSDKConfig(sdkconfig.Config{Vars: map[string]interface{}{
-		"ai_provider": "openai",
-		"ai_model":    "gpt-4o-mini",
-		"ai_dry_run":  true,
-	}})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !configured {
-		t.Fatal("expected configured result")
-	}
-	if !aiConfig.DryRun {
-		t.Fatal("expected DryRun to be true")
-	}
-}
-
-func TestConfigFromSDKConfig_DryRunViaCLIFlag(t *testing.T) {
-	viper.Reset()
-	t.Cleanup(viper.Reset)
-	// The --dry-run-ai flag binds to the ai_dry_run viper key in
-	// command.SetBase (verified in command/base_test.go); here we set that
-	// resolved key directly to confirm ConfigFromSDKConfig reads it.
-	viper.Set("ai_dry_run", true)
-
-	aiConfig, configured, err := ConfigFromSDKConfig(sdkconfig.Config{Vars: map[string]interface{}{
-		"ai_provider": "openai",
-		"ai_model":    "gpt-4o-mini",
-	}})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !configured {
-		t.Fatal("expected configured result")
-	}
-	if !aiConfig.DryRun {
-		t.Fatal("expected DryRun to be true from CLI flag")
-	}
-}
-
-func TestConfigFromSDKConfig_DryRunViaEnv(t *testing.T) {
-	viper.Reset()
-	t.Cleanup(viper.Reset)
-	t.Setenv("PVTR_AI_DRY_RUN", "true")
-	viper.SetEnvPrefix("PVTR")
-	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
-	viper.AutomaticEnv()
-
-	aiConfig, configured, err := ConfigFromSDKConfig(sdkconfig.Config{Vars: map[string]interface{}{
-		"ai_provider": "openai",
-		"ai_model":    "gpt-4o-mini",
-	}})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !configured {
-		t.Fatal("expected configured result")
-	}
-	if !aiConfig.DryRun {
-		t.Fatal("expected DryRun to be true from PVTR_AI_DRY_RUN")
-	}
-}
-
-func TestConfigFromSDKConfig_DryRunConfigFalseOverridesViperTrue(t *testing.T) {
-	viper.Reset()
-	t.Cleanup(viper.Reset)
-	viper.Set("ai_dry_run", true)
-
-	aiConfig, configured, err := ConfigFromSDKConfig(sdkconfig.Config{Vars: map[string]interface{}{
-		"ai_provider": "openai",
-		"ai_model":    "gpt-4o-mini",
-		"ai_api_key":  "test-key",
-		"ai_dry_run":  false,
-	}})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !configured {
-		t.Fatal("expected configured result")
-	}
-	if aiConfig.DryRun {
-		t.Fatal("expected explicit ai_dry_run=false in config Vars to override viper true")
-	}
-}
-
-func TestNewClientFromConfig_DryRunSkipsAPIKey(t *testing.T) {
-	viper.Reset()
-	t.Cleanup(viper.Reset)
-
-	client, err := NewClientFromConfig(sdkconfig.Config{Vars: map[string]interface{}{
-		"ai_provider": "openai",
-		"ai_model":    "gpt-4o-mini",
-		"ai_dry_run":  true,
-	}})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if _, ok := client.(*dryRunClient); !ok {
-		t.Fatalf("expected *dryRunClient, got %T", client)
-	}
-}
-
-func TestConfigFromSDKConfig_DryRunDefaultsFalse(t *testing.T) {
-	viper.Reset()
-	t.Cleanup(viper.Reset)
-
-	aiConfig, configured, err := ConfigFromSDKConfig(sdkconfig.Config{Vars: map[string]interface{}{
-		"ai_provider": "openai",
-		"ai_model":    "gpt-4o-mini",
-		"ai_api_key":  "test-key",
-	}})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !configured {
-		t.Fatal("expected configured result")
-	}
-	if aiConfig.DryRun {
-		t.Fatal("expected DryRun to default to false when neither config var nor flag is set")
 	}
 }
 
@@ -309,16 +184,6 @@ func TestConfigFromSDKConfig_RejectsWrongTypedVars(t *testing.T) {
 				"ai_max_tokens": "512",
 			},
 			wantErrText: "ai_max_tokens must be an int, got string",
-		},
-		{
-			name: "bool field with string value",
-			vars: map[string]interface{}{
-				"ai_provider": "openai",
-				"ai_model":    "gpt-4o-mini",
-				"ai_api_key":  "test-key",
-				"ai_dry_run":  "true",
-			},
-			wantErrText: "ai_dry_run must be a bool, got string",
 		},
 	}
 
