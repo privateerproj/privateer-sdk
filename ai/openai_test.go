@@ -11,7 +11,7 @@ import (
 )
 
 func TestNewClient_OpenAI(t *testing.T) {
-	client, err := NewClient(Config{
+	client, err := NewClientWithConfig(Config{
 		Provider: ProviderOpenAI,
 		APIKey:   "test-key",
 		Model:    "gpt-4o-mini",
@@ -41,7 +41,7 @@ func TestNewClient_UsesFactoryRegistry(t *testing.T) {
 		return stub
 	}
 
-	client, err := NewClient(Config{
+	client, err := NewClientWithConfig(Config{
 		Provider: testProvider,
 		APIKey:   "test-key",
 		Model:    "claude",
@@ -70,14 +70,14 @@ func TestParseStructuredOutput_RejectsInvalidJSON(t *testing.T) {
 }
 
 func TestNewClient_Validate(t *testing.T) {
-	_, err := NewClient(Config{Provider: ProviderOpenAI, Model: "gpt-4o-mini"})
+	_, err := NewClientWithConfig(Config{Provider: ProviderOpenAI, Model: "gpt-4o-mini"})
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
 }
 
 func TestNewClient_AppliesDefaultMaxTokens(t *testing.T) {
-	client, err := NewClient(Config{
+	client, err := NewClientWithConfig(Config{
 		Provider: ProviderOpenAI,
 		APIKey:   "test-key",
 		Model:    "gpt-4o-mini",
@@ -145,7 +145,7 @@ func TestOpenAIAnalyze_StructuredOutput(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := NewClient(Config{
+	client, err := NewClientWithConfig(Config{
 		Provider: ProviderOpenAI,
 		APIKey:   "test-key",
 		Model:    "gpt-4o-mini",
@@ -171,7 +171,7 @@ func TestOpenAIAnalyze_StructuredOutput(t *testing.T) {
 }
 
 func TestOpenAIAnalyze_RequiresSchemaName(t *testing.T) {
-	client, err := NewClient(Config{
+	client, err := NewClientWithConfig(Config{
 		Provider: ProviderOpenAI,
 		APIKey:   "test-key",
 		Model:    "gpt-4o-mini",
@@ -221,7 +221,7 @@ func TestOpenAIAnalyze_HTTPErrorKinds(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client, err := NewClient(Config{
+			client, err := NewClientWithConfig(Config{
 				Provider: ProviderOpenAI,
 				APIKey:   "test-key",
 				Model:    "gpt-4o-mini",
@@ -255,7 +255,7 @@ func TestOpenAIAnalyze_Timeout(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := NewClient(Config{
+	client, err := NewClientWithConfig(Config{
 		Provider: ProviderOpenAI,
 		APIKey:   "test-key",
 		Model:    "gpt-4o-mini",

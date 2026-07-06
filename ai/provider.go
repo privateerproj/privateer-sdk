@@ -11,17 +11,15 @@ import (
 	"strings"
 )
 
-// analyzeRequest is the internal, provider-neutral form of an Analyze call.
-// Adapters translate it into whatever the underlying API expects.
+// analyzeRequest is the internal, provider-neutral form of an Analyze call
 type analyzeRequest struct {
 	Prompt  string
 	Content string
 	Schema  *Schema
 }
 
-// providerClient is the shared base type embedded by each adapter. It owns
-// the HTTP client, the resolved base URL, and the provider identity used
-// when constructing normalized errors.
+// providerClient is the shared base embedded by each adapter. It owns the HTTP
+// client, resolved base URL, and provider identity used in normalized errors.
 type providerClient struct {
 	provider   Provider
 	config     Config
@@ -29,16 +27,14 @@ type providerClient struct {
 	baseURL    string
 }
 
-// requestOptions carries per-call HTTP extras (auth headers, query params)
-// that adapters layer on top of the JSON body built by newJSONRequest.
+// requestOptions carries per-call HTTP extras layered on top of the JSON body
 type requestOptions struct {
 	Headers map[string]string
 	Query   url.Values
 }
 
-// newProviderClient constructs the shared base used by an adapter. It
-// resolves the effective base URL (caller override or the adapter's
-// default) and the HTTP client (caller-supplied or Timeout-honoring).
+// newProviderClient builds the shared base for an adapter, resolving the
+// effective base URL and HTTP client from config.
 func newProviderClient(provider Provider, config Config, defaultBaseURL string) providerClient {
 	return providerClient{
 		provider:   provider,
@@ -48,31 +44,20 @@ func newProviderClient(provider Provider, config Config, defaultBaseURL string) 
 	}
 }
 
-// newJSONRequest builds an *http.Request with a JSON body and the supplied
-// headers/query params. Marshal or request-construction failures are
-// returned as *Error with ErrorKindInvalidRequest so callers see a uniform
-// failure shape regardless of which provider produced them.
+// newJSONRequest builds an *http.Request with a JSON body plus the given
+// headers and query params. Marshal or construction failures become
+// ErrorKindInvalidRequest.
 func (c providerClient) newJSONRequest(ctx context.Context, method, requestPath string, payload any, options requestOptions) (*http.Request, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return nil, &Error{
-			Kind:     ErrorKindInvalidRequest,
-			Provider: c.provider,
-			Err:      err,
-			Message:  fmt.Sprintf("marshal %s request: %v", c.provider, err),
-		}
+		return nil, c.invalidRequest("marshal", err)
 	}
 
-	requestURL := c.baseURL + requestPath
-	req, err := http.NewRequestWithContext(ctx, method, requestURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+requestPath, bytes.NewReader(body))
 	if err != nil {
-		return nil, &Error{
-			Kind:     ErrorKindInvalidRequest,
-			Provider: c.provider,
-			Err:      err,
-			Message:  fmt.Sprintf("build %s request: %v", c.provider, err),
-		}
+		return nil, c.invalidRequest("build", err)
 	}
+
 	if len(options.Query) > 0 {
 		query := req.URL.Query()
 		for key, values := range options.Query {
@@ -90,10 +75,20 @@ func (c providerClient) newJSONRequest(ctx context.Context, method, requestPath 
 	return req, nil
 }
 
-// do executes a prepared request and returns the body bytes alongside the
-// response. Transport-level failures (DNS, TCP, TLS, timeouts) are mapped
-// through classifyTransportError so callers can branch on ErrorKind
-// (e.g. ErrorKindTimeout) without inspecting raw network errors.
+// invalidRequest wraps a request-construction failure (e.g. action "marshal" or
+// "build") as ErrorKindInvalidRequest, preserving err for errors.Is/As.
+func (c providerClient) invalidRequest(action string, err error) error {
+	return &Error{
+		Kind:     ErrorKindInvalidRequest,
+		Provider: c.provider,
+		Err:      err,
+		Message:  fmt.Sprintf("%s %s request: %v", action, c.provider, err),
+	}
+}
+
+// do executes a prepared request and returns the body bytes with the response.
+// Transport failures are mapped through classifyTransportError so callers can
+// branch on ErrorKind (e.g. ErrorKindTimeout).
 func (c providerClient) do(req *http.Request) ([]byte, *http.Response, error) {
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -114,9 +109,9 @@ func (c providerClient) do(req *http.Request) ([]byte, *http.Response, error) {
 	return body, resp, nil
 }
 
-// normalizeBaseURL picks the caller-supplied base URL when set, otherwise
-// falls back to the adapter's default. Trailing slashes are trimmed so
-// adapters can safely concatenate a leading-slash request path.
+// normalizeBaseURL prefers the caller-supplied base URL, else the adapter
+// default. Trailing slashes are trimmed so a leading-slash request path
+// concatenates safely.
 func normalizeBaseURL(baseURL, defaultBaseURL string) string {
 	normalized := strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	if normalized != "" {
@@ -125,9 +120,8 @@ func normalizeBaseURL(baseURL, defaultBaseURL string) string {
 	return defaultBaseURL
 }
 
-// validateStructuredSchema rejects obviously unusable Schema values before
-// they reach the provider, surfacing them as ErrorKindUnsupportedConfig.
-// A nil schema means "no structured output requested" and is accepted.
+// validateStructuredSchema rejects unusable Schema values as
+// ErrorKindUnsupportedConfig. A nil schema means no structured output and is accepted.
 func validateStructuredSchema(provider Provider, schema *Schema) error {
 	if schema == nil {
 		return nil
@@ -142,14 +136,10 @@ func validateStructuredSchema(provider Provider, schema *Schema) error {
 	return nil
 }
 
-// parseStructuredOutput validates that a provider's structured-output
-// content is actually valid JSON and returns it as json.RawMessage for
-// callers to unmarshal into their own types. Invalid JSON becomes an
-// ErrorKindInvalidResponse so callers can distinguish provider hiccups
-// from caller-side parsing bugs.
+// parseStructuredOutput returns content as json.RawMessage, rejecting invalid
+// JSON as ErrorKindInvalidResponse.
 func parseStructuredOutput(provider Provider, content string) (json.RawMessage, error) {
-	trimmed := strings.TrimSpace(content)
-	raw := json.RawMessage(trimmed)
+	raw := json.RawMessage(strings.TrimSpace(content))
 	if !json.Valid(raw) {
 		return nil, &Error{
 			Kind:     ErrorKindInvalidResponse,
@@ -160,9 +150,8 @@ func parseStructuredOutput(provider Provider, content string) (json.RawMessage, 
 	return raw, nil
 }
 
-// firstNonEmpty returns the first non-blank string from values. Adapters
-// use it to prefer one source of a metadata field (e.g. an HTTP header)
-// over a fallback (e.g. a body field) without nested conditionals.
+// firstNonEmpty returns the first non-blank string from values, letting adapters
+// prefer one metadata source over a fallback without nested conditionals.
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {

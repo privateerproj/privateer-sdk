@@ -7,39 +7,31 @@ import (
 	"net/http"
 )
 
-// ErrorKind categorizes provider failures for consistent caller handling.
-// Adapters map their native errors into one of these kinds so callers
-// never depend on the exact wording or status code a provider returned.
+// ErrorKind categorizes provider failures so callers never depend on the exact
+// wording or status code a provider returned. See docs/ai-client.md.
 type ErrorKind string
 
 const (
-	// ErrorKindUnauthorized indicates the credential was missing, invalid,
-	// or lacks permission for the requested model.
+	// ErrorKindUnauthorized: credential missing, invalid, or unpermitted.
 	ErrorKindUnauthorized ErrorKind = "unauthorized"
-	// ErrorKindRateLimited indicates the provider asked us to back off.
-	// Callers may retry with backoff.
+	// ErrorKindRateLimited: provider asked us to back off.
 	ErrorKindRateLimited ErrorKind = "rate_limited"
-	// ErrorKindTimeout indicates the request did not complete within the
-	// configured Timeout or was cancelled via context.
+	// ErrorKindTimeout: request exceeded Timeout or the context was cancelled.
 	ErrorKindTimeout ErrorKind = "timeout"
-	// ErrorKindProviderError is the catch-all for upstream failures that
-	// do not fall into a more specific kind (5xx, unknown 4xx, etc.).
+	// ErrorKindProviderError: catch-all upstream failure (5xx, unknown 4xx).
 	ErrorKindProviderError ErrorKind = "provider_error"
-	// ErrorKindInvalidRequest indicates the request body or parameters
-	// were rejected by the provider (e.g. 400, 422).
+	// ErrorKindInvalidRequest: provider rejected the request (400, 422).
 	ErrorKindInvalidRequest ErrorKind = "invalid_request"
-	// ErrorKindInvalidResponse indicates the provider returned data we
-	// could not parse (malformed JSON, missing choices, etc.).
+	// ErrorKindInvalidResponse: provider returned data we could not parse.
 	ErrorKindInvalidResponse ErrorKind = "invalid_response"
-	// ErrorKindUnsupportedConfig indicates a caller-side configuration
-	// problem (e.g. schema supplied without a Name).
+	// ErrorKindUnsupportedConfig: caller-side config problem (e.g. schema
+	// without a Name).
 	ErrorKindUnsupportedConfig ErrorKind = "unsupported_config"
 )
 
-// Error normalizes provider-specific failures into a uniform type.
-// Callers typically inspect Kind and, when relevant, StatusCode. The
-// original error is preserved via Err so errors.Is / errors.As still work
-// against the underlying transport-layer error.
+// Error normalizes provider-specific failures into a uniform type. Callers
+// inspect Kind and, when relevant, StatusCode; Err is preserved so
+// errors.Is / errors.As reach the underlying error.
 type Error struct {
 	Kind       ErrorKind
 	Provider   Provider
@@ -68,9 +60,8 @@ func (e *Error) Unwrap() error {
 	return e.Err
 }
 
-// classifyHTTPError maps an upstream HTTP status code into an ErrorKind
-// so callers can react to common failure modes (auth, throttling, bad
-// input) without parsing provider-specific error messages.
+// classifyHTTPError maps an upstream HTTP status code into an ErrorKind so
+// callers can react to common failure modes without parsing provider messages.
 func classifyHTTPError(provider Provider, statusCode int, message string) error {
 	kind := ErrorKindProviderError
 	switch statusCode {
@@ -90,11 +81,9 @@ func classifyHTTPError(provider Provider, statusCode int, message string) error 
 	}
 }
 
-// classifyTransportError maps Go HTTP client errors into the same set of
-// ErrorKinds as HTTP responses. Timeouts (context deadlines and net.Error
-// timeouts) become ErrorKindTimeout; everything else falls under
-// ErrorKindProviderError. The original error is preserved via Err so
-// errors.Is/As continues to work against the underlying error.
+// classifyTransportError maps Go HTTP client errors into ErrorKinds: context
+// deadlines and net.Error timeouts become ErrorKindTimeout, everything else
+// ErrorKindProviderError. Err is preserved for errors.Is/As.
 func classifyTransportError(provider Provider, err error) error {
 	if err == nil {
 		return nil

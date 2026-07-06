@@ -10,15 +10,14 @@ import (
 
 const defaultOpenAIBaseURL = "https://api.openai.com/v1"
 
-// openAIClient is the Client implementation for OpenAI. It embeds the
-// shared providerClient for HTTP, base URL, and error handling.
+// openAIClient is the Client implementation for OpenAI, embedding the shared
+// providerClient for HTTP, base URL, and error handling.
 type openAIClient struct {
 	providerClient
 }
 
-// openAIChatCompletionsRequest mirrors the JSON body POSTed to
-// /v1/chat/completions. Only the fields this adapter actually populates
-// are modeled; the rest of OpenAI's API is intentionally left out.
+// openAIChatCompletionsRequest is the JSON body POSTed to /v1/chat/completions.
+// Only the fields this adapter populates are modeled.
 type openAIChatCompletionsRequest struct {
 	Model          string                `json:"model"`
 	Messages       []openAIMessage       `json:"messages"`
@@ -26,24 +25,21 @@ type openAIChatCompletionsRequest struct {
 	ResponseFormat *openAIResponseFormat `json:"response_format,omitempty"`
 }
 
-// openAIMessage is one entry in the Chat Completions "messages" array.
-// The adapter sends a system message (prompt) and a user message (content).
+// openAIMessage is one entry in the "messages" array. The adapter sends a
+// system message (prompt) and a user message (content).
 type openAIMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
-// openAIResponseFormat asks OpenAI to constrain the response shape. When
-// Schema is supplied on Analyze, the adapter sets Type="json_schema" and
-// fills JSONSchema with the caller's schema document.
+// openAIResponseFormat constrains the response shape. With a Schema, the
+// adapter sets Type="json_schema" and fills JSONSchema.
 type openAIResponseFormat struct {
 	Type       string                `json:"type"`
 	JSONSchema *openAIJSONSchemaWrap `json:"json_schema,omitempty"`
 }
 
-// openAIJSONSchemaWrap is OpenAI's required wrapper around a raw JSON
-// Schema document. It carries a name plus optional description/strict
-// flags that providers use when validating model output.
+// openAIJSONSchemaWrap is OpenAI's required wrapper around a raw JSON Schema.
 type openAIJSONSchemaWrap struct {
 	Name        string          `json:"name"`
 	Description string          `json:"description,omitempty"`
@@ -51,10 +47,8 @@ type openAIJSONSchemaWrap struct {
 	Schema      json.RawMessage `json:"schema"`
 }
 
-// openAIChatCompletionsResponse models the slice of the Chat Completions
-// response the adapter actually reads: the request id, the model that
-// actually served the request, the first choice's content and finish
-// reason, and an optional error envelope present on failure responses.
+// openAIChatCompletionsResponse models the slice of the response the adapter
+// reads: request id, served model, the first choice, and a failure envelope.
 type openAIChatCompletionsResponse struct {
 	ID      string `json:"id"`
 	Model   string `json:"model"`
@@ -69,19 +63,16 @@ type openAIChatCompletionsResponse struct {
 	} `json:"error,omitempty"`
 }
 
-// newOpenAIClient constructs the OpenAI adapter. Wired into the package
-// registry via clientFactories in client.go.
+// newOpenAIClient constructs the OpenAI adapter, wired into clientFactories.
 func newOpenAIClient(config Config) *openAIClient {
 	return &openAIClient{
 		providerClient: newProviderClient(ProviderOpenAI, config, defaultOpenAIBaseURL),
 	}
 }
 
-// ValidateRequest rejects malformed requests before any network call,
-// applying both the package-level schema checks and OpenAI-specific rules
-// (a structured-output schema must carry a Name, which OpenAI requires as
-// the json_schema wrapper label). Live Analyze and the dry-run client both
-// call this so a request that would fail live also fails in dry-run.
+// ValidateRequest rejects malformed requests before any network call, applying
+// the package-level schema checks plus OpenAI's rule that a structured-output
+// schema must carry a Name (its json_schema wrapper label).
 func (c *openAIClient) ValidateRequest(prompt, content string, schema *Schema) error {
 	if err := validateStructuredSchema(ProviderOpenAI, schema); err != nil {
 		return err
@@ -96,13 +87,10 @@ func (c *openAIClient) ValidateRequest(prompt, content string, schema *Schema) e
 	return nil
 }
 
-// Analyze implements the Client contract against OpenAI Chat Completions.
-// At a high level it: validates the request via ValidateRequest, builds the
-// request body (translating Schema into OpenAI's response_format when
-// present), POSTs to /chat/completions with a Bearer token, returns non-200
-// responses as classified *Error values, and finally maps the first
-// choice back into a provider-neutral AnalyzeResponse (parsing the
-// content as JSON when a schema was requested).
+// Analyze implements the Client contract against OpenAI Chat Completions:
+// validate, build the request body (translating Schema into response_format),
+// POST with a Bearer token, classify non-200s, and map the first choice back
+// into an AnalyzeResponse (parsing JSON when a schema was requested).
 func (c *openAIClient) Analyze(ctx context.Context, prompt, content string, schema *Schema) (*AnalyzeResponse, error) {
 	request := analyzeRequest{
 		Prompt:  prompt,
