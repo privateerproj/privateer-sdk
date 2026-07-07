@@ -2,10 +2,12 @@
 
 The `ai` package exposes a **provider-neutral client**: callers use only the
 shared types re-exported from the single `ai` import, and concrete backends
-(currently OpenAI) are adapters registered internally. Under the hood the
+(currently OpenAI and Anthropic) are adapters registered internally. Under the
+hood the
 subsystem is split into subpackages — `ai/provider` holds the neutral contract
 and the base adapters build on, and each backend lives in its own sibling
-package (e.g. `ai/openai`) — but plugins never need to import them directly.
+package (e.g. `ai/openai`, `ai/anthropic`) — but plugins never need to import
+them directly.
 Adding or swapping a built-in provider does not change any calling code. For
 the higher-level assessment accelerator built on top of this client, see
 [AI-assisted assessments](ai-assist.md).
@@ -62,7 +64,8 @@ name is an alias resolved to a pinned version (e.g. `gpt-4o-mini` ->
 Passing a `*Schema` to `Analyze` tells the provider to return a structured JSON
 answer instead of free-form text. The adapter translates the JSON Schema
 document into whatever the provider expects (OpenAI's `response_format`
-`json_schema`, Anthropic tool input schemas, Gemini's `responseSchema`). When a
+`json_schema`, Anthropic's `output_config.format`, Gemini's `responseSchema`).
+When a
 schema is supplied, `AnalyzeResponse.JSON` holds the parsed payload, ready to
 `json.Unmarshal` into a Go type.
 
@@ -70,7 +73,7 @@ schema is supplied, `AnalyzeResponse.JSON` holds the parsed payload, ready to
 
 | Field | Meaning |
 | --- | --- |
-| `Name` | Labels the schema for the provider (some display or log it). Required when a schema is supplied. |
+| `Name` | Labels the schema for the provider (some display or log it). OpenAI requires it when a schema is supplied; Anthropic ignores it. |
 | `Description` | Short sentence telling the model what the schema is for. Optional; improves output when field names are ambiguous. |
 | `Value` | The JSON Schema document the response must conform to. |
 | `Strict` | Asks the provider to reject responses that do not match `Value` exactly. Providers without strict mode ignore it. |

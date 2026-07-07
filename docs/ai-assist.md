@@ -26,7 +26,7 @@ the top level of the config file are inherited into every service.
 
 | Config key | Env var | Default | Purpose |
 | --- | --- | --- | --- |
-| `ai_provider` | `PVTR_AI_PROVIDER` | -- | Backend adapter. Currently `openai`. |
+| `ai_provider` | `PVTR_AI_PROVIDER` | -- | Backend adapter. Currently `openai` or `anthropic`. |
 | `ai_model` | `PVTR_AI_MODEL` | -- | Provider model id (e.g. `gpt-4o-mini`). |
 | `ai_api_key` | `PVTR_AI_API_KEY` | -- | Provider credential. |
 | `ai_base_url` | `PVTR_AI_BASE_URL` | adapter default | Override endpoint (proxy, gateway, self-hosted). |

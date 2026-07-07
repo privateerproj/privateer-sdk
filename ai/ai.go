@@ -17,6 +17,7 @@ import (
 
 	"github.com/gemaraproj/go-gemara"
 
+	"github.com/privateerproj/privateer-sdk/ai/anthropic"
 	"github.com/privateerproj/privateer-sdk/ai/assist"
 	"github.com/privateerproj/privateer-sdk/ai/openai"
 	"github.com/privateerproj/privateer-sdk/ai/provider"
@@ -41,7 +42,8 @@ type (
 )
 
 const (
-	ProviderOpenAI = openai.Provider
+	ProviderOpenAI    = openai.Provider
+	ProviderAnthropic = anthropic.Provider
 
 	EvidenceType = assist.EvidenceType
 
@@ -62,6 +64,9 @@ type clientFactory func(Config) Client
 var clientFactories = map[Provider]clientFactory{
 	openai.Provider: func(config Config) Client {
 		return openai.NewClient(config)
+	},
+	anthropic.Provider: func(config Config) Client {
+		return anthropic.NewClient(config)
 	},
 }
 

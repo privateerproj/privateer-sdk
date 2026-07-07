@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/privateerproj/privateer-sdk/ai/anthropic"
 	"github.com/privateerproj/privateer-sdk/ai/openai"
 	sdkconfig "github.com/privateerproj/privateer-sdk/config"
 	"github.com/spf13/viper"
@@ -28,6 +29,20 @@ func TestNewClientWithAIConfig_OpenAI(t *testing.T) {
 	}
 	if _, ok := client.(*openai.Client); !ok {
 		t.Fatalf("expected *openai.Client, got %T", client)
+	}
+}
+
+func TestNewClientWithAIConfig_Anthropic(t *testing.T) {
+	client, err := NewClientWithAIConfig(Config{
+		Provider: ProviderAnthropic,
+		APIKey:   "test-key",
+		Model:    "claude-opus-4-8",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := client.(*anthropic.Client); !ok {
+		t.Fatalf("expected *anthropic.Client, got %T", client)
 	}
 }
 
