@@ -49,7 +49,7 @@ responsibility.
 | `Model` | Provider model id (e.g. `gpt-4o-mini`). | required |
 | `BaseURL` | Overrides the adapter's default endpoint (proxies, gateways, self-hosted). | adapter default |
 | `Timeout` | Bounds a single `Analyze` call. | `30s` |
-| `MaxTokens` | Caps response length, bounding cost and latency. | `256` |
+| `MaxTokens` | Caps response length, bounding cost and latency. | `1024` |
 | `HTTPClient` | Injects a custom transport (tests, instrumentation). | a `Timeout`-honoring client |
 
 <!-- markdownlint-enable MD013 -->

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -39,7 +40,7 @@ func jsonResp(body string) *provider.AnalyzeResponse {
 
 func TestAssist_ParsesResponseAndBuildsEvidence(t *testing.T) {
 	client := &stubClient{resp: jsonResp(
-		`{"result":"pass","confidence":"high","reasoning":"README documents a user guide","citations":["README.md"]}`)}
+		`{"result":"pass","confidence":"high","message":"A user guide is documented in the README","explanation":"README documents a user guide under Docs","citations":["README.md"]}`)}
 
 	response, ev, err := Assist(context.Background(), client, Question{
 		Prompt:   "Does this repo document a user guide?",
@@ -49,9 +50,13 @@ func TestAssist_ParsesResponseAndBuildsEvidence(t *testing.T) {
 		t.Fatalf("Assist: %v", err)
 	}
 
-	// The SDK-owned schema is what reaches the provider, not something the caller wrote.
-	if client.gotSchema != responseSchema {
-		t.Errorf("expected responseSchema to be sent, got %#v", client.gotSchema)
+	// The SDK-owned schema is what reaches the provider, not something the
+	// caller wrote, and it carries the default explanation budget.
+	if client.gotSchema == nil || client.gotSchema.Name != "assessment_verdict" {
+		t.Fatalf("expected the SDK-owned schema to be sent, got %#v", client.gotSchema)
+	}
+	if !strings.Contains(string(client.gotSchema.Value), "1500 characters") {
+		t.Errorf("schema should state the default explanation budget: %s", client.gotSchema.Value)
 	}
 	if client.gotPrompt != "Does this repo document a user guide?" || client.gotContent != "README body" {
 		t.Errorf("prompt/content not forwarded verbatim: %q / %q", client.gotPrompt, client.gotContent)
@@ -59,6 +64,9 @@ func TestAssist_ParsesResponseAndBuildsEvidence(t *testing.T) {
 
 	if response.Result != "pass" || response.Confidence != "high" {
 		t.Errorf("response = %+v", response)
+	}
+	if response.Message != "A user guide is documented in the README" {
+		t.Errorf("message = %q", response.Message)
 	}
 	if response.GemaraResult() != gemara.Passed || response.GemaraConfidence() != gemara.High {
 		t.Errorf("mapping = %v / %v", response.GemaraResult(), response.GemaraConfidence())
@@ -158,10 +166,11 @@ func TestResponseSummary(t *testing.T) {
 		response Response
 		want     string
 	}{
-		"full":          {Response{Result: "fail", Confidence: "medium"}, "AI-assisted verdict: fail (medium confidence)"},
-		"no confidence": {Response{Result: "pass"}, "AI-assisted verdict: pass"},
-		"zero value":    {Response{}, "AI-assisted verdict: needs_review"},
-		"unclean input": {Response{Result: " FAIL ", Confidence: "High"}, "AI-assisted verdict: fail (high confidence)"},
+		"message preferred": {Response{Result: "fail", Message: "No evidence found for when tests are run."}, "[AI-Assisted] No evidence found for when tests are run."},
+		"verdict fallback":  {Response{Result: "fail", Confidence: "medium"}, "[AI-Assisted] verdict: fail (medium confidence)"},
+		"no confidence":     {Response{Result: "pass"}, "[AI-Assisted] verdict: pass"},
+		"zero value":        {Response{}, "[AI-Assisted] verdict: needs_review"},
+		"unclean input":     {Response{Result: " FAIL ", Confidence: "High"}, "[AI-Assisted] verdict: fail (high confidence)"},
 	}
 	for name, tc := range cases {
 		got := tc.response.Summary()
@@ -171,6 +180,43 @@ func TestResponseSummary(t *testing.T) {
 		if strings.Contains(got, "\n") {
 			t.Errorf("%s: Summary() must be a single line, got %q", name, got)
 		}
+	}
+}
+
+// TestAssist_EnforcesTextBudgets covers the strict-shape mechanism: the char
+// budgets are requested via the schema but guaranteed in code, so a model that
+// ignores them still cannot produce a multi-line or oversized Message, and the
+// Explanation budget set by the plugin flows into the schema and the cap.
+func TestAssist_EnforcesTextBudgets(t *testing.T) {
+	longMessage := "line one\nline two   " + strings.Repeat("x", 300)
+	longExplanation := strings.Repeat("e", 300)
+	client := &stubClient{resp: jsonResp(fmt.Sprintf(
+		`{"result":"fail","confidence":"low","message":%q,"explanation":%q,"citations":null}`,
+		longMessage, longExplanation))}
+
+	response, _, err := Assist(context.Background(), client, Question{
+		Prompt:              "check",
+		Material:            "material",
+		MaxExplanationChars: 100,
+	})
+	if err != nil {
+		t.Fatalf("Assist: %v", err)
+	}
+
+	if !strings.Contains(string(client.gotSchema.Value), "100 characters") {
+		t.Errorf("schema should carry the caller's explanation budget: %s", client.gotSchema.Value)
+	}
+	if strings.Contains(response.Message, "\n") {
+		t.Errorf("message must be single-line, got %q", response.Message)
+	}
+	if got := len([]rune(response.Message)); got > 160 {
+		t.Errorf("message length = %d runes, want <= 160", got)
+	}
+	if got := len([]rune(response.Explanation)); got > 100 {
+		t.Errorf("explanation length = %d runes, want <= 100", got)
+	}
+	if !strings.HasSuffix(response.Message, "…") || !strings.HasSuffix(response.Explanation, "…") {
+		t.Errorf("truncated fields should end with an ellipsis: %q / %q", response.Message, response.Explanation)
 	}
 }
 
@@ -194,7 +240,7 @@ type assistTarget struct {
 // discretion, and the AssessmentLog harvests it — no bespoke on-disk packet.
 func TestAssist_FlowsIntoAssessmentLog(t *testing.T) {
 	client := &stubClient{resp: jsonResp(
-		`{"result":"pass","confidence":"high","reasoning":"guide documented in README"}`)}
+		`{"result":"pass","confidence":"high","message":"guide documented in README","explanation":"the README links a detailed user guide"}`)}
 
 	step := func(payload any) (gemara.Result, string, gemara.ConfidenceLevel) {
 		target := payload.(*assistTarget)
@@ -203,7 +249,7 @@ func TestAssist_FlowsIntoAssessmentLog(t *testing.T) {
 			return gemara.Unknown, err.Error(), gemara.Undetermined
 		}
 		target.AddEvidence(ev)
-		return response.GemaraResult(), response.Reasoning, response.GemaraConfidence()
+		return response.GemaraResult(), response.Summary(), response.GemaraConfidence()
 	}
 
 	assessment, err := gemara.NewAssessment(

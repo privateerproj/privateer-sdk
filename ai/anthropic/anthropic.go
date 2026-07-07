@@ -199,6 +199,14 @@ func (c *Client) Analyze(ctx context.Context, prompt, content string, schema *pr
 
 	response.JSON, err = provider.ParseStructuredOutput(Provider, messageContent)
 	if err != nil {
+		if parsed.StopReason == "max_tokens" {
+			return nil, &provider.Error{
+				Kind:     provider.ErrorKindInvalidResponse,
+				Provider: Provider,
+				Err:      err,
+				Message:  "anthropic structured response was cut off by the max_tokens limit before completing; increase ai_max_tokens",
+			}
+		}
 		return nil, err
 	}
 

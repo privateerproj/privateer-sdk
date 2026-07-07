@@ -19,8 +19,10 @@ import (
 type Provider string
 
 const (
-	defaultTimeout   = 30 * time.Second
-	defaultMaxTokens = 256
+	defaultTimeout = 30 * time.Second
+	// defaultMaxTokens must leave room for the assist package's structured
+	// verdict (short message + capped long-form explanation + citations).
+	defaultMaxTokens = 1024
 )
 
 // Client is the provider-neutral analysis contract every adapter satisfies.

@@ -31,7 +31,7 @@ the top level of the config file are inherited into every service.
 | `ai_api_key` | `PVTR_AI_API_KEY` | -- | Provider credential. |
 | `ai_base_url` | `PVTR_AI_BASE_URL` | adapter default | Override endpoint (proxy, gateway, self-hosted). |
 | `ai_timeout` | `PVTR_AI_TIMEOUT` | `30s` | Per-call timeout (Go duration string). |
-| `ai_max_tokens` | `PVTR_AI_MAX_TOKENS` | `256` | Response length cap. |
+| `ai_max_tokens` | `PVTR_AI_MAX_TOKENS` | `1024` | Response length cap. |
 
 <!-- markdownlint-enable MD013 -->
 
@@ -118,7 +118,8 @@ The parsed answer is `ai.Response`:
 | --- | --- | --- |
 | `Result` | `pass` / `fail` / `needs_review` | `GemaraResult()` maps to `Passed` / `Failed` / `NeedsReview`. |
 | `Confidence` | `low` / `medium` / `high` | `GemaraConfidence()` maps to the matching `gemara.ConfidenceLevel`. |
-| `Reasoning` | free text | Short justification. |
+| `Message` | one sentence | What was found or missing. Guaranteed single-line, at most 160 chars (SDK-owned). |
+| `Explanation` | free text | Verbose justification. Capped at `Question.MaxExplanationChars` (default 1500). |
 | `Citations` | strings | Optional pointers to where support was found. |
 
 <!-- markdownlint-enable MD013 -->
@@ -128,11 +129,17 @@ Anything other than an explicit `pass`/`fail` — including an unrecognized valu
 **never silently passes a control**; the worst case is that a human is asked to
 review.
 
-For the step's *message*, use `response.Summary()` (e.g. `AI-assisted verdict:
-fail (medium confidence)`) or the one-line `Reasoning`. Keep it to a single
-line shaped like any other assessment message — do not restate the reasoning,
-citations, or prompt in the message, since the returned `Evidence` already
-records all of them in structured form.
+The model is asked for two separately budgeted texts so the short one can be
+the assessment message and the long one lives only in the evidence:
+
+- `Message` is the step's message: use `response.Summary()`, which renders it
+  as `[AI-Assisted] <message>` (e.g. `[AI-Assisted] No evidence found for when
+  tests are run.`). The SDK enforces the single-line shape and the 160-char cap
+  after parsing, so the message always looks like every other assessment
+  message.
+- `Explanation` and `Citations` are the verbose record. They are already inside
+  the returned `Evidence` payload — do not restate them in the message. Plugins
+  that want a longer or shorter explanation set `Question.MaxExplanationChars`.
 
 When `Assist` gets a usable structured response from the provider, it returns a
 self-describing `gemara.Evidence`:
