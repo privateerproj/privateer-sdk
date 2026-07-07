@@ -148,6 +148,17 @@ func TestEvaluateWithNilConfig(t *testing.T) {
 	})
 }
 
+func TestSingleLine(t *testing.T) {
+	multiline := "verdict=fail confidence=medium\nreasoning: tests are documented\ncitations: README"
+	want := "verdict=fail confidence=medium reasoning: tests are documented citations: README"
+	if got := singleLine(multiline); got != want {
+		t.Errorf("singleLine() = %q, want %q", got, want)
+	}
+	if got := singleLine("already one line"); got != "already one line" {
+		t.Errorf("singleLine() altered a single-line message: %q", got)
+	}
+}
+
 func TestGetAssessmentRequirements(t *testing.T) {
 	t.Run("Valid Catalog", func(t *testing.T) {
 		catalog := getTestCatalogWithRequirements()

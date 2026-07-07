@@ -90,7 +90,7 @@ func HasUserGuides(payload any) (gemara.Result, string, gemara.ConfidenceLevel) 
     }
 
     p.AddEvidence(evidence) // p embeds gemara.EvidenceCollector
-    return response.GemaraResult(), response.Reasoning, response.GemaraConfidence()
+    return response.GemaraResult(), response.Summary(), response.GemaraConfidence()
 }
 ```
 
@@ -127,6 +127,12 @@ Anything other than an explicit `pass`/`fail` — including an unrecognized valu
 — maps to `NeedsReview` via `GemaraResult()`. An AI-assisted check therefore
 **never silently passes a control**; the worst case is that a human is asked to
 review.
+
+For the step's *message*, use `response.Summary()` (e.g. `AI-assisted verdict:
+fail (medium confidence)`) or the one-line `Reasoning`. Keep it to a single
+line shaped like any other assessment message — do not restate the reasoning,
+citations, or prompt in the message, since the returned `Evidence` already
+records all of them in structured form.
 
 When `Assist` gets a usable structured response from the provider, it returns a
 self-describing `gemara.Evidence`:

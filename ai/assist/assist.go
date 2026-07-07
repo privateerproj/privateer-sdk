@@ -121,6 +121,22 @@ func evidenceID(resp *provider.AnalyzeResponse, timeNow string) string {
 	return fmt.Sprintf("ai-%s", timeNow)
 }
 
+// Summary renders the verdict as a single line, e.g. "AI-assisted verdict:
+// fail (medium confidence)". It is the canonical assessment message for an
+// AI-assisted step: the reasoning, citations, and exact prompt are already
+// recorded in the Evidence, so the message should not restate them.
+func (v Response) Summary() string {
+	result := strings.ToLower(strings.TrimSpace(v.Result))
+	if result == "" {
+		result = "needs_review"
+	}
+	confidence := strings.ToLower(strings.TrimSpace(v.Confidence))
+	if confidence == "" {
+		return fmt.Sprintf("AI-assisted verdict: %s", result)
+	}
+	return fmt.Sprintf("AI-assisted verdict: %s (%s confidence)", result, confidence)
+}
+
 // GemaraResult maps the assistant's verdict onto a gemara.Result. Anything other
 // than an explicit pass/fail maps to NeedsReview.
 func (v Response) GemaraResult() gemara.Result {

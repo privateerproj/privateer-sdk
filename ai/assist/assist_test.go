@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/gemaraproj/go-gemara"
@@ -146,6 +147,29 @@ func TestGemaraResult_ExactMatchOnly(t *testing.T) {
 	for verdict, want := range cases {
 		if got := (Response{Result: verdict}).GemaraResult(); got != want {
 			t.Errorf("GemaraResult(%q) = %v, want %v", verdict, got, want)
+		}
+	}
+}
+
+// Summary must always be a single line so assessment messages keep the same
+// shape as every other step's message, whatever the model returned.
+func TestResponseSummary(t *testing.T) {
+	cases := map[string]struct {
+		response Response
+		want     string
+	}{
+		"full":          {Response{Result: "fail", Confidence: "medium"}, "AI-assisted verdict: fail (medium confidence)"},
+		"no confidence": {Response{Result: "pass"}, "AI-assisted verdict: pass"},
+		"zero value":    {Response{}, "AI-assisted verdict: needs_review"},
+		"unclean input": {Response{Result: " FAIL ", Confidence: "High"}, "AI-assisted verdict: fail (high confidence)"},
+	}
+	for name, tc := range cases {
+		got := tc.response.Summary()
+		if got != tc.want {
+			t.Errorf("%s: Summary() = %q, want %q", name, got, tc.want)
+		}
+		if strings.Contains(got, "\n") {
+			t.Errorf("%s: Summary() must be a single line, got %q", name, got)
 		}
 	}
 }
