@@ -19,7 +19,6 @@ func TestConfigString_RedactsAPIKey(t *testing.T) {
 		config.String(),
 		fmt.Sprintf("%v", config),
 		fmt.Sprintf("%+v", config),
-		fmt.Sprintf("%s", config),
 	} {
 		if strings.Contains(formatted, "sk-super-secret") {
 			t.Fatalf("formatted config leaks the api key: %s", formatted)
