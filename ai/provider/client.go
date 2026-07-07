@@ -1,7 +1,8 @@
-// Package ai defines the provider-neutral contract callers use to talk to any
-// AI backend. Concrete providers are adapters registered in clientFactories;
-// callers use only the shared types. See docs/ai-client.md.
-package ai
+// Package provider defines the provider-neutral contract callers use to talk
+// to any AI backend, plus the shared base every concrete adapter builds on.
+// Concrete adapters live in sibling packages (e.g. ai/openai) and are wired
+// into the registry in the parent ai package. See docs/ai-client.md.
+package provider
 
 import (
 	"context"
@@ -10,34 +11,17 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
-	sdkconfig "github.com/privateerproj/privateer-sdk/config"
 )
 
-// Provider identifies the AI backend implementation. Each has a constant and a
-// matching entry in clientFactories.
+// Provider identifies an AI backend implementation. Each adapter package
+// exports its own constant (e.g. openai.Provider) and is registered in the
+// parent ai package's factory registry.
 type Provider string
-
-const (
-	ProviderOpenAI Provider = "openai"
-	// Add new providers here alongside a clientFactories entry.
-)
 
 const (
 	defaultTimeout   = 30 * time.Second
 	defaultMaxTokens = 256
 )
-
-// clientFactory builds a provider adapter from a normalized Config.
-type clientFactory func(Config) Client
-
-// clientFactories is the internal registry of built-in providers. Register a
-// new adapter's constructor here; calling code does not change.
-var clientFactories = map[Provider]clientFactory{
-	ProviderOpenAI: func(config Config) Client {
-		return newOpenAIClient(config)
-	},
-}
 
 // Client is the provider-neutral analysis contract every adapter satisfies.
 type Client interface {
@@ -47,7 +31,7 @@ type Client interface {
 // Config holds the provider-neutral settings used to construct any adapter.
 // See docs/ai-client.md for field semantics and defaults.
 type Config struct {
-	// Provider selects which adapter is constructed via clientFactories.
+	// Provider selects which adapter is constructed.
 	Provider Provider
 	// APIKey is the credential passed to the provider.
 	APIKey string
@@ -109,37 +93,10 @@ type ResponseMetadata struct {
 	FinishReason string
 }
 
-// NewClient is the default constructor for plugins: it extracts the ai_*
-// settings from the primary end user config and builds a Client from them. When
-// AI is not configured it returns (nil, nil) — check the returned client, not
-// just the error, and treat a nil client as "AI disabled".
-func NewClient(config sdkconfig.Config) (Client, error) {
-	aiConfig, configured, err := ConfigFromSDKConfig(config)
-	if err != nil || !configured {
-		return nil, err
-	}
-
-	return NewClientWithConfig(aiConfig)
-}
-
-// NewClientWithConfig builds a client from an explicit provider-neutral Config.
-// It validates the config and dispatches to the adapter registered for
-// config.Provider.
-func NewClientWithConfig(config Config) (Client, error) {
-	config = config.normalized()
-	if err := config.validate(); err != nil {
-		return nil, err
-	}
-
-	factory, ok := clientFactories[config.Provider]
-	if !ok {
-		return nil, fmt.Errorf("unsupported ai provider %q", config.Provider)
-	}
-
-	return factory(config), nil
-}
-
-func (c Config) validate() error {
+// Validate reports whether the config carries the fields every adapter needs.
+// Call it on a Normalized config; the parent ai package does so before
+// dispatching to an adapter factory.
+func (c Config) Validate() error {
 	if strings.TrimSpace(string(c.Provider)) == "" {
 		return fmt.Errorf("ai provider is required")
 	}
@@ -152,7 +109,9 @@ func (c Config) validate() error {
 	return nil
 }
 
-func (c Config) normalized() Config {
+// Normalized returns a copy with fields trimmed, the provider lowercased, and
+// zero Timeout/MaxTokens replaced by package defaults.
+func (c Config) Normalized() Config {
 	c.Provider = Provider(strings.ToLower(strings.TrimSpace(string(c.Provider))))
 	c.APIKey = strings.TrimSpace(c.APIKey)
 	c.Model = strings.TrimSpace(c.Model)
@@ -171,5 +130,5 @@ func (c Config) httpClient() *http.Client {
 		return c.HTTPClient
 	}
 
-	return &http.Client{Timeout: c.normalized().Timeout}
+	return &http.Client{Timeout: c.Normalized().Timeout}
 }

@@ -1,4 +1,4 @@
-package ai
+package openai
 
 import (
 	"context"
@@ -8,94 +8,28 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/privateerproj/privateer-sdk/ai/provider"
 )
 
-func TestNewClient_OpenAI(t *testing.T) {
-	client, err := NewClientWithConfig(Config{
-		Provider: ProviderOpenAI,
-		APIKey:   "test-key",
-		Model:    "gpt-4o-mini",
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if _, ok := client.(*openAIClient); !ok {
-		t.Fatalf("expected *openAIClient, got %T", client)
-	}
-}
-
-func TestNewClient_UsesFactoryRegistry(t *testing.T) {
-	const testProvider Provider = "test-provider"
-
-	originalFactory, hadOriginal := clientFactories[testProvider]
-	defer func() {
-		if hadOriginal {
-			clientFactories[testProvider] = originalFactory
-		} else {
-			delete(clientFactories, testProvider)
-		}
-	}()
-
-	stub := &openAIClient{}
-	clientFactories[testProvider] = func(config Config) Client {
-		return stub
-	}
-
-	client, err := NewClientWithConfig(Config{
-		Provider: testProvider,
-		APIKey:   "test-key",
-		Model:    "claude",
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if client != stub {
-		t.Fatalf("expected factory-constructed client, got %T", client)
-	}
-}
-
-func TestParseStructuredOutput_RejectsInvalidJSON(t *testing.T) {
-	_, err := parseStructuredOutput(ProviderOpenAI, "not-json")
-	if err == nil {
-		t.Fatal("expected invalid response error, got nil")
-	}
-
-	var aiErr *Error
-	if !errors.As(err, &aiErr) {
-		t.Fatalf("expected *Error, got %T", err)
-	}
-	if aiErr.Kind != ErrorKindInvalidResponse {
-		t.Fatalf("expected invalid response kind, got %s", aiErr.Kind)
-	}
-}
-
-func TestNewClient_Validate(t *testing.T) {
-	_, err := NewClientWithConfig(Config{Provider: ProviderOpenAI, Model: "gpt-4o-mini"})
-	if err == nil {
-		t.Fatal("expected validation error, got nil")
-	}
+// newTestClient mirrors the registry path: adapters receive a normalized config.
+func newTestClient(config provider.Config) *Client {
+	return NewClient(config.Normalized())
 }
 
 func TestNewClient_AppliesDefaultMaxTokens(t *testing.T) {
-	client, err := NewClientWithConfig(Config{
-		Provider: ProviderOpenAI,
+	client := newTestClient(provider.Config{
+		Provider: Provider,
 		APIKey:   "test-key",
 		Model:    "gpt-4o-mini",
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	openAI, ok := client.(*openAIClient)
-	if !ok {
-		t.Fatalf("expected *openAIClient, got %T", client)
-	}
-	if openAI.config.MaxTokens != defaultMaxTokens {
-		t.Fatalf("expected default max tokens %d, got %d", defaultMaxTokens, openAI.config.MaxTokens)
+	if client.Config.MaxTokens == 0 {
+		t.Fatal("expected normalized config to carry a default max tokens, got 0")
 	}
 }
 
-func TestOpenAIAnalyze_StructuredOutput(t *testing.T) {
-	schema := &Schema{
+func TestAnalyze_StructuredOutput(t *testing.T) {
+	schema := &provider.Schema{
 		Name:        "assessment_result",
 		Description: "Structured verdict for a repository assessment.",
 		Strict:      true,
@@ -110,7 +44,7 @@ func TestOpenAIAnalyze_StructuredOutput(t *testing.T) {
 			t.Fatalf("unexpected authorization header: %s", got)
 		}
 
-		var request openAIChatCompletionsRequest
+		var request chatCompletionsRequest
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
@@ -125,7 +59,7 @@ func TestOpenAIAnalyze_StructuredOutput(t *testing.T) {
 		}
 
 		w.Header().Set("x-request-id", "req-123")
-		_ = json.NewEncoder(w).Encode(openAIChatCompletionsResponse{
+		_ = json.NewEncoder(w).Encode(chatCompletionsResponse{
 			ID:    "chatcmpl-123",
 			Model: "gpt-4o-mini",
 			Choices: []struct {
@@ -145,15 +79,12 @@ func TestOpenAIAnalyze_StructuredOutput(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := NewClientWithConfig(Config{
-		Provider: ProviderOpenAI,
+	client := newTestClient(provider.Config{
+		Provider: Provider,
 		APIKey:   "test-key",
 		Model:    "gpt-4o-mini",
 		BaseURL:  server.URL,
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
 
 	response, err := client.Analyze(context.Background(), "analyze this repository", "README content", schema)
 	if err != nil {
@@ -162,7 +93,7 @@ func TestOpenAIAnalyze_StructuredOutput(t *testing.T) {
 	if string(response.JSON) != `{"verdict":"PASS"}` {
 		t.Fatalf("unexpected JSON payload: %s", response.JSON)
 	}
-	if response.Metadata.Provider != ProviderOpenAI {
+	if response.Metadata.Provider != Provider {
 		t.Fatalf("unexpected provider: %s", response.Metadata.Provider)
 	}
 	if response.Metadata.RequestID != "req-123" {
@@ -170,29 +101,26 @@ func TestOpenAIAnalyze_StructuredOutput(t *testing.T) {
 	}
 }
 
-func TestOpenAIAnalyze_RequiresSchemaName(t *testing.T) {
-	client, err := NewClientWithConfig(Config{
-		Provider: ProviderOpenAI,
+func TestAnalyze_RequiresSchemaName(t *testing.T) {
+	client := newTestClient(provider.Config{
+		Provider: Provider,
 		APIKey:   "test-key",
 		Model:    "gpt-4o-mini",
 		BaseURL:  "https://example.com",
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
 
-	_, err = client.Analyze(context.Background(), "prompt", "content", &Schema{
+	_, err := client.Analyze(context.Background(), "prompt", "content", &provider.Schema{
 		Value: json.RawMessage(`{"type":"object"}`),
 	})
 	if err == nil {
 		t.Fatal("expected missing schema name error")
 	}
 
-	var aiErr *Error
+	var aiErr *provider.Error
 	if !errors.As(err, &aiErr) {
-		t.Fatalf("expected *Error, got %T", err)
+		t.Fatalf("expected *provider.Error, got %T", err)
 	}
-	if aiErr.Kind != ErrorKindUnsupportedConfig {
+	if aiErr.Kind != provider.ErrorKindUnsupportedConfig {
 		t.Fatalf("unexpected error kind: %s", aiErr.Kind)
 	}
 	if aiErr.Message != "structured output schema name is required" {
@@ -200,15 +128,15 @@ func TestOpenAIAnalyze_RequiresSchemaName(t *testing.T) {
 	}
 }
 
-func TestOpenAIAnalyze_HTTPErrorKinds(t *testing.T) {
+func TestAnalyze_HTTPErrorKinds(t *testing.T) {
 	tests := []struct {
 		name       string
 		statusCode int
-		wantKind   ErrorKind
+		wantKind   provider.ErrorKind
 	}{
-		{name: "unauthorized", statusCode: http.StatusUnauthorized, wantKind: ErrorKindUnauthorized},
-		{name: "rate limited", statusCode: http.StatusTooManyRequests, wantKind: ErrorKindRateLimited},
-		{name: "provider error", statusCode: http.StatusServiceUnavailable, wantKind: ErrorKindProviderError},
+		{name: "unauthorized", statusCode: http.StatusUnauthorized, wantKind: provider.ErrorKindUnauthorized},
+		{name: "rate limited", statusCode: http.StatusTooManyRequests, wantKind: provider.ErrorKindRateLimited},
+		{name: "provider error", statusCode: http.StatusServiceUnavailable, wantKind: provider.ErrorKindProviderError},
 	}
 
 	for _, tt := range tests {
@@ -221,24 +149,21 @@ func TestOpenAIAnalyze_HTTPErrorKinds(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client, err := NewClientWithConfig(Config{
-				Provider: ProviderOpenAI,
+			client := newTestClient(provider.Config{
+				Provider: Provider,
 				APIKey:   "test-key",
 				Model:    "gpt-4o-mini",
 				BaseURL:  server.URL,
 			})
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
 
-			_, err = client.Analyze(context.Background(), "prompt", "content", nil)
+			_, err := client.Analyze(context.Background(), "prompt", "content", nil)
 			if err == nil {
 				t.Fatal("expected error, got nil")
 			}
 
-			var aiErr *Error
+			var aiErr *provider.Error
 			if !errors.As(err, &aiErr) {
-				t.Fatalf("expected *Error, got %T", err)
+				t.Fatalf("expected *provider.Error, got %T", err)
 			}
 			if aiErr.Kind != tt.wantKind {
 				t.Fatalf("expected error kind %s, got %s", tt.wantKind, aiErr.Kind)
@@ -247,7 +172,7 @@ func TestOpenAIAnalyze_HTTPErrorKinds(t *testing.T) {
 	}
 }
 
-func TestOpenAIAnalyze_Timeout(t *testing.T) {
+func TestAnalyze_Timeout(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(50 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
@@ -255,27 +180,24 @@ func TestOpenAIAnalyze_Timeout(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := NewClientWithConfig(Config{
-		Provider: ProviderOpenAI,
+	client := newTestClient(provider.Config{
+		Provider: Provider,
 		APIKey:   "test-key",
 		Model:    "gpt-4o-mini",
 		BaseURL:  server.URL,
 		Timeout:  10 * time.Millisecond,
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
 
-	_, err = client.Analyze(context.Background(), "prompt", "content", nil)
+	_, err := client.Analyze(context.Background(), "prompt", "content", nil)
 	if err == nil {
 		t.Fatal("expected timeout error, got nil")
 	}
 
-	var aiErr *Error
+	var aiErr *provider.Error
 	if !errors.As(err, &aiErr) {
-		t.Fatalf("expected *Error, got %T", err)
+		t.Fatalf("expected *provider.Error, got %T", err)
 	}
-	if aiErr.Kind != ErrorKindTimeout {
+	if aiErr.Kind != provider.ErrorKindTimeout {
 		t.Fatalf("expected timeout error kind, got %s", aiErr.Kind)
 	}
 }

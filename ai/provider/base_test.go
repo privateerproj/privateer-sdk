@@ -1,4 +1,4 @@
-package ai
+package provider
 
 import (
 	"context"
@@ -10,14 +10,18 @@ import (
 	"testing"
 )
 
-func TestProviderClientNewJSONRequest_AppliesOptions(t *testing.T) {
-	client := newProviderClient(ProviderOpenAI, Config{}, "https://example.com/v1")
-	req, err := client.newJSONRequest(
+// testProvider stands in for a concrete adapter identity; provider tests must
+// not import adapter packages (they import this one).
+const testProvider Provider = "openai"
+
+func TestBaseNewJSONRequest_AppliesOptions(t *testing.T) {
+	base := NewBase(testProvider, Config{}, "https://example.com/v1")
+	req, err := base.NewJSONRequest(
 		context.Background(),
 		http.MethodPost,
 		"/responses",
 		map[string]string{"prompt": "hello"},
-		requestOptions{
+		RequestOptions{
 			Headers: map[string]string{"Authorization": "Bearer test-key"},
 			Query:   url.Values{"key": []string{"abc123"}},
 		},
@@ -53,22 +57,22 @@ func TestNormalizeBaseURL(t *testing.T) {
 }
 
 func TestValidateStructuredSchema(t *testing.T) {
-	if err := validateStructuredSchema(ProviderOpenAI, nil); err != nil {
+	if err := ValidateStructuredSchema(testProvider, nil); err != nil {
 		t.Fatalf("unexpected nil schema error: %v", err)
 	}
-	if err := validateStructuredSchema(ProviderOpenAI, &Schema{Name: "schema-without-body"}); err == nil {
+	if err := ValidateStructuredSchema(testProvider, &Schema{Name: "schema-without-body"}); err == nil {
 		t.Fatal("expected missing schema body error")
 	}
-	if err := validateStructuredSchema(ProviderOpenAI, &Schema{Value: json.RawMessage(`{"type":"object"}`)}); err != nil {
+	if err := ValidateStructuredSchema(testProvider, &Schema{Value: json.RawMessage(`{"type":"object"}`)}); err != nil {
 		t.Fatalf("unexpected error for nameless schema: %v", err)
 	}
-	if err := validateStructuredSchema(ProviderOpenAI, &Schema{Name: "assessment_result", Value: json.RawMessage(`{"type":"object"}`)}); err != nil {
+	if err := ValidateStructuredSchema(testProvider, &Schema{Name: "assessment_result", Value: json.RawMessage(`{"type":"object"}`)}); err != nil {
 		t.Fatalf("unexpected valid schema error: %v", err)
 	}
 }
 
 func TestParseStructuredOutput(t *testing.T) {
-	raw, err := parseStructuredOutput(ProviderOpenAI, "  {\"verdict\":\"PASS\"}  ")
+	raw, err := ParseStructuredOutput(testProvider, "  {\"verdict\":\"PASS\"}  ")
 	if err != nil {
 		t.Fatalf("unexpected parse error: %v", err)
 	}
@@ -76,7 +80,7 @@ func TestParseStructuredOutput(t *testing.T) {
 		t.Fatalf("unexpected parsed content: %s", raw)
 	}
 
-	_, err = parseStructuredOutput(ProviderOpenAI, "not-json")
+	_, err = ParseStructuredOutput(testProvider, "not-json")
 	if err == nil {
 		t.Fatal("expected invalid json error")
 	}

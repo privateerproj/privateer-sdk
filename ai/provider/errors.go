@@ -1,4 +1,4 @@
-package ai
+package provider
 
 import (
 	"context"
@@ -60,9 +60,9 @@ func (e *Error) Unwrap() error {
 	return e.Err
 }
 
-// classifyHTTPError maps an upstream HTTP status code into an ErrorKind so
+// ClassifyHTTPError maps an upstream HTTP status code into an ErrorKind so
 // callers can react to common failure modes without parsing provider messages.
-func classifyHTTPError(provider Provider, statusCode int, message string) error {
+func ClassifyHTTPError(provider Provider, statusCode int, message string) error {
 	kind := ErrorKindProviderError
 	switch statusCode {
 	case http.StatusUnauthorized, http.StatusForbidden:

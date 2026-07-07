@@ -1,4 +1,9 @@
-package ai
+// Package assist is the plugin-facing accelerator for AI-assisted assessment
+// steps: it asks a provider-neutral client for a structured verdict against an
+// SDK-owned schema and packages the answer as auditable gemara.Evidence. The
+// caller decides whether to record the evidence and how the verdict folds into
+// the step result. See docs/ai-assist.md.
+package assist
 
 import (
 	"context"
@@ -8,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gemaraproj/go-gemara"
+	"github.com/privateerproj/privateer-sdk/ai/provider"
 )
 
 // EvidenceType is stamped on every gemara.Evidence produced by Assist
@@ -35,7 +41,7 @@ type Response struct {
 }
 
 // responseSchema pins the model to the Response shape
-var responseSchema = &Schema{
+var responseSchema = &provider.Schema{
 	Name:        "assessment_verdict",
 	Description: "Structured verdict for an AI-assisted control assessment.",
 	Strict:      true,
@@ -54,17 +60,17 @@ var responseSchema = &Schema{
 
 // EvidencePayload is the structured body stored in gemara.Evidence.Payload
 type EvidencePayload struct {
-	Response  Response `json:"verdict" yaml:"verdict"`
-	Prompt    string   `json:"prompt,omitempty" yaml:"prompt,omitempty"`
-	Material  string   `json:"material,omitempty" yaml:"material,omitempty"`
-	Provider  Provider `json:"provider,omitempty" yaml:"provider,omitempty"`
-	Model     string   `json:"model,omitempty" yaml:"model,omitempty"`
-	RequestID string   `json:"request-id,omitempty" yaml:"request-id,omitempty"`
+	Response  Response          `json:"verdict" yaml:"verdict"`
+	Prompt    string            `json:"prompt,omitempty" yaml:"prompt,omitempty"`
+	Material  string            `json:"material,omitempty" yaml:"material,omitempty"`
+	Provider  provider.Provider `json:"provider,omitempty" yaml:"provider,omitempty"`
+	Model     string            `json:"model,omitempty" yaml:"model,omitempty"`
+	RequestID string            `json:"request-id,omitempty" yaml:"request-id,omitempty"`
 }
 
 // Assist runs an AI-assisted assessment: it asks client for a structured Response
 // answering q, then packages that verdict as a gemara.Evidence
-func Assist(ctx context.Context, client Client, q Question) (Response, gemara.Evidence, error) {
+func Assist(ctx context.Context, client provider.Client, q Question) (Response, gemara.Evidence, error) {
 	if client == nil {
 		return Response{}, gemara.Evidence{}, fmt.Errorf("AI assessment skipped: no client configured")
 	}
@@ -86,7 +92,7 @@ func Assist(ctx context.Context, client Client, q Question) (Response, gemara.Ev
 }
 
 // newEvidence assembles and timestamps the gemara.Evidence for a completed call
-func newEvidence(v Response, resp *AnalyzeResponse, q Question) gemara.Evidence {
+func newEvidence(v Response, resp *provider.AnalyzeResponse, q Question) gemara.Evidence {
 	payload := EvidencePayload{Response: v, Prompt: q.Prompt, Material: q.Material}
 	if resp != nil {
 		payload.Provider = resp.Metadata.Provider
@@ -106,7 +112,7 @@ func newEvidence(v Response, resp *AnalyzeResponse, q Question) gemara.Evidence 
 }
 
 // evidenceID prefers the provider's request id and falls back to a timestamped id when none is reported
-func evidenceID(resp *AnalyzeResponse, timeNow string) string {
+func evidenceID(resp *provider.AnalyzeResponse, timeNow string) string {
 	if resp != nil {
 		if id := strings.TrimSpace(resp.Metadata.RequestID); id != "" {
 			return id

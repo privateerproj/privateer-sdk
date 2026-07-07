@@ -1,4 +1,4 @@
-package ai
+package provider
 
 import (
 	"bytes"
@@ -11,51 +11,47 @@ import (
 	"strings"
 )
 
-// analyzeRequest is the internal, provider-neutral form of an Analyze call
-type analyzeRequest struct {
-	Prompt  string
-	Content string
-	Schema  *Schema
-}
-
-// providerClient is the shared base embedded by each adapter. It owns the HTTP
+// Base is the shared foundation embedded by each adapter. It owns the HTTP
 // client, resolved base URL, and provider identity used in normalized errors.
-type providerClient struct {
-	provider   Provider
-	config     Config
+type Base struct {
+	// Provider is the adapter's identity, stamped on every normalized error.
+	Provider Provider
+	// Config is the normalized config the adapter was constructed with.
+	Config Config
+
 	httpClient *http.Client
 	baseURL    string
 }
 
-// requestOptions carries per-call HTTP extras layered on top of the JSON body
-type requestOptions struct {
+// RequestOptions carries per-call HTTP extras layered on top of the JSON body
+type RequestOptions struct {
 	Headers map[string]string
 	Query   url.Values
 }
 
-// newProviderClient builds the shared base for an adapter, resolving the
-// effective base URL and HTTP client from config.
-func newProviderClient(provider Provider, config Config, defaultBaseURL string) providerClient {
-	return providerClient{
-		provider:   provider,
-		config:     config,
+// NewBase builds the shared base for an adapter, resolving the effective base
+// URL and HTTP client from config.
+func NewBase(provider Provider, config Config, defaultBaseURL string) Base {
+	return Base{
+		Provider:   provider,
+		Config:     config,
 		httpClient: config.httpClient(),
 		baseURL:    normalizeBaseURL(config.BaseURL, defaultBaseURL),
 	}
 }
 
-// newJSONRequest builds an *http.Request with a JSON body plus the given
+// NewJSONRequest builds an *http.Request with a JSON body plus the given
 // headers and query params. Marshal or construction failures become
 // ErrorKindInvalidRequest.
-func (c providerClient) newJSONRequest(ctx context.Context, method, requestPath string, payload any, options requestOptions) (*http.Request, error) {
+func (b Base) NewJSONRequest(ctx context.Context, method, requestPath string, payload any, options RequestOptions) (*http.Request, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return nil, c.invalidRequest("marshal", err)
+		return nil, b.invalidRequest("marshal", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+requestPath, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, method, b.baseURL+requestPath, bytes.NewReader(body))
 	if err != nil {
-		return nil, c.invalidRequest("build", err)
+		return nil, b.invalidRequest("build", err)
 	}
 
 	if len(options.Query) > 0 {
@@ -77,22 +73,22 @@ func (c providerClient) newJSONRequest(ctx context.Context, method, requestPath 
 
 // invalidRequest wraps a request-construction failure (e.g. action "marshal" or
 // "build") as ErrorKindInvalidRequest, preserving err for errors.Is/As.
-func (c providerClient) invalidRequest(action string, err error) error {
+func (b Base) invalidRequest(action string, err error) error {
 	return &Error{
 		Kind:     ErrorKindInvalidRequest,
-		Provider: c.provider,
+		Provider: b.Provider,
 		Err:      err,
-		Message:  fmt.Sprintf("%s %s request: %v", action, c.provider, err),
+		Message:  fmt.Sprintf("%s %s request: %v", action, b.Provider, err),
 	}
 }
 
-// do executes a prepared request and returns the body bytes with the response.
+// Do executes a prepared request and returns the body bytes with the response.
 // Transport failures are mapped through classifyTransportError so callers can
 // branch on ErrorKind (e.g. ErrorKindTimeout).
-func (c providerClient) do(req *http.Request) ([]byte, *http.Response, error) {
-	resp, err := c.httpClient.Do(req)
+func (b Base) Do(req *http.Request) ([]byte, *http.Response, error) {
+	resp, err := b.httpClient.Do(req)
 	if err != nil {
-		return nil, nil, classifyTransportError(c.provider, err)
+		return nil, nil, classifyTransportError(b.Provider, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -100,9 +96,9 @@ func (c providerClient) do(req *http.Request) ([]byte, *http.Response, error) {
 	if err != nil {
 		return nil, resp, &Error{
 			Kind:     ErrorKindInvalidResponse,
-			Provider: c.provider,
+			Provider: b.Provider,
 			Err:      err,
-			Message:  fmt.Sprintf("read %s response: %v", c.provider, err),
+			Message:  fmt.Sprintf("read %s response: %v", b.Provider, err),
 		}
 	}
 
@@ -120,9 +116,9 @@ func normalizeBaseURL(baseURL, defaultBaseURL string) string {
 	return defaultBaseURL
 }
 
-// validateStructuredSchema rejects unusable Schema values as
+// ValidateStructuredSchema rejects unusable Schema values as
 // ErrorKindUnsupportedConfig. A nil schema means no structured output and is accepted.
-func validateStructuredSchema(provider Provider, schema *Schema) error {
+func ValidateStructuredSchema(provider Provider, schema *Schema) error {
 	if schema == nil {
 		return nil
 	}
@@ -136,9 +132,9 @@ func validateStructuredSchema(provider Provider, schema *Schema) error {
 	return nil
 }
 
-// parseStructuredOutput returns content as json.RawMessage, rejecting invalid
+// ParseStructuredOutput returns content as json.RawMessage, rejecting invalid
 // JSON as ErrorKindInvalidResponse.
-func parseStructuredOutput(provider Provider, content string) (json.RawMessage, error) {
+func ParseStructuredOutput(provider Provider, content string) (json.RawMessage, error) {
 	raw := json.RawMessage(strings.TrimSpace(content))
 	if !json.Valid(raw) {
 		return nil, &Error{
@@ -150,9 +146,9 @@ func parseStructuredOutput(provider Provider, content string) (json.RawMessage, 
 	return raw, nil
 }
 
-// firstNonEmpty returns the first non-blank string from values, letting adapters
+// FirstNonEmpty returns the first non-blank string from values, letting adapters
 // prefer one metadata source over a fallback without nested conditionals.
-func firstNonEmpty(values ...string) string {
+func FirstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {
 			return value

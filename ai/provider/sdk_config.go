@@ -1,4 +1,4 @@
-package ai
+package provider
 
 import (
 	"fmt"
@@ -59,7 +59,7 @@ func ConfigFromSDKConfig(config sdkconfig.Config) (Config, bool, error) {
 		aiConfig.Timeout = timeout
 	}
 
-	return aiConfig.normalized(), true, nil
+	return aiConfig.Normalized(), true, nil
 }
 
 // getSDKConfigString resolves on key presence, not value, so an explicit empty

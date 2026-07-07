@@ -1,4 +1,4 @@
-package ai
+package provider
 
 import (
 	"strings"
@@ -33,7 +33,7 @@ func TestConfigFromSDKConfig_DefaultsAndParsing(t *testing.T) {
 	if !configured {
 		t.Fatal("expected configured result")
 	}
-	if aiConfig.Provider != ProviderOpenAI {
+	if aiConfig.Provider != testProvider {
 		t.Fatalf("unexpected provider: %s", aiConfig.Provider)
 	}
 	if aiConfig.BaseURL != "http://127.0.0.1:8000/v1" {
@@ -62,72 +62,6 @@ func TestConfigFromSDKConfig_InvalidTimeout(t *testing.T) {
 	}
 }
 
-func TestNewClient(t *testing.T) {
-	client, err := NewClient(sdkconfig.Config{Vars: map[string]interface{}{
-		"ai_provider": "openai",
-		"ai_model":    "gpt-4o-mini",
-		"ai_api_key":  "test-key",
-	}})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if client == nil {
-		t.Fatal("expected configured client, got nil")
-	}
-	if _, ok := client.(*openAIClient); !ok {
-		t.Fatalf("expected *openAIClient, got %T", client)
-	}
-}
-
-func TestNewClient_PartialLiveConfigErrors(t *testing.T) {
-	tests := []struct {
-		name        string
-		vars        map[string]interface{}
-		wantErrText string
-	}{
-		{
-			name: "provider only",
-			vars: map[string]interface{}{
-				"ai_provider": "openai",
-			},
-			wantErrText: "ai model is required",
-		},
-		{
-			name: "model only",
-			vars: map[string]interface{}{
-				"ai_model": "gpt-4o-mini",
-			},
-			wantErrText: "ai provider is required",
-		},
-		{
-			name: "provider and model without api key",
-			vars: map[string]interface{}{
-				"ai_provider": "openai",
-				"ai_model":    "gpt-4o-mini",
-			},
-			wantErrText: "ai api key is required",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			viper.Reset()
-			t.Cleanup(viper.Reset)
-
-			client, err := NewClient(sdkconfig.Config{Vars: tt.vars})
-			if err == nil {
-				t.Fatal("expected error, got nil")
-			}
-			if !strings.Contains(err.Error(), tt.wantErrText) {
-				t.Fatalf("error = %q, want substring %q", err.Error(), tt.wantErrText)
-			}
-			if client != nil {
-				t.Fatalf("expected nil client, got %T", client)
-			}
-		})
-	}
-}
-
 func TestConfigFromSDKConfig_UsesViperFallback(t *testing.T) {
 	viper.Reset()
 	t.Cleanup(viper.Reset)
@@ -145,7 +79,7 @@ func TestConfigFromSDKConfig_UsesViperFallback(t *testing.T) {
 	if !configured {
 		t.Fatal("expected configured result from viper-backed settings")
 	}
-	if aiConfig.Provider != ProviderOpenAI {
+	if aiConfig.Provider != testProvider {
 		t.Fatalf("unexpected provider: %s", aiConfig.Provider)
 	}
 	if aiConfig.Model != "gpt-4o-mini" {

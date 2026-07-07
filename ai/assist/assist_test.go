@@ -1,4 +1,4 @@
-package ai
+package assist
 
 import (
 	"context"
@@ -7,28 +7,29 @@ import (
 	"testing"
 
 	"github.com/gemaraproj/go-gemara"
+	"github.com/privateerproj/privateer-sdk/ai/provider"
 )
 
 // stubClient is an in-package Client for exercising Assist without a network.
 type stubClient struct {
-	resp *AnalyzeResponse
+	resp *provider.AnalyzeResponse
 	err  error
 
 	gotPrompt  string
 	gotContent string
-	gotSchema  *Schema
+	gotSchema  *provider.Schema
 }
 
-func (s *stubClient) Analyze(_ context.Context, prompt, content string, schema *Schema) (*AnalyzeResponse, error) {
+func (s *stubClient) Analyze(_ context.Context, prompt, content string, schema *provider.Schema) (*provider.AnalyzeResponse, error) {
 	s.gotPrompt, s.gotContent, s.gotSchema = prompt, content, schema
 	return s.resp, s.err
 }
 
-func jsonResp(body string) *AnalyzeResponse {
-	return &AnalyzeResponse{
+func jsonResp(body string) *provider.AnalyzeResponse {
+	return &provider.AnalyzeResponse{
 		JSON: json.RawMessage(body),
-		Metadata: ResponseMetadata{
-			Provider:  ProviderOpenAI,
+		Metadata: provider.ResponseMetadata{
+			Provider:  provider.Provider("openai"),
 			Model:     "gpt-4o-mini",
 			RequestID: "req-123",
 		},

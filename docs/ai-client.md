@@ -1,10 +1,14 @@
 # The AI client contract
 
 The `ai` package exposes a **provider-neutral client**: callers use only the
-shared types in the package, and concrete backends (currently OpenAI) are
-adapters registered internally. Adding or swapping a built-in provider does not
-change any calling code. For the higher-level assessment accelerator built on
-top of this client, see [AI-assisted assessments](ai-assist.md).
+shared types re-exported from the single `ai` import, and concrete backends
+(currently OpenAI) are adapters registered internally. Under the hood the
+subsystem is split into subpackages — `ai/provider` holds the neutral contract
+and the base adapters build on, and each backend lives in its own sibling
+package (e.g. `ai/openai`) — but plugins never need to import them directly.
+Adding or swapping a built-in provider does not change any calling code. For
+the higher-level assessment accelerator built on top of this client, see
+[AI-assisted assessments](ai-assist.md).
 
 ## Constructing a client
 
@@ -17,14 +21,14 @@ just the error: a nil client means AI is disabled. This is deliberate — the
 provider, model, and credentials are the *operator's* choice, made in config,
 not something a plugin hardcodes.
 
-`ai.NewClientWithConfig(ai.Config)` is the lower-level primitive that `NewClient`
+`ai.NewClientWithAIConfig(ai.Config)` is the lower-level primitive that `NewClient`
 builds on. Reach for it directly only when you already hold a hand-built
 `ai.Config` rather than an SDK config — for example in tests, when injecting a
 custom `HTTPClient` or `BaseURL` for instrumentation, or when embedding the SDK
 in a tool that sources its settings elsewhere. A typical plugin does not
 hand-build a `Config`.
 
-`NewClientWithConfig` normalizes and validates the Config, then returns the
+`NewClientWithAIConfig` normalizes and validates the Config, then returns the
 adapter registered for `Config.Provider`; an unregistered provider surfaces as
 an error at construction rather than at first use.
 
@@ -135,7 +139,9 @@ is preserved via `Unwrap`, so `errors.Is` / `errors.As` still reach it.
 
 ## Adding a provider
 
-Implement `Client`, add a `Provider` constant, and register a constructor in the
-internal `clientFactories` map. No calling code changes. Adapters should reject
-malformed requests before any network call (see the OpenAI adapter's
-`ValidateRequest` for the pattern).
+Create a new subpackage next to `ai/openai` (e.g. `ai/mycloud`) that implements
+`provider.Client`, embedding `provider.Base` for shared HTTP handling, exports a
+`Provider` constant, and offers a `NewClient(provider.Config)` constructor. Then
+register that constructor in the `clientFactories` map in the root `ai` package.
+No calling code changes. Adapters should reject malformed requests before any
+network call (see the OpenAI adapter's `validateRequest` for the pattern).
