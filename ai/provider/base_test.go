@@ -47,6 +47,25 @@ func TestBaseNewJSONRequest_AppliesOptions(t *testing.T) {
 	}
 }
 
+// NewBase must normalize the config itself: adapter constructors are exported
+// and callable with a raw config, so the registry's normalization cannot be
+// assumed. A zero Timeout reaching http.Client would mean no timeout at all.
+func TestNewBase_NormalizesConfig(t *testing.T) {
+	base := NewBase(testProvider, Config{Provider: " OpenAI ", APIKey: " key "}, "https://example.com/v1")
+	if base.Config.Timeout != defaultTimeout {
+		t.Errorf("Timeout = %v, want default %v", base.Config.Timeout, defaultTimeout)
+	}
+	if base.Config.MaxTokens != defaultMaxTokens {
+		t.Errorf("MaxTokens = %d, want default %d", base.Config.MaxTokens, defaultMaxTokens)
+	}
+	if base.Config.Provider != "openai" || base.Config.APIKey != "key" {
+		t.Errorf("Provider/APIKey = %q/%q, want trimmed and lowercased", base.Config.Provider, base.Config.APIKey)
+	}
+	if base.httpClient == nil || base.httpClient.Timeout != defaultTimeout {
+		t.Errorf("httpClient timeout = %v, want %v", base.httpClient.Timeout, defaultTimeout)
+	}
+}
+
 func TestNormalizeBaseURL(t *testing.T) {
 	if got := normalizeBaseURL(" https://api.example.com/v1/ ", "https://default.example.com"); got != "https://api.example.com/v1" {
 		t.Fatalf("unexpected normalized url: %s", got)

@@ -124,13 +124,14 @@ func evidenceID(resp *provider.AnalyzeResponse, timeNow string) string {
 // GemaraResult maps the assistant's verdict onto a gemara.Result. Anything other
 // than an explicit pass/fail maps to NeedsReview.
 func (v Response) GemaraResult() gemara.Result {
-	if strings.Contains(strings.ToLower(strings.TrimSpace(v.Result)), "pass") {
+	switch strings.ToLower(strings.TrimSpace(v.Result)) {
+	case "pass":
 		return gemara.Passed
-	}
-	if strings.Contains(strings.ToLower(strings.TrimSpace(v.Result)), "fail") {
+	case "fail":
 		return gemara.Failed
+	default:
+		return gemara.NeedsReview
 	}
-	return gemara.NeedsReview
 }
 
 // GemaraConfidence maps the model's confidence onto a gemara.ConfidenceLevel.

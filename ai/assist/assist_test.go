@@ -130,6 +130,26 @@ func TestAssist_InvalidJSONYieldsNeedsReview(t *testing.T) {
 	}
 }
 
+// GemaraResult must match verdicts exactly: a value that merely contains
+// "pass" or "fail" (possible when callers build Response by hand) must fall
+// through to NeedsReview, never to Passed.
+func TestGemaraResult_ExactMatchOnly(t *testing.T) {
+	cases := map[string]gemara.Result{
+		"pass":         gemara.Passed,
+		" PASS ":       gemara.Passed,
+		"fail":         gemara.Failed,
+		"surpass":      gemara.NeedsReview,
+		"failed":       gemara.NeedsReview,
+		"needs_review": gemara.NeedsReview,
+		"":             gemara.NeedsReview,
+	}
+	for verdict, want := range cases {
+		if got := (Response{Result: verdict}).GemaraResult(); got != want {
+			t.Errorf("GemaraResult(%q) = %v, want %v", verdict, got, want)
+		}
+	}
+}
+
 func TestAssist_NilClient(t *testing.T) {
 	response, _, err := Assist(context.Background(), nil, Question{Prompt: "check"})
 	if err == nil {

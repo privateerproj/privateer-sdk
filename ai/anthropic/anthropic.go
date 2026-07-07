@@ -84,7 +84,7 @@ type messagesResponse struct {
 	} `json:"error,omitempty"`
 }
 
-// NewClient constructs the Anthropic adapter from a normalized provider.Config.
+// NewClient constructs the Anthropic adapter; NewBase normalizes the config.
 func NewClient(config provider.Config) *Client {
 	return &Client{
 		Base: provider.NewBase(Provider, config, defaultBaseURL),

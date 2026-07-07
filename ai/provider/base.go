@@ -29,9 +29,10 @@ type RequestOptions struct {
 	Query   url.Values
 }
 
-// NewBase builds the shared base for an adapter, resolving the effective base
-// URL and HTTP client from config.
+// NewBase builds the shared base for an adapter, normalizing config and
+// resolving the effective base URL and HTTP client from it.
 func NewBase(provider Provider, config Config, defaultBaseURL string) Base {
+	config = config.Normalized()
 	return Base{
 		Provider:   provider,
 		Config:     config,

@@ -147,7 +147,9 @@ result (see the example above) rather than looking for evidence.
 
 Because the prompt and material are recorded verbatim in the evaluation output,
 **never put secrets in `Question.Material`** — anything sent to the model also
-lands in the results file.
+lands in the results file. The SDK deliberately performs no redaction: a secret
+that does not belong in a results file does not belong in a prompt to an AI
+provider in the first place.
 
 ## Advanced: custom schemas
 

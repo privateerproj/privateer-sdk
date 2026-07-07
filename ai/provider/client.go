@@ -125,10 +125,23 @@ func (c Config) Normalized() Config {
 	return c
 }
 
+// httpClient is called on an already-Normalized config (NewBase normalizes),
+// so Timeout is guaranteed non-zero here.
 func (c Config) httpClient() *http.Client {
 	if c.HTTPClient != nil {
 		return c.HTTPClient
 	}
 
-	return &http.Client{Timeout: c.Normalized().Timeout}
+	return &http.Client{Timeout: c.Timeout}
+}
+
+// String renders the config with the APIKey redacted, so accidentally logging
+// a config (or an adapter embedding one) cannot leak the credential.
+func (c Config) String() string {
+	apiKey := "<unset>"
+	if c.APIKey != "" {
+		apiKey = "<redacted>"
+	}
+	return fmt.Sprintf("{Provider:%s APIKey:%s Model:%s BaseURL:%s Timeout:%v MaxTokens:%d HTTPClient:%t}",
+		c.Provider, apiKey, c.Model, c.BaseURL, c.Timeout, c.MaxTokens, c.HTTPClient != nil)
 }
