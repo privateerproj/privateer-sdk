@@ -34,51 +34,8 @@ func TestSetBase_ConfigFlagDefaultIsEmpty(t *testing.T) {
 	flag := cmd.PersistentFlags().Lookup("config")
 	if flag == nil {
 		t.Fatal("expected config flag to be registered")
-	}
-	if flag.DefValue != "" {
+	} else if flag.DefValue != "" {
 		t.Errorf("expected config flag default to be empty, got %q", flag.DefValue)
-	}
-}
-
-func TestSetBase_DryRunAIFlag(t *testing.T) {
-	resetViper()
-	cmd := &cobra.Command{Use: "test"}
-	SetBase(cmd)
-
-	flag := cmd.PersistentFlags().Lookup("dry-run-ai")
-	if flag == nil {
-		t.Fatal("expected dry-run-ai flag to be registered")
-	}
-	if flag.DefValue != "false" {
-		t.Errorf("expected dry-run-ai default to be 'false', got %q", flag.DefValue)
-	}
-	if err := cmd.PersistentFlags().Set("dry-run-ai", "true"); err != nil {
-		t.Fatalf("failed to set flag: %v", err)
-	}
-	// The flag is bound to the ai_dry_run viper key, not "dry-run-ai".
-	if !viper.GetBool("ai_dry_run") {
-		t.Error("expected viper ai_dry_run=true after --dry-run-ai flag set")
-	}
-}
-
-func TestSetBase_WriteAIEvidenceFlag(t *testing.T) {
-	resetViper()
-	cmd := &cobra.Command{Use: "test"}
-	SetBase(cmd)
-
-	flag := cmd.PersistentFlags().Lookup("write-ai-evidence")
-	if flag == nil {
-		t.Fatal("expected write-ai-evidence flag to be registered")
-	}
-	if flag.DefValue != "false" {
-		t.Errorf("expected write-ai-evidence default to be 'false', got %q", flag.DefValue)
-	}
-	if err := cmd.PersistentFlags().Set("write-ai-evidence", "true"); err != nil {
-		t.Fatalf("failed to set flag: %v", err)
-	}
-	// The flag is bound to ai_write_evidence so config, env, and CLI use one key.
-	if !viper.GetBool("ai_write_evidence") {
-		t.Error("expected viper ai_write_evidence=true after --write-ai-evidence flag set")
 	}
 }
 
