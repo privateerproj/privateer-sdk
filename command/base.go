@@ -13,16 +13,26 @@ import (
 	"github.com/spf13/viper"
 )
 
-// SetBase sets the base flags for all commands.
+// SetBase sets the flags that are universal to every command. These are safe to
+// place on a shared root because they apply to all subcommands. Execution-only
+// flags live in SetRunFlags so their shorthands (e.g. -o) do not collide with
+// sibling subcommands such as generate-plugin's --output-dir.
 func SetBase(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringP("config", "c", "", "Configuration file, JSON or YAML (if omitted, falls back to ./config.yml then ~/.privateer/config.yml)")
 	_ = viper.BindPFlag("config", cmd.PersistentFlags().Lookup("config"))
 
-	cmd.PersistentFlags().StringP("write-directory", "w", "evaluation_results", "Directory to write evaluation results to")
-	_ = viper.BindPFlag("write-directory", cmd.PersistentFlags().Lookup("write-directory"))
-
 	cmd.PersistentFlags().StringP("loglevel", "l", "error", "Log level (trace, debug, info, warn, error, off)")
 	_ = viper.BindPFlag("loglevel", cmd.PersistentFlags().Lookup("loglevel"))
+
+	cmd.PersistentFlags().BoolP("help", "h", false, "Give me a heading! Help for the specified command")
+}
+
+// SetRunFlags registers the execution-specific flags on the command that runs a
+// plugin (the pvtr `run` command, or a plugin binary's root). These are kept off
+// the shared root so their shorthands cannot collide with other subcommands.
+func SetRunFlags(cmd *cobra.Command) {
+	cmd.PersistentFlags().StringP("write-directory", "w", "evaluation_results", "Directory to write evaluation results to")
+	_ = viper.BindPFlag("write-directory", cmd.PersistentFlags().Lookup("write-directory"))
 
 	cmd.PersistentFlags().StringP("service", "s", "", "Named service to execute from the config")
 	_ = viper.BindPFlag("service", cmd.PersistentFlags().Lookup("service"))
@@ -41,8 +51,6 @@ func SetBase(cmd *cobra.Command) {
 
 	cmd.PersistentFlags().BoolP("include-payload", "", false, "Include the raw evaluated payload in results output (large; useful for tracing)")
 	_ = viper.BindPFlag("include-payload", cmd.PersistentFlags().Lookup("include-payload"))
-
-	cmd.PersistentFlags().BoolP("help", "h", false, "Give me a heading! Help for the specified command")
 }
 
 // ReadConfig reads the configuration file. If --config is explicitly provided,
