@@ -9,3 +9,6 @@ coverage.*
 
 # Claude Code
 **/.claude/*.local.*
+
+# ignore local git worktrees
+.worktrees/
