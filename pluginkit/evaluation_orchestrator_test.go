@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gemaraproj/go-gemara"
 	"github.com/goccy/go-yaml"
@@ -181,6 +182,15 @@ func TestEvaluationOrchestrator_Mobilize_BreaksAfterMatch(t *testing.T) {
 	// Should only execute the first matching suite due to break
 	if len(orchestrator.Evaluation_Suites) != 1 {
 		t.Errorf("Expected 1 suite (break after first match), got %d", len(orchestrator.Evaluation_Suites))
+	}
+
+	// Mobilize must leave each executed suite's EvaluationLog self-describing.
+	log := orchestrator.Evaluation_Suites[0].EvaluationLog
+	if log.Metadata.Type != gemara.EvaluationLogArtifact {
+		t.Errorf("expected stamped artifact type after Mobilize, got %v", log.Metadata.Type)
+	}
+	if log.Target.Id == "" {
+		t.Error("expected stamped target id after Mobilize, got empty")
 	}
 }
 
@@ -752,6 +762,105 @@ func TestEvaluationOrchestrator_WriteResults_Gemara(t *testing.T) {
 		// don't have to special-case the no-suites condition.
 		if strings.TrimSpace(string(data)) != "[]" {
 			t.Errorf("expected empty list output, got: %q", strings.TrimSpace(string(data)))
+		}
+	})
+}
+
+func TestEvaluationOrchestrator_StampEvaluationLog(t *testing.T) {
+	newOrchestrator := func() *EvaluationOrchestrator {
+		return &EvaluationOrchestrator{
+			ServiceName:   "test-service",
+			PluginName:    "test-plugin",
+			PluginUri:     "https://github.com/test/repo",
+			PluginVersion: "1.0.0",
+			config:        setBasicConfig(),
+		}
+	}
+
+	t.Run("populates self-describing metadata, result, and default target", func(t *testing.T) {
+		orchestrator := newOrchestrator()
+		suite := &EvaluationSuite{CatalogId: "test-catalog", Result: gemara.Passed}
+
+		orchestrator.stampEvaluationLog(suite)
+
+		m := suite.EvaluationLog.Metadata
+		if m.Id != "test-service_test-catalog" {
+			t.Errorf("expected stable metadata id, got %q", m.Id)
+		}
+		if m.Type != gemara.EvaluationLogArtifact {
+			t.Errorf("expected artifact type EvaluationLog, got %v", m.Type)
+		}
+		if m.GemaraVersion != gemara.SchemaVersion {
+			t.Errorf("expected gemara-version %q, got %q", gemara.SchemaVersion, m.GemaraVersion)
+		}
+		if _, err := time.Parse(time.RFC3339, string(m.Date)); err != nil {
+			t.Errorf("expected RFC3339 metadata date, got %q: %v", m.Date, err)
+		}
+		if m.Description == "" || strings.Contains(m.Description, "corrupted-state") {
+			t.Errorf("expected description without corruption marker, got %q", m.Description)
+		}
+		if m.Author.Name != "test-plugin" || m.Author.Uri != "https://github.com/test/repo" || m.Author.Version != "1.0.0" {
+			t.Errorf("expected plugin provenance in author, got %+v", m.Author)
+		}
+		if m.Author.Id != "test-plugin" || m.Author.Type != gemara.Software {
+			t.Errorf("expected valid author id and type, got %+v", m.Author)
+		}
+		if suite.EvaluationLog.Result != gemara.Passed {
+			t.Errorf("expected log result to mirror suite result, got %v", suite.EvaluationLog.Result)
+		}
+		target := suite.EvaluationLog.Target
+		if target.Id != "test-service" || target.Name != "test-service" || target.Type != gemara.Software {
+			t.Errorf("expected default target from service name, got %+v", target)
+		}
+	})
+
+	t.Run("author id uses the publish coordinate when Publisher is set", func(t *testing.T) {
+		orchestrator := newOrchestrator()
+		orchestrator.Publisher = "test-org"
+		suite := &EvaluationSuite{CatalogId: "test-catalog"}
+
+		orchestrator.stampEvaluationLog(suite)
+
+		if got := suite.EvaluationLog.Metadata.Author.Id; got != "test-org/test-plugin" {
+			t.Errorf("expected publish coordinate as author id, got %q", got)
+		}
+	})
+
+	t.Run("marks corrupted state in the description", func(t *testing.T) {
+		orchestrator := newOrchestrator()
+		suite := &EvaluationSuite{CatalogId: "test-catalog", CorruptedState: true}
+
+		orchestrator.stampEvaluationLog(suite)
+
+		if !strings.Contains(suite.EvaluationLog.Metadata.Description, "corrupted-state: true") {
+			t.Errorf("expected corruption marker in description, got %q", suite.EvaluationLog.Metadata.Description)
+		}
+	})
+
+	t.Run("target builder is used with empty fields backfilled", func(t *testing.T) {
+		orchestrator := newOrchestrator()
+		orchestrator.AddTargetBuilder(func(cfg *config.Config) gemara.Resource {
+			return gemara.Resource{
+				Id:  "github.com/test-owner/test-repo",
+				Uri: "https://github.com/test-owner/test-repo",
+			}
+		})
+		suite := &EvaluationSuite{CatalogId: "test-catalog"}
+
+		orchestrator.stampEvaluationLog(suite)
+
+		target := suite.EvaluationLog.Target
+		if target.Id != "github.com/test-owner/test-repo" {
+			t.Errorf("expected builder-provided target id, got %q", target.Id)
+		}
+		if target.Uri != "https://github.com/test-owner/test-repo" {
+			t.Errorf("expected builder-provided target uri, got %q", target.Uri)
+		}
+		if target.Name != "test-service" {
+			t.Errorf("expected empty target name backfilled from service name, got %q", target.Name)
+		}
+		if target.Type != gemara.Software {
+			t.Errorf("expected empty target type backfilled, got %v", target.Type)
 		}
 	})
 }

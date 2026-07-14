@@ -117,6 +117,9 @@ func (e *EvaluationSuite) Evaluate(serviceName string) error {
 
 	if e.changeManager != nil {
 		e.changeManager.RevertAll()
+		// The ChangeManager tracks corruption per change; sync it onto the suite
+		// so the written results (and the gemara EvaluationLog) can report it.
+		e.CorruptedState = e.changeManager.CorruptedState
 		if e.CorruptedState {
 			return CORRUPTION_FOUND("ev40")
 		}
