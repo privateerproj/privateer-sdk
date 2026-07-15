@@ -103,7 +103,6 @@ func renderInstallableList(writer io.Writer, remote, local []*PluginPkg, hubURL 
 }
 
 func writePluginDetails(ctx context.Context, writer Writer) {
-	_, _ = fmt.Fprintln(writer, "| Plugin \t | Version \t | Installed \t| In Current Config \t|")
 	var plugins []*PluginPkg
 
 	if viper.GetBool("installed") {
@@ -114,7 +113,25 @@ func writePluginDetails(ctx context.Context, writer Writer) {
 	} else {
 		plugins = GetPlugins()
 	}
+	renderPluginDetails(writer, plugins)
+}
+
+// renderPluginDetails writes the plugin table. Extracted from writePluginDetails
+// so tests can drive it without viper/config setup by supplying a plugin slice.
+//
+// Rows are de-duplicated by name+version: getRequestedPlugins emits one entry
+// per service (needed so Run has the right --service context), so two services
+// sharing the same plugin+version would otherwise print repeat rows. Two
+// services pinning different versions still each show (distinct rowKey).
+func renderPluginDetails(writer io.Writer, plugins []*PluginPkg) {
+	_, _ = fmt.Fprintln(writer, "| Plugin \t | Version \t | Installed \t| In Current Config \t|")
+	seen := make(map[string]bool)
 	for _, pluginPkg := range plugins {
+		rowKey := pluginPkg.Name + "@" + pluginPkg.Version
+		if seen[rowKey] {
+			continue
+		}
+		seen[rowKey] = true
 		version := pluginPkg.Version
 		if version == "" {
 			version = "-" // unpinned (latest) or not installed
