@@ -39,6 +39,7 @@ func NewPluginCommands(pluginName, buildVersion, buildGitCommitHash, buildTime s
 		versionCommand(buildVersion, buildGitCommitHash, buildTime))
 
 	SetBase(runCmd)
+	SetRunFlags(runCmd)
 	return runCmd
 }
 

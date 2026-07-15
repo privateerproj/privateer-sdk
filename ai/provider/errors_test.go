@@ -1,4 +1,4 @@
-package ai
+package provider
 
 import (
 	"context"
@@ -14,20 +14,20 @@ func TestClassifyTransportError_ContextCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := classifyTransportError(ProviderOpenAI, ctx.Err())
+	err := classifyTransportError(testProvider, ctx.Err())
 	if err == nil {
 		t.Fatal("expected non-nil error from classifyTransportError")
 	}
 
 	var aiErr *Error
 	if !errors.As(err, &aiErr) {
-		t.Fatalf("expected *ai.Error, got %T: %v", err, err)
+		t.Fatalf("expected *Error, got %T: %v", err, err)
 	}
 	if aiErr.Kind != ErrorKindTimeout {
 		t.Errorf("Kind = %q, want %q", aiErr.Kind, ErrorKindTimeout)
 	}
-	if aiErr.Provider != ProviderOpenAI {
-		t.Errorf("Provider = %q, want %q", aiErr.Provider, ProviderOpenAI)
+	if aiErr.Provider != testProvider {
+		t.Errorf("Provider = %q, want %q", aiErr.Provider, testProvider)
 	}
 	if !errors.Is(aiErr, context.Canceled) {
 		t.Errorf("errors.Is(err, context.Canceled) = false; underlying error not preserved: %v", aiErr.Err)
@@ -38,11 +38,11 @@ func TestClassifyTransportError_ContextCanceled(t *testing.T) {
 // counterpart to TestClassifyTransportError_ContextCanceled and pins the
 // existing DeadlineExceeded -> Timeout mapping so neither branch regresses.
 func TestClassifyTransportError_ContextDeadlineExceeded(t *testing.T) {
-	err := classifyTransportError(ProviderOpenAI, context.DeadlineExceeded)
+	err := classifyTransportError(testProvider, context.DeadlineExceeded)
 
 	var aiErr *Error
 	if !errors.As(err, &aiErr) {
-		t.Fatalf("expected *ai.Error, got %T: %v", err, err)
+		t.Fatalf("expected *Error, got %T: %v", err, err)
 	}
 	if aiErr.Kind != ErrorKindTimeout {
 		t.Errorf("Kind = %q, want %q", aiErr.Kind, ErrorKindTimeout)

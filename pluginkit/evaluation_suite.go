@@ -2,6 +2,7 @@ package pluginkit
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gemaraproj/go-gemara"
@@ -81,7 +82,7 @@ func (e *EvaluationSuite) Evaluate(serviceName string) error {
 
 		// Log each assessment result as a separate line
 		for _, assessment := range evaluation.AssessmentLogs {
-			message := fmt.Sprintf("%s: %s", assessment.Requirement.EntryId, assessment.Message)
+			message := fmt.Sprintf("%s: %s", assessment.Requirement.EntryId, singleLine(assessment.Message))
 			// switch case the code below
 			switch assessment.Result {
 			case gemara.Passed:
@@ -134,6 +135,12 @@ func (e *EvaluationSuite) Evaluate(serviceName string) error {
 		e.config.Logger.Error(output)
 	}
 	return nil
+}
+
+// singleLine collapses a multi-line assessment message into one line so the
+// log stays one entry per assessment; the written results keep the message verbatim.
+func singleLine(message string) string {
+	return strings.Join(strings.Fields(message), " ")
 }
 
 // GetAssessmentRequirements retrieves all assessment requirements from the catalog.
