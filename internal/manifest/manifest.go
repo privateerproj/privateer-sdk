@@ -52,6 +52,10 @@ func key(name, version string) string {
 
 // Load reads the manifest from {binariesPath}/plugins.json.
 // Returns an empty manifest if the file does not exist.
+//
+// If the file contains the legacy array format (Plugins was []Plugin before it
+// became map[string]Plugin), Load migrates it in-memory. The next Save writes
+// the new map format, so the migration is transparent to callers.
 func Load(binariesPath string) (*Manifest, error) {
 	p := filepath.Join(binariesPath, filename)
 	data, err := os.ReadFile(p)
@@ -63,9 +67,28 @@ func Load(binariesPath string) (*Manifest, error) {
 	}
 	var m Manifest
 	if err := json.Unmarshal(data, &m); err != nil {
-		return nil, fmt.Errorf("parsing %s: %w", p, err)
+		migrated, merr := migrateFromArray(data)
+		if merr != nil {
+			return nil, fmt.Errorf("parsing %s: %w", p, err)
+		}
+		return migrated, nil
 	}
 	return &m, nil
+}
+
+// migrateFromArray handles the legacy format where Plugins was a JSON array.
+func migrateFromArray(data []byte) (*Manifest, error) {
+	var legacy struct {
+		Plugins []Plugin `json:"plugins"`
+	}
+	if err := json.Unmarshal(data, &legacy); err != nil {
+		return nil, err
+	}
+	m := &Manifest{Plugins: make(map[string]Plugin, len(legacy.Plugins))}
+	for _, p := range legacy.Plugins {
+		m.Plugins[key(p.Name, p.Version)] = p
+	}
+	return m, nil
 }
 
 // Save writes the manifest to {binariesPath}/plugins.json atomically via

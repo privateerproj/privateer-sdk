@@ -105,7 +105,7 @@ func NewPluginPkg(pluginName, version, serviceName string) *PluginPkg {
 	} else {
 		plugin.Path = path
 		plugin.Installed = true
+		plugin.queueCmd()
 	}
-	plugin.queueCmd()
 	return plugin
 }

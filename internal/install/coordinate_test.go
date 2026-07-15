@@ -24,6 +24,8 @@ func TestParseCoordinate(t *testing.T) {
 		{"empty", "", "", "", true},
 		{"empty namespace", "/id", "", "", true},
 		{"empty id", "ns/", "", "", true},
+		{"v-prefix stripped", "ossf/pvtr-github-repo@v1.4.0", "ossf/pvtr-github-repo", "1.4.0", false},
+		{"v-prefix non-semver preserved", "ossf/pvtr-github-repo@vnext", "ossf/pvtr-github-repo", "vnext", false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -53,6 +55,24 @@ func TestParseCoordinate_BareNameMessageIsActionable(t *testing.T) {
 	}
 	if got := err.Error(); !contains(got, "<namespace>/<plugin_id>") {
 		t.Errorf("bare-name error should show the coordinate form, got: %q", got)
+	}
+}
+
+func TestNormalizeVersion(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"v1.4.0", "1.4.0"},
+		{"1.4.0", "1.4.0"},
+		{"vnext", "vnext"},
+		{"", ""},
+		{"v", "v"},
+		{"v0.1.0", "0.1.0"},
+	}
+	for _, c := range cases {
+		if got := normalizeVersion(c.in); got != c.want {
+			t.Errorf("normalizeVersion(%q) = %q, want %q", c.in, got, c.want)
+		}
 	}
 }
 

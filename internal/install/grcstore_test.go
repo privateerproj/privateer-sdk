@@ -117,6 +117,30 @@ func TestWriteVerifiedBinary_VersionsCoexist(t *testing.T) {
 	}
 }
 
+func TestPathContainmentCheck(t *testing.T) {
+	destDir := "/safe/dir"
+	cases := []struct {
+		name    string
+		relPath string
+		escapes bool
+	}{
+		{"normal path", filepath.Join("ns/id", "1.0.0", "binary"), false},
+		{"traversal attempt", filepath.Join("../escape", "1.0.0", "binary"), true},
+		{"deep traversal", filepath.Join("ns/../../etc", "1.0.0", "binary"), true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dest := filepath.Join(destDir, c.relPath)
+			clean := filepath.Clean(dest) + string(filepath.Separator)
+			base := filepath.Clean(destDir) + string(filepath.Separator)
+			escaped := !strings.HasPrefix(clean, base)
+			if escaped != c.escapes {
+				t.Errorf("path %q: expected escapes=%v, got %v", c.relPath, c.escapes, escaped)
+			}
+		})
+	}
+}
+
 // A nested relative path (coordinate/version/entrypoint) has its full parent
 // chain created on write.
 func TestWriteVerifiedBinary_CreatesNestedDirs(t *testing.T) {
