@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/gemaraproj/go-gemara"
 	"github.com/gemaraproj/go-gemara/gemaraconv"
@@ -50,14 +51,29 @@ type EvaluationOrchestrator struct {
 	requiredVars      []string
 	config            *config.Config
 	loader            DataLoader
+	targetBuilder     TargetBuilder
 }
 
 // DataLoader is a function type for loading plugin data from configuration.
 type DataLoader func(*config.Config) (any, error)
 
+// TargetBuilder describes the resource a run evaluated, for the target field
+// of the emitted gemara EvaluationLog. It receives the resolved config so it
+// can derive real-world identity from service vars (e.g. "owner/repo" for a
+// GitHub repository plugin). When no builder is registered the target falls
+// back to the service name from the run configuration.
+type TargetBuilder func(*config.Config) gemara.Resource
+
 // AddLoader sets the data loader function for the orchestrator.
 func (v *EvaluationOrchestrator) AddLoader(loader DataLoader) {
 	v.loader = loader
+}
+
+// AddTargetBuilder sets the function that identifies the evaluated resource
+// in each emitted EvaluationLog. Fields left empty by the builder are
+// backfilled from the service name so the log always identifies its target.
+func (v *EvaluationOrchestrator) AddTargetBuilder(builder TargetBuilder) {
+	v.targetBuilder = builder
 }
 
 // AddRequiredVars sets the required configuration variables for the orchestrator.
@@ -238,14 +254,7 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 				if err != nil {
 					v.config.Logger.Error(err.Error())
 				}
-				// Set plugin metadata in EvaluationLog for SARIF generation
-				suite.EvaluationLog.Metadata = gemara.Metadata{
-					Author: gemara.Actor{
-						Name:    v.PluginName,
-						Uri:     v.PluginUri,
-						Version: v.PluginVersion,
-					},
-				}
+				v.stampEvaluationLog(suite)
 				v.Evaluation_Suites = append(v.Evaluation_Suites, suite)
 				break
 			}
@@ -265,6 +274,67 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 		return nil // Do not write results if the user has blocked it
 	}
 	return v.WriteResults()
+}
+
+// stampEvaluationLog populates identity, provenance, and outcome on a suite's
+// EvaluationLog after evaluation, so the log is self-describing and
+// schema-valid when emitted standalone (output: gemara) rather than inside
+// the Privateer orchestrator envelope. The Author metadata also feeds SARIF
+// generation.
+func (v *EvaluationOrchestrator) stampEvaluationLog(suite *EvaluationSuite) {
+	description := fmt.Sprintf("Privateer evaluation of service '%s' against control catalog '%s'", v.ServiceName, suite.CatalogId)
+	if suite.CorruptedState {
+		// The gemara EvaluationLog schema has no corrupted-state field, so this
+		// stable marker in the description is how a standalone log reports that
+		// an invasive change failed to revert. Keep the marker text machine-matchable.
+		description += "; corrupted-state: true (an invasive change failed to revert and the target may be in a bad state)"
+	}
+
+	// The author id is the grc.store publish coordinate when a Publisher is
+	// declared, otherwise the plugin name.
+	authorId := v.PluginName
+	if v.Publisher != "" {
+		authorId = fmt.Sprintf("%s/%s", v.Publisher, v.PluginName)
+	}
+
+	suite.EvaluationLog.Metadata = gemara.Metadata{
+		Id:            fmt.Sprintf("%s_%s", v.ServiceName, suite.CatalogId),
+		Type:          gemara.EvaluationLogArtifact,
+		GemaraVersion: gemara.SchemaVersion,
+		Date:          gemara.Datetime(time.Now().UTC().Format(time.RFC3339)),
+		Description:   description,
+		Author: gemara.Actor{
+			Id:      authorId,
+			Name:    v.PluginName,
+			Type:    gemara.Software,
+			Uri:     v.PluginUri,
+			Version: v.PluginVersion,
+		},
+	}
+
+	// The suite aggregates per-evaluation results; mirror that onto the log so
+	// a standalone log carries its overall outcome.
+	suite.EvaluationLog.Result = suite.Result
+
+	target := gemara.Resource{
+		Id:   v.ServiceName,
+		Name: v.ServiceName,
+		Type: gemara.Software,
+	}
+	if v.targetBuilder != nil {
+		built := v.targetBuilder(v.config)
+		if built.Id == "" {
+			built.Id = target.Id
+		}
+		if built.Name == "" {
+			built.Name = target.Name
+		}
+		if built.Type == gemara.InvalidEntityType {
+			built.Type = target.Type
+		}
+		target = built
+	}
+	suite.EvaluationLog.Target = target
 }
 
 // WriteResults writes the evaluation results to files in the configured output format.
