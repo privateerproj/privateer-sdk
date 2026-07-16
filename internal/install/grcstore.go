@@ -135,6 +135,10 @@ func pullVerifyInstall(ctx context.Context, w io.Writer, hub *oci.Client, detail
 	}
 
 	relPath := filepath.Join(coordinate, verified.Version, binaryName)
+	dest := filepath.Join(destDir, relPath)
+	if !strings.HasPrefix(filepath.Clean(dest)+string(filepath.Separator), filepath.Clean(destDir)+string(filepath.Separator)) {
+		return fmt.Errorf("resolved install path %q escapes binaries directory %q", dest, destDir)
+	}
 	if err := writeVerifiedBinary(destDir, relPath, verified.Binary); err != nil {
 		return fmt.Errorf("writing plugin binary: %w", err)
 	}

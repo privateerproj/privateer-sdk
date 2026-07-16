@@ -103,7 +103,6 @@ func renderInstallableList(writer io.Writer, remote, local []*PluginPkg, hubURL 
 }
 
 func writePluginDetails(ctx context.Context, writer Writer) {
-	_, _ = fmt.Fprintln(writer, "| Plugin \t | Version \t | Installed \t| In Current Config \t|")
 	var plugins []*PluginPkg
 
 	if viper.GetBool("installed") {
@@ -114,7 +113,25 @@ func writePluginDetails(ctx context.Context, writer Writer) {
 	} else {
 		plugins = GetPlugins()
 	}
+	renderPluginDetails(writer, plugins)
+}
+
+// renderPluginDetails writes the plugin table. Extracted from writePluginDetails
+// so tests can drive it without viper/config setup by supplying a plugin slice.
+//
+// Rows are de-duplicated by name+version: getRequestedPlugins emits one entry
+// per service (needed so Run has the right --service context), so two services
+// sharing the same plugin+version would otherwise print repeat rows. Two
+// services pinning different versions still each show (distinct rowKey).
+func renderPluginDetails(writer io.Writer, plugins []*PluginPkg) {
+	_, _ = fmt.Fprintln(writer, "| Plugin \t | Version \t | Installed \t| In Current Config \t|")
+	seen := make(map[string]bool)
 	for _, pluginPkg := range plugins {
+		rowKey := pluginPkg.Name + "@" + pluginPkg.Version
+		if seen[rowKey] {
+			continue
+		}
+		seen[rowKey] = true
 		version := pluginPkg.Version
 		if version == "" {
 			version = "-" // unpinned (latest) or not installed
@@ -123,22 +140,16 @@ func writePluginDetails(ctx context.Context, writer Writer) {
 	}
 }
 
-// getRequestedPlugins returns the plugins requested in the config, deduplicated
-// by name+version so two services pinning different versions of the same plugin
-// each materialize (while two services sharing the same plugin+version collapse
-// to one entry).
+// getRequestedPlugins returns one PluginPkg per service in the config. Each
+// service gets its own entry (and its own exec.Cmd with the correct --service
+// flag), even when two services share the same plugin+version. This is required
+// so Run invokes the plugin once per service with the right service context.
 func getRequestedPlugins() []*PluginPkg {
 	services := config.GetServices()
-	seen := make(map[string]bool)
 	var out []*PluginPkg
 	for serviceName := range services {
 		pluginName := config.GetServicePlugin(serviceName)
 		version := config.GetServiceVersion(serviceName)
-		dedupKey := pluginName + "@" + version
-		if seen[dedupKey] {
-			continue
-		}
-		seen[dedupKey] = true
 		pluginPkg := NewPluginPkg(pluginName, version, serviceName)
 		pluginPkg.Requested = true
 		out = append(out, pluginPkg)
