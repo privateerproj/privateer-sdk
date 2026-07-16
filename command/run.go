@@ -38,6 +38,34 @@ func mergeExitCode(prev, next int) int {
 	return prev
 }
 
+// planRun decides, without executing anything, what Run should do with the
+// resolved plugin list:
+//   - toRun is the requested-and-installed plugins to execute, in input order.
+//   - earlyExit is non-zero when Run must return immediately without executing:
+//     NoTests when the plugin list is empty, BadUsage when a requested plugin
+//     is not installed (culprit names it, for the log line).
+//
+// Pulling this decision out of the execution loop lets it be table-tested
+// without go-plugin fakes. It validates the whole list up front, so a config
+// that requests an uninstalled plugin now fails before any plugin runs.
+// Previously a requested+installed plugin earlier in the (map-ordered, so
+// non-deterministic) slice could execute before the BadUsage abort.
+func planRun(plugins []*PluginPkg) (toRun []*PluginPkg, earlyExit int, culprit *PluginPkg) {
+	if len(plugins) == 0 {
+		return nil, NoTests, nil
+	}
+	for _, pluginPkg := range plugins {
+		if !pluginPkg.Requested {
+			continue
+		}
+		if !pluginPkg.Installed {
+			return nil, BadUsage, pluginPkg
+		}
+		toRun = append(toRun, pluginPkg)
+	}
+	return toRun, 0, nil
+}
+
 // Run executes all plugins with handling for the command line.
 //
 // Deprecated: use harness.Run instead. This will be removed once the pvtr CLI
@@ -46,22 +74,19 @@ func Run(logger hclog.Logger, getPlugins func() []*PluginPkg) (exitCode int) {
 	logger.Trace(fmt.Sprintf(
 		"Using bin: %s", viper.GetString("binaries-path")))
 
-	plugins := getPlugins()
-	if len(plugins) == 0 {
+	toRun, earlyExit, culprit := planRun(getPlugins())
+	switch earlyExit {
+	case NoTests:
 		logger.Error(fmt.Sprintf("no plugins were requested in config: %s", viper.GetString("binaries-path")))
 		return NoTests
+	case BadUsage:
+		logger.Error(fmt.Sprintf("requested plugin that is not installed: %s", culprit.Name))
+		return BadUsage
 	}
 
 	var runCount int
-	for _, pluginPkg := range plugins {
-		if !pluginPkg.Requested {
-			continue
-		}
+	for _, pluginPkg := range toRun {
 		serviceName := pluginPkg.ServiceTarget
-		if !pluginPkg.Installed {
-			logger.Error(fmt.Sprintf("requested plugin that is not installed: %s", pluginPkg.Name))
-			return BadUsage
-		}
 		runCount++
 		client := newClient(pluginPkg.Command, logger)
 		var rpcClient hcplugin.ClientProtocol
