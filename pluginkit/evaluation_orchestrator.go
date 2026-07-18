@@ -52,6 +52,7 @@ type EvaluationOrchestrator struct {
 	config            *config.Config
 	loader            DataLoader
 	targetBuilder     TargetBuilder
+	benchmark         *BenchmarkReport
 }
 
 // DataLoader is a function type for loading plugin data from configuration.
@@ -121,7 +122,19 @@ func (v *EvaluationOrchestrator) addPossibleControls(catalog *gemara.ControlCata
 }
 
 // AddEvaluationSuite adds an evaluation suite for the given catalog ID.
+//
+// Steps registered this way are named by symbol lookup at report time, which
+// only resolves while the step is a plain function value. Plugins that adapt
+// their steps through a closure should register via AddEvaluationSuiteTyped so
+// the SDK captures each step's name before it is captured.
 func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader DataLoader, steps map[string][]gemara.AssessmentStep) error {
+	return v.addEvaluationSuiteNamed(catalogId, loader, steps, nil)
+}
+
+// addEvaluationSuiteNamed is AddEvaluationSuite with optional step names,
+// supplied by the typed registration helpers. names is keyed by requirement id
+// and positionally parallel to steps; a nil map falls back to symbol lookup.
+func (v *EvaluationOrchestrator) addEvaluationSuiteNamed(catalogId string, loader DataLoader, steps map[string][]gemara.AssessmentStep, names map[string][]string) error {
 	if catalogId == "" {
 		return BAD_CATALOG(v.PluginName, "suite catalog id cannot be empty", "aos10")
 	}
@@ -132,7 +145,7 @@ func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader Dat
 		if catalog.Metadata.Id == "" {
 			return BAD_CATALOG(v.PluginName, "no id found in catalog metadata", "aos30")
 		}
-		v.addEvaluationSuite(catalog, loader, steps)
+		v.addEvaluationSuite(catalog, loader, steps, names)
 		return nil
 	}
 	return BAD_CATALOG(v.PluginName, fmt.Sprintf("no reference catalog found with id '%s'", catalogId), "aos40")
@@ -154,7 +167,7 @@ func (v *EvaluationOrchestrator) AddEvaluationSuiteForAllCatalogs(loader DataLoa
 	return nil
 }
 
-func (v *EvaluationOrchestrator) addEvaluationSuite(catalog *gemara.ControlCatalog, loader DataLoader, steps map[string][]gemara.AssessmentStep) {
+func (v *EvaluationOrchestrator) addEvaluationSuite(catalog *gemara.ControlCatalog, loader DataLoader, steps map[string][]gemara.AssessmentStep, names map[string][]string) {
 	for _, existing := range v.possibleSuites {
 		if existing.CatalogId == catalog.Metadata.Id {
 			return
@@ -177,6 +190,7 @@ func (v *EvaluationOrchestrator) addEvaluationSuite(catalog *gemara.ControlCatal
 		CatalogId: catalog.Metadata.Id,
 		catalog:   suiteCatalog,
 		steps:     steps,
+		stepNames: names,
 		config:    v.config,
 	}
 
@@ -224,6 +238,17 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 		return BAD_CONFIG(v.config.Error, "mob20")
 	}
 
+	// Init before loadPayload so retrieval is timed; nil when off.
+	var benchmarkStart time.Time
+	if v.config.Benchmark {
+		benchmarkStart = time.Now()
+		v.benchmark = &BenchmarkReport{
+			Schema:        BenchmarkSchema,
+			PluginName:    v.PluginName,
+			PluginVersion: v.PluginVersion,
+		}
+	}
+
 	err := v.loadPayload()
 	if err != nil {
 		return BAD_LOADER(v.PluginName, err, "mob30")
@@ -233,6 +258,12 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 
 	if v.PluginName == "" || v.ServiceName == "" {
 		return EVALUATION_ORCHESTRATOR_NAMES_NOT_SET(v.ServiceName, v.PluginName, "mob40")
+	}
+
+	if v.config.Benchmark && v.config.BenchmarkPayloadOnly {
+		v.config.Logger.Trace("Payload-only benchmark: skipping assessment")
+		v.finalizeBenchmark(benchmarkStart)
+		return nil
 	}
 
 	v.config.Logger.Trace("Mobilization beginning")
@@ -271,9 +302,13 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 	v.config.Logger.Trace("Mobilization complete")
 
 	if !v.config.Write {
+		v.finalizeBenchmark(benchmarkStart)
 		return nil // Do not write results if the user has blocked it
 	}
-	return v.WriteResults()
+	err = v.WriteResults()
+	// after WriteResults so the total includes result writing
+	v.finalizeBenchmark(benchmarkStart)
+	return err
 }
 
 // stampEvaluationLog populates identity, provenance, and outcome on a suite's
@@ -448,7 +483,9 @@ func (v *EvaluationOrchestrator) writeResultsToFile(serviceName string, result [
 // loadPayload loads the payload data to be referenced in assessments.
 func (v *EvaluationOrchestrator) loadPayload() (err error) {
 	if v.loader != nil {
+		start := time.Now()
 		data, err := v.loader(v.config)
+		v.recordLoader("orchestrator", v.loader, time.Since(start))
 		if err != nil {
 			return err
 		}
@@ -456,7 +493,9 @@ func (v *EvaluationOrchestrator) loadPayload() (err error) {
 	}
 	for _, suite := range v.possibleSuites {
 		if suite.loader != nil {
+			start := time.Now()
 			data, err := suite.loader(v.config)
+			v.recordLoader("suite:"+suite.CatalogId, suite.loader, time.Since(start))
 			if err != nil {
 				return err
 			}

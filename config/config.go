@@ -44,6 +44,9 @@ type Config struct {
 	Policy         Policy
 	Vars           map[string]interface{}
 	Error          error
+
+	Benchmark            bool
+	BenchmarkPayloadOnly bool
 }
 
 // Policy defines the control catalogs and applicability settings for a plugin.
@@ -62,6 +65,8 @@ func NewConfig(requiredVars []string) Config {
 	write := viper.GetBool("write")                                         // defaults to true, but allow the user to disable file writing
 	output := strings.ToLower(strings.TrimSpace(viper.GetString("output"))) // defaults to yaml; can be set to json, sarif, or gemara
 	includePayload := viper.GetBool("include-payload")                      // defaults to false; payload is omitted unless explicitly requested
+	benchmark := viper.GetBool("benchmark")                                 // defaults to false
+	benchmarkPayloadOnly := viper.GetBool("benchmark-payload-only")         // defaults to false; loader only, skip steps
 
 	vars := viper.GetStringMap("vars")
 	localVars := viper.GetStringMap(fmt.Sprintf("services.%s.vars", serviceName))
@@ -140,13 +145,15 @@ func NewConfig(requiredVars []string) Config {
 	}
 
 	config := Config{
-		ServiceName:    serviceName,
-		LogLevel:       loglevel,
-		WriteDirectory: writeDir,
-		Write:          write,
-		Output:         output,
-		IncludePayload: includePayload,
-		Invasive:       invasive,
+		ServiceName:          serviceName,
+		LogLevel:             loglevel,
+		WriteDirectory:       writeDir,
+		Write:                write,
+		Output:               output,
+		IncludePayload:       includePayload,
+		Invasive:             invasive,
+		Benchmark:            benchmark,
+		BenchmarkPayloadOnly: benchmarkPayloadOnly,
 		Policy: Policy{
 			ControlCatalogs: catalogs,
 			Applicability:   applicability,
