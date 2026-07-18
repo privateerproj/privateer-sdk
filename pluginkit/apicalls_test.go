@@ -35,7 +35,7 @@ func TestAPICallCounter_CountsRoundTrips(t *testing.T) {
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 	}
 
 	if got := counter.APICallCount(); got != 3 {
@@ -107,7 +107,7 @@ func TestAPICallCounter_ConcurrentRoundTrips(t *testing.T) {
 			if err != nil {
 				return
 			}
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		}()
 	}
 	wg.Wait()

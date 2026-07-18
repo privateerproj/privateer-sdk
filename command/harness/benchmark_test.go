@@ -181,7 +181,7 @@ func TestRenderBenchmark(t *testing.T) {
 	loaderIdx := strings.Index(out, "payload retrieval")
 	slowIdx := strings.Index(out, "eval.SlowStep")
 	fastIdx := strings.Index(out, "eval.FastStep")
-	if !(loaderIdx < slowIdx && slowIdx < fastIdx) {
+	if loaderIdx >= slowIdx || slowIdx >= fastIdx {
 		t.Errorf("expected rows sorted by cost (loader < slow < fast), got positions %d, %d, %d\n---\n%s", loaderIdx, slowIdx, fastIdx, out)
 	}
 }
