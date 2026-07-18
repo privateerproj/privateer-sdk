@@ -74,7 +74,7 @@ func benchmarkCmd(writerFn func() Writer) *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("marshaling benchmark report: %w", err)
 				}
-				fmt.Fprintln(cmd.OutOrStdout(), string(data))
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), string(data))
 			} else {
 				w := writerFn()
 				renderBenchmark(w, report, exitCode, writeDir)
@@ -215,13 +215,13 @@ func renderBenchmark(w Writer, report *pluginkit.BenchmarkReport, exitCode int, 
 	if version == "" {
 		version = "unversioned"
 	}
-	fmt.Fprintf(w, "Benchmark: %s (%s) service=%s\n", report.PluginName, version, report.ServiceName)
-	fmt.Fprintf(w, "Wall clock %v; plugin total %v; exit code %d; results in %s\n",
+	_, _ = fmt.Fprintf(w, "Benchmark: %s (%s) service=%s\n", report.PluginName, version, report.ServiceName)
+	_, _ = fmt.Fprintf(w, "Wall clock %v; plugin total %v; exit code %d; results in %s\n",
 		formatNs(report.WallClockNs), formatNs(report.TotalDurationNs), exitCode, writeDir)
 	if report.APICalls != nil {
-		fmt.Fprintf(w, "API calls reported by payload: %d\n", *report.APICalls)
+		_, _ = fmt.Fprintf(w, "API calls reported by payload: %d\n", *report.APICalls)
 	}
-	fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w)
 
 	var rows []benchmarkRow
 	var attributedNs int64
@@ -274,9 +274,9 @@ func renderBenchmark(w Writer, report *pluginkit.BenchmarkReport, exitCode int, 
 		})
 	}
 
-	fmt.Fprintf(w, "SEGMENT\tFUNCTION\tDURATION\tSHARE\n")
+	_, _ = fmt.Fprintln(w, "SEGMENT\tFUNCTION\tDURATION\tSHARE")
 	for _, row := range rows {
-		fmt.Fprintf(w, "%s\t%s\t%v\t%s\n", row.label, row.detail, formatNs(row.durationNs), share(row.durationNs, report.TotalDurationNs))
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%v\t%s\n", row.label, row.detail, formatNs(row.durationNs), share(row.durationNs, report.TotalDurationNs))
 	}
 }
 
