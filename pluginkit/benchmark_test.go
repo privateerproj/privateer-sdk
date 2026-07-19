@@ -384,3 +384,55 @@ func TestBenchmark_FailedStep_RecordsResultAndHalts(t *testing.T) {
 		t.Errorf("expected the failing step's timing, got %+v", st)
 	}
 }
+
+// Payload-only mode exists to isolate loader cost, so it must still report the
+// API calls of a per-suite loader's payload even though no suite is evaluated.
+func TestBenchmark_PayloadOnly_ReportsPerSuiteAPICalls(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	cfg := setBasicConfig()
+	cfg.Policy.ControlCatalogs = []string{"CCC.ObjStor"}
+	cfg.Write = false
+	cfg.WriteDirectory = tmpDir
+	cfg.Benchmark = true
+	cfg.BenchmarkPayloadOnly = true
+
+	catalog := getTestCatalogWithRequirements()
+	orchestrator := &EvaluationOrchestrator{
+		ServiceName: "test-service",
+		PluginName:  "test-plugin",
+		config:      cfg,
+		// no orchestrator loader: the payload comes only from the suite
+		possibleSuites: []*EvaluationSuite{
+			{
+				CatalogId: "CCC.ObjStor",
+				catalog:   catalog,
+				steps:     map[string][]gemara.AssessmentStep{"CCC.Core.C01.TR01": {step_Pass}},
+				config:    cfg,
+				loader: func(*config.Config) (any, error) {
+					return &countingPayload{calls: 7}, nil
+				},
+			},
+		},
+	}
+
+	if err := orchestrator.Mobilize(); err != nil {
+		t.Fatalf("Mobilize failed: %v", err)
+	}
+
+	data, err := os.ReadFile(path.Join(tmpDir, "test-service", BenchmarkFileName))
+	if err != nil {
+		t.Fatalf("expected benchmark report: %v", err)
+	}
+	var report BenchmarkReport
+	if err := json.Unmarshal(data, &report); err != nil {
+		t.Fatalf("benchmark report is not valid JSON: %v", err)
+	}
+
+	if report.APICalls == nil {
+		t.Fatalf("expected the per-suite payload's API calls to be reported, got nil")
+	}
+	if *report.APICalls != 7 {
+		t.Errorf("expected 7 API calls, got %d", *report.APICalls)
+	}
+}

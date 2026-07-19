@@ -188,3 +188,32 @@ func TestRenderBenchmark(t *testing.T) {
 		t.Errorf("expected rows sorted by cost (loader < slow < fast), got positions %d, %d, %d\n---\n%s", loaderIdx, slowIdx, fastIdx, out)
 	}
 }
+
+// A reused --write-directory must not let a previous run's report be presented
+// as the current run's result.
+func TestRunBenchmark_ClearsStaleReport(t *testing.T) {
+	writeDir := t.TempDir()
+	service := "test-service"
+
+	reportPath := filepath.Join(writeDir, service, pluginkit.BenchmarkFileName)
+	if err := os.MkdirAll(filepath.Dir(reportPath), 0o755); err != nil {
+		t.Fatalf("seeding report dir: %v", err)
+	}
+	stale := []byte(`{"schema":"privateer-benchmark/v1","plugin-name":"stale-run"}`)
+	if err := os.WriteFile(reportPath, stale, 0o640); err != nil {
+		t.Fatalf("seeding stale report: %v", err)
+	}
+
+	// The binary does not exist, so this run produces no report of its own.
+	report, _, err := runBenchmark(filepath.Join(writeDir, "no-such-plugin"), service, writeDir, false)
+	if err == nil {
+		t.Fatalf("expected an error for a failed run, got report %+v", report)
+	}
+	if report != nil {
+		t.Errorf("expected no report from a failed run, got %+v", report)
+	}
+	if _, statErr := os.Stat(reportPath); !os.IsNotExist(statErr) {
+		data, _ := os.ReadFile(reportPath)
+		t.Errorf("stale report survived the run: %s", data)
+	}
+}

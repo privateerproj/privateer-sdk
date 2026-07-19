@@ -133,6 +133,13 @@ func isPluginSource(dir string) bool {
 // report it wrote. Failed controls are not errors — benchmarking a failing run
 // is valid — so the plugin's exit code is returned alongside the report.
 func runBenchmark(binPath, service, writeDir string, payloadOnly bool) (*pluginkit.BenchmarkReport, int, error) {
+	reportPath := filepath.Join(writeDir, service, pluginkit.BenchmarkFileName)
+	// A reused --write-directory may hold an earlier run's report; clear it so a
+	// run that produces none says so instead of presenting the stale file as its own.
+	if err := os.Remove(reportPath); err != nil && !os.IsNotExist(err) {
+		return nil, InternalError, fmt.Errorf("clearing previous benchmark report %s: %w", reportPath, err)
+	}
+
 	pluginCmd := exec.Command(binPath,
 		fmt.Sprintf("--config=%s", viper.GetString("config")),
 		fmt.Sprintf("--loglevel=%s", viper.GetString("loglevel")),
@@ -177,7 +184,6 @@ func runBenchmark(binPath, service, writeDir string, payloadOnly bool) (*plugink
 	exitCode, startErr := plugin.Start()
 	wallClock := time.Since(wallStart)
 
-	reportPath := filepath.Join(writeDir, service, pluginkit.BenchmarkFileName)
 	data, readErr := os.ReadFile(reportPath)
 	report, err := parseBenchmarkReport(data, readErr, startErr, reportPath)
 	if err != nil {

@@ -99,7 +99,10 @@ func (v *EvaluationOrchestrator) apiCallsReported() (int, bool) {
 	}
 
 	add(v.Payload)
-	for _, suite := range v.Evaluation_Suites {
+	// possibleSuites, not Evaluation_Suites: loadPayload runs every possible
+	// suite's loader, and payload-only mode leaves Evaluation_Suites empty.
+	// The loader guard skips suites sharing v.Payload, so nothing double-counts.
+	for _, suite := range v.possibleSuites {
 		if suite.loader != nil {
 			add(suite.payload)
 		}
