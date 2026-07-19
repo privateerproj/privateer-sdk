@@ -20,6 +20,12 @@ import (
 	"github.com/privateerproj/privateer-sdk/shared"
 )
 
+type benchmarkRow struct {
+	label      string
+	detail     string
+	durationNs int64
+}
+
 // benchmarkCmd returns the `pvtr benchmark` command. It takes the plugin binary
 // path directly (not a manifest coordinate, so a freshly-built plugin needs no
 // install), runs it once in benchmark mode, and renders the report the plugin
@@ -41,11 +47,7 @@ func benchmarkCmd(writerFn func() Writer) *cobra.Command {
 			"Takes the path to a compiled plugin binary — the plugin runs as a separate " +
 			"process, so build it first (`make build`, or `go build -o <name> .`) and pass " +
 			"the resulting executable. The named --service must exist in the config file so " +
-			"the plugin has its vars, catalogs, and applicability.\n\n" +
-			"Use --payload-only to stop after payload retrieval and time just the loader — " +
-			"assessment steps consume the payload, so they cannot run without it and are " +
-			"skipped. Use --json for a machine-readable report suitable for diffing plugin " +
-			"versions in CI.",
+			"the plugin has its vars, catalogs, and applicability.",
 		Args: cobra.ExactArgs(1),
 		// runtime failures shouldn't reprint usage text
 		SilenceUsage: true,
@@ -84,7 +86,7 @@ func benchmarkCmd(writerFn func() Writer) *cobra.Command {
 		},
 	}
 	benchmarkCmd.Flags().StringVarP(&service, "service", "s", "", "Named service from the config to evaluate (required)")
-	benchmarkCmd.Flags().BoolVar(&jsonOut, "json", false, "Emit the machine-readable benchmark report as JSON")
+	benchmarkCmd.Flags().BoolVar(&jsonOut, "json", false, "Emit the machine-readable benchmark report as JSON (for diffing runs in CI)")
 	benchmarkCmd.Flags().StringVarP(&writeDir, "write-directory", "w", "", "Directory for the run's results and report (default: a temp directory)")
 	benchmarkCmd.Flags().BoolVar(&payloadOnly, "payload-only", false, "Stop after payload retrieval and time only the loader (skip assessment steps)")
 	return benchmarkCmd
@@ -137,7 +139,10 @@ func runBenchmark(binPath, service, writeDir string, payloadOnly bool) (*plugink
 		fmt.Sprintf("--service=%s", service),
 		fmt.Sprintf("--write-directory=%s", writeDir),
 	)
-	// plugins have no --benchmark flag; instrumentation travels as env
+	// Deliberately env, not a flag: viper's AutomaticEnv maps these to the
+	// benchmark / benchmark-payload-only config keys, so they follow normal
+	// precedence without adding harness-only instrumentation to the flag set in
+	// base.go — which every plugin would then advertise in its --help.
 	pluginCmd.Env = append(os.Environ(), "PVTR_BENCHMARK=true")
 	if payloadOnly {
 		pluginCmd.Env = append(pluginCmd.Env, "PVTR_BENCHMARK_PAYLOAD_ONLY=true")
@@ -182,30 +187,20 @@ func runBenchmark(binPath, service, writeDir string, payloadOnly bool) (*plugink
 	return report, exitCode, nil
 }
 
-// parseBenchmarkReport returns the report or the best explanation of its
-// absence. Split from runBenchmark so the diagnosis is unit-testable without
-// spawning a plugin. readErr is from reading the file, startErr from the
-// plugin's Start; a missing report means a plugin failure or an SDK too old to
-// instrument.
+// parseBenchmarkReport returns the report or the best explanation of its absence.
 func parseBenchmarkReport(data []byte, readErr, startErr error, reportPath string) (*pluginkit.BenchmarkReport, error) {
 	if readErr != nil {
 		if startErr != nil {
 			return nil, fmt.Errorf("plugin run failed before producing a benchmark report: %w", startErr)
 		}
 		return nil, fmt.Errorf(
-			"the run completed but no benchmark report was found at %s — the plugin was likely built against a privateer-sdk without benchmark instrumentation; rebuild it with a newer SDK", reportPath)
+			"the run completed but no benchmark report was found at %s — the plugin may not have benchmark instrumentation; rebuilding it against a newer privateer-sdk will add it", reportPath)
 	}
 	report := &pluginkit.BenchmarkReport{}
 	if err := json.Unmarshal(data, report); err != nil {
 		return nil, fmt.Errorf("parsing benchmark report %s: %w", reportPath, err)
 	}
 	return report, nil
-}
-
-type benchmarkRow struct {
-	label      string
-	detail     string
-	durationNs int64
 }
 
 // renderBenchmark prints the breakdown: every segment sorted by cost, with a
@@ -280,7 +275,8 @@ func renderBenchmark(w Writer, report *pluginkit.BenchmarkReport, exitCode int, 
 	}
 }
 
-// formatNs renders a duration human-readably, rounded but sub-ms accurate.
+// formatNs renders a duration human-readably, keeping precision proportional to
+// magnitude so a long payload fetch and a fast step stay comparable at a glance.
 func formatNs(ns int64) time.Duration {
 	d := time.Duration(ns)
 	switch {

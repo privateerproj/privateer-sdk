@@ -109,8 +109,11 @@ func TestParseBenchmarkReport(t *testing.T) {
 
 	t.Run("missing report after a clean run points at an old SDK", func(t *testing.T) {
 		_, err := parseBenchmarkReport(nil, readErr, nil, "/x/benchmark.json")
-		if err == nil || !strings.Contains(err.Error(), "without benchmark instrumentation") {
-			t.Errorf("expected the old-SDK diagnosis, got: %v", err)
+		// assert on the remedy, not just the diagnosis — the actionable half is
+		// the part users need and the part easiest to lose in a reword
+		if err == nil || !strings.Contains(err.Error(), "benchmark instrumentation") ||
+			!strings.Contains(err.Error(), "rebuilding it against a newer privateer-sdk") {
+			t.Errorf("expected the old-SDK diagnosis and its remedy, got: %v", err)
 		}
 	})
 
