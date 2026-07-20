@@ -2,6 +2,7 @@ package pluginkit
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/gemaraproj/go-gemara"
 
 	"github.com/privateerproj/privateer-sdk/config"
+	"github.com/privateerproj/privateer-sdk/shared"
 )
 
 // countingPayload implements APICallReporter for benchmark tests.
@@ -434,5 +436,43 @@ func TestBenchmark_PayloadOnly_ReportsPerSuiteAPICalls(t *testing.T) {
 	}
 	if *report.APICalls != 7 {
 		t.Errorf("expected 7 API calls, got %d", *report.APICalls)
+	}
+}
+
+// A benchmark report that cannot be written must fail the run rather than be
+// swallowed: the plugin's log lands in a file the harness never reads, so a
+// silent failure leaves the harness guessing why the report is missing.
+func TestBenchmark_UnwritableReport_FailsMobilize(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Occupy the report's directory path with a regular file so MkdirAll fails.
+	blocker := path.Join(tmpDir, "test-service")
+	if err := os.WriteFile(blocker, []byte("not a directory"), 0o640); err != nil {
+		t.Fatalf("seeding blocker: %v", err)
+	}
+
+	cfg := setBasicConfig()
+	cfg.Policy.ControlCatalogs = []string{"CCC.ObjStor"}
+	cfg.Write = false // isolate the benchmark write from result writing
+	cfg.WriteDirectory = tmpDir
+	cfg.Benchmark = true
+
+	orchestrator := benchmarkOrchestrator(cfg, map[string][]gemara.AssessmentStep{
+		"CCC.Core.C01.TR01": {step_Pass},
+	})
+
+	err := orchestrator.Mobilize()
+	if err == nil {
+		t.Fatal("expected Mobilize to fail when the benchmark report cannot be written")
+	}
+	if !strings.Contains(err.Error(), "failed to write benchmark report") {
+		t.Errorf("expected a benchmark-write diagnosis, got: %v", err)
+	}
+	// ErrRuntime, not ErrDevBug: a full disk is not plugin misuse.
+	if !errors.Is(err, ErrRuntime) {
+		t.Errorf("expected ErrRuntime so ExitCodeFor yields InternalError, got: %v", err)
+	}
+	if code := ExitCodeFor(orchestrator, err); code != shared.InternalError {
+		t.Errorf("expected InternalError so the harness reports the real cause, got %d", code)
 	}
 }

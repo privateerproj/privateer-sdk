@@ -262,8 +262,7 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 
 	if v.config.Benchmark && v.config.BenchmarkPayloadOnly {
 		v.config.Logger.Trace("Payload-only benchmark: skipping assessment")
-		v.finalizeBenchmark(benchmarkStart)
-		return nil
+		return v.finalizeBenchmark(benchmarkStart)
 	}
 
 	v.config.Logger.Trace("Mobilization beginning")
@@ -302,13 +301,15 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 	v.config.Logger.Trace("Mobilization complete")
 
 	if !v.config.Write {
-		v.finalizeBenchmark(benchmarkStart)
-		return nil // Do not write results if the user has blocked it
+		// Do not write results if the user has blocked it
+		return v.finalizeBenchmark(benchmarkStart)
 	}
 	err = v.WriteResults()
-	// after WriteResults so the total includes result writing
-	v.finalizeBenchmark(benchmarkStart)
-	return err
+	benchErr := v.finalizeBenchmark(benchmarkStart) // before exiting, append benchmark results if present
+	if err != nil {
+		return err
+	}
+	return benchErr
 }
 
 // stampEvaluationLog populates identity, provenance, and outcome on a suite's

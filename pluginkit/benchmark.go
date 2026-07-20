@@ -2,6 +2,7 @@ package pluginkit
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path"
 	"reflect"
@@ -113,9 +114,9 @@ func (v *EvaluationOrchestrator) apiCallsReported() (int, bool) {
 // finalizeBenchmark completes and writes the report to
 // <write-directory>/<service>/benchmark.json
 // ignores --write=false
-func (v *EvaluationOrchestrator) finalizeBenchmark(start time.Time) {
+func (v *EvaluationOrchestrator) finalizeBenchmark(start time.Time) error {
 	if v.benchmark == nil {
-		return
+		return nil
 	}
 	v.benchmark.ServiceName = v.ServiceName
 	for _, suite := range v.Evaluation_Suites {
@@ -134,16 +135,15 @@ func (v *EvaluationOrchestrator) finalizeBenchmark(start time.Time) {
 
 	data, err := json.MarshalIndent(v.benchmark, "", "  ")
 	if err != nil {
-		v.config.Logger.Warn("failed to marshal benchmark report", "error", err)
-		return
+		return BENCHMARK_WRITE_FAILED(err, "fb10")
 	}
 	dir := path.Join(v.config.WriteDirectory, v.ServiceName)
 	if err := os.MkdirAll(dir, utils.DirPermissions); err != nil {
-		v.config.Logger.Warn("failed to create benchmark report directory", "directory", dir, "error", err)
-		return
+		return BENCHMARK_WRITE_FAILED(fmt.Errorf("creating %s: %w", dir, err), "fb20")
 	}
 	filepath := path.Join(dir, BenchmarkFileName)
 	if err := os.WriteFile(filepath, data, 0o640); err != nil {
-		v.config.Logger.Warn("failed to write benchmark report", "filepath", filepath, "error", err)
+		return BENCHMARK_WRITE_FAILED(fmt.Errorf("writing %s: %w", filepath, err), "fb30")
 	}
+	return nil
 }
