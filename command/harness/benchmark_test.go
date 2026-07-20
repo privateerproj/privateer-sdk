@@ -217,3 +217,30 @@ func TestRunBenchmark_ClearsStaleReport(t *testing.T) {
 		t.Errorf("stale report survived the run: %s", data)
 	}
 }
+
+// Which plugin outcomes invalidate a benchmark: a run that broke does, a run
+// whose controls merely failed does not.
+func TestBenchmarkRunError(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		exitCode int
+		wantErr  bool
+	}{
+		{"passing run", TestPass, false},
+		{"failed controls are still worth benchmarking", TestFail, false},
+		{"no tests", NoTests, false},
+		{"aborted", Aborted, false},
+		{"internal error invalidates the numbers", InternalError, true},
+		{"bad usage invalidates the numbers", BadUsage, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := benchmarkRunError(tc.exitCode)
+			if tc.wantErr && err == nil {
+				t.Errorf("expected exit code %d to fail the benchmark", tc.exitCode)
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("expected exit code %d to succeed, got: %v", tc.exitCode, err)
+			}
+		})
+	}
+}

@@ -82,7 +82,9 @@ func benchmarkCmd(writerFn func() Writer) *cobra.Command {
 				renderBenchmark(w, report, exitCode, writeDir)
 				_ = w.Flush()
 			}
-			return nil
+			// Reported after the breakdown, not instead of it: a broken run's
+			// timings are still worth reading while diagnosing the breakage.
+			return benchmarkRunError(exitCode)
 		},
 	}
 	benchmarkCmd.Flags().StringVarP(&service, "service", "s", "", "Named service from the config to evaluate (required)")
@@ -90,6 +92,17 @@ func benchmarkCmd(writerFn func() Writer) *cobra.Command {
 	benchmarkCmd.Flags().StringVarP(&writeDir, "write-directory", "w", "", "Directory for the run's results and report (default: a temp directory)")
 	benchmarkCmd.Flags().BoolVar(&payloadOnly, "payload-only", false, "Stop after payload retrieval and time only the loader (skip assessment steps)")
 	return benchmarkCmd
+}
+
+// benchmarkRunError fails the benchmark when the plugin itself broke. Failed
+// controls are a valid thing to benchmark, so TestFail stays a success here;
+// only a plugin that could not complete invalidates the numbers.
+func benchmarkRunError(exitCode int) error {
+	switch exitCode {
+	case InternalError, BadUsage:
+		return fmt.Errorf("plugin exited %d — benchmark may be incomplete", exitCode)
+	}
+	return nil
 }
 
 // resolvePluginBinary validates the path and returns it absolute, so exec never
