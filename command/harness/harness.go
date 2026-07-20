@@ -94,6 +94,11 @@ func GetLogoutCmd(writerFn func() Writer) *cobra.Command {
 	return logoutCmd(writerFn)
 }
 
+// GetBenchmarkCmd returns the `pvtr benchmark` command.
+func GetBenchmarkCmd(writerFn func() Writer) *cobra.Command {
+	return benchmarkCmd(writerFn)
+}
+
 // GeneratePlugin forwards to command.GeneratePlugin.
 func GeneratePlugin(logger hclog.Logger) (exitCode int) {
 	return command.GeneratePlugin(logger) //nolint:staticcheck // intentional forwarding during migration

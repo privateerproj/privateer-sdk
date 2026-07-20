@@ -33,10 +33,14 @@ type EvaluationSuite struct {
 	changeManager *ChangeManager                     // changes is a list of changes made during the evaluation
 	catalog       *gemara.ControlCatalog             // The Catalog this evaluation suite references
 	steps         map[string][]gemara.AssessmentStep // steps is a map of control IDs to their assessment steps
+	stepNames     map[string][]string                // step names captured at registration, parallel to steps; nil falls back to symbol lookup
 
 	evalSuccesses int // successes is the number of successful evaluations
 	evalFailures  int // failures is the number of failed evaluations
 	evalWarnings  int // warnings is the number of evaluations that need review
+
+	durationNs  int64        // benchmark mode only
+	stepTimings []StepTiming // benchmark mode only
 }
 
 // AddChangeManager sets up the change manager for the evaluation suite.
@@ -70,7 +74,12 @@ func (e *EvaluationSuite) Evaluate(serviceName string) error {
 
 	e.Name = fmt.Sprintf("%s_%s", serviceName, e.CatalogId)
 	e.EvaluationLog = evalLog
-	e.StartTime = time.Now().String()
+	started := time.Now()
+	e.StartTime = started.UTC().Format(time.RFC3339Nano)
+	if e.config.Benchmark {
+		// duration from the monotonic clock, never timestamp subtraction
+		defer func() { e.durationNs = time.Since(started).Nanoseconds() }()
+	}
 
 	e.config.Logger.Trace("Starting evaluation", "name", e.Name, "time", e.StartTime)
 
@@ -114,7 +123,9 @@ func (e *EvaluationSuite) Evaluate(serviceName string) error {
 
 	output := fmt.Sprintf("> %s: %v Passed, %v Warnings, %v Failed, %v Possible", e.Name, e.evalSuccesses, e.evalWarnings, e.evalFailures, len(evalLog.Evaluations))
 
-	e.EndTime = time.Now().String()
+	e.restoreSteps()
+
+	e.EndTime = time.Now().UTC().Format(time.RFC3339Nano)
 
 	if e.changeManager != nil {
 		e.changeManager.RevertAll()
@@ -135,6 +146,55 @@ func (e *EvaluationSuite) Evaluate(serviceName string) error {
 		e.config.Logger.Error(output)
 	}
 	return nil
+}
+
+// restoreSteps restores benchmark-wrapped steps back to the original for stack tracing
+func (e *EvaluationSuite) restoreSteps() {
+	if e.config == nil || !e.config.Benchmark {
+		return
+	}
+	for _, evaluation := range e.EvaluationLog.Evaluations {
+		for _, assessment := range evaluation.AssessmentLogs {
+			assessment.Steps = e.steps[assessment.Requirement.EntryId]
+		}
+	}
+}
+
+// stepName returns the name captured at registration for the step at index i of
+// requirementId, falling back to symbol lookup when the plugin registered
+// untyped steps. Symbol lookup is only meaningful when the registered value is
+// the plugin's own function; a plugin-side adapter closure resolves to the
+// adapter, identically for every step it wraps.
+func (e *EvaluationSuite) stepName(requirementId string, i int, step gemara.AssessmentStep) string {
+	if names, ok := e.stepNames[requirementId]; ok && i < len(names) && names[i] != "" {
+		return names[i]
+	}
+	return step.String()
+}
+
+// timedSteps wraps each executed step in a closure that records its duration, name, and result.
+func (e *EvaluationSuite) timedSteps(controlId, requirementId string, steps []gemara.AssessmentStep) []gemara.AssessmentStep {
+	if len(steps) == 0 {
+		return steps
+	}
+	timed := make([]gemara.AssessmentStep, len(steps))
+	for i, step := range steps {
+		name := e.stepName(requirementId, i, step)
+		timed[i] = func(payload interface{}) (gemara.Result, string, gemara.ConfidenceLevel) {
+			start := time.Now()
+			result, message, confidence := step(payload)
+			e.stepTimings = append(e.stepTimings, StepTiming{
+				ControlId:     controlId,
+				RequirementId: requirementId,
+				StepIndex:     i,
+				Step:          name,
+				Result:        result.String(),
+				DurationNs:    time.Since(start).Nanoseconds(),
+			})
+			return result, message, confidence
+		}
+	}
+	return timed
 }
 
 // singleLine collapses a multi-line assessment message into one line so the
@@ -190,12 +250,18 @@ func (e *EvaluationSuite) setupEvalLog(steps map[string][]gemara.AssessmentStep)
 		}
 
 		for _, requirement := range control.AssessmentRequirements {
+			// benchmark mode times each step; later on restoreSteps will unwrap this before serialization
+			reqSteps := steps[requirement.Id]
+			if e.config != nil && e.config.Benchmark {
+				reqSteps = e.timedSteps(control.Id, requirement.Id, reqSteps)
+			}
+
 			// Use AddAssessment instead of manual struct creation
 			assessment := evaluation.AddAssessment(
 				requirement.Id,            // requirementId
 				control.Objective,         // description
 				requirement.Applicability, // applicability
-				steps[requirement.Id],     // steps
+				reqSteps,                  // steps
 			)
 
 			// Handle case where no steps were found

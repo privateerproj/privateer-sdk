@@ -101,7 +101,7 @@ func BearerToken(ctx context.Context, issuer, clientID string) (string, error) {
 		// A failed cache write must not fail the operation — we still hold a valid
 		// token — but it must be VISIBLE: under refresh-token rotation the on-disk
 		// token is now consumed, so the next run will force a re-login.
-		fmt.Fprintf(os.Stderr, "warning: failed to cache refreshed credentials (next run may require `pvtr login`): %v\n", perr)
+		_, _ = fmt.Fprintf(os.Stderr, "warning: failed to cache refreshed credentials (next run may require `pvtr login`): %v\n", perr)
 	}
 	return refreshed.AccessToken, nil
 }
