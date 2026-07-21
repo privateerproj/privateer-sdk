@@ -63,8 +63,10 @@ jobs:
           go vet ./...
 
       - name: Unit tests
+        # -race guards the SDK's concurrent code (e.g. pluginkit catalog parsing);
+        # -covermode atomic is required alongside -race.
         run: |
-          go test ./... -coverprofile coverage.out -covermode count
+          go test -race ./... -coverprofile coverage.out -covermode atomic
           go tool cover -func coverage.out
 
       - name: Quality Gate - Test coverage shall be above threshold
