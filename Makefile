@@ -16,6 +16,12 @@ test:
 	go clean -testcache
 	go test ./...
 
+test-race:
+	@echo "  >  Validating code (race detector)..."
+	go vet ./...
+	go clean -testcache
+	go test -race ./...
+
 test-cov:
 	@echo "Running tests and generating coverage output"
 	@go test ./... -coverprofile coverage.out -covermode count
