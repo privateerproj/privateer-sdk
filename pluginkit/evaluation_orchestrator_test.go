@@ -86,7 +86,7 @@ func TestEvaluationOrchestrator_AddReferenceCatalogs(t *testing.T) {
 		orchestrator := &EvaluationOrchestrator{}
 		orchestrator.referenceCatalogs = nil
 
-		err := orchestrator.AddReferenceCatalogs("catalog-test-data", testDataFS)
+		err := orchestrator.AddReferenceCatalogs("catalog-test-data/valid", testDataFS)
 		if err != nil {
 			// This might fail due to catalog validation, which is expected
 			t.Logf("Expected error due to catalog validation: %v", err)
@@ -548,7 +548,7 @@ func BenchmarkAddPossibleControls(b *testing.B) {
 
 func BenchmarkGetPluginCatalogs(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		_, err := getPluginCatalogs("catalog-test-data", testDataFS)
+		_, err := getPluginCatalogs("catalog-test-data/valid", testDataFS)
 		if err != nil {
 			b.Fatalf("getPluginCatalogs failed: %v", err)
 		}

@@ -4,6 +4,7 @@ import (
 	"embed"
 	"fmt"
 	"path"
+	"sync"
 
 	"github.com/gemaraproj/go-gemara"
 	"github.com/goccy/go-yaml"
@@ -24,31 +25,45 @@ func getPluginCatalogs(dataDir string, files embed.FS) (catalogs []*gemara.Contr
 		return nil, fmt.Errorf("no contents found in directory: %s", dataDir)
 	}
 
-	// Process each YAML file
-	for _, file := range dir {
-		filePath := path.Join(dataDir, file.Name())
-		catalog, err := readYAMLFile(filePath, files)
+	catalogs = make([]*gemara.ControlCatalog, len(dir))
+	errs := make([]error, len(dir))
+	var wg sync.WaitGroup
+	for i, file := range dir {
+		wg.Add(1)
+		go func(i int, name string) {
+			defer wg.Done()
+			// This captures pre-RPC crash errors so they don't panic
+			defer func() {
+				if r := recover(); r != nil {
+					errs[i] = fmt.Errorf("parsing catalog %q: %v", name, r)
+				}
+			}()
+			catalogs[i], errs[i] = readYAMLFile(path.Join(dataDir, name), files)
+		}(i, file.Name())
+	}
+	wg.Wait()
+
+	for _, err := range errs {
 		if err != nil {
 			return nil, err
 		}
-		catalogs = append(catalogs, catalog)
 	}
 
-	return catalogs, nil // just returns the last catalog for now
+	return catalogs, nil
 }
 
 // readYAMLFile reads a single YAML file and returns the control family data.
 func readYAMLFile(filePath string, files embed.FS) (*gemara.ControlCatalog, error) {
 	data, err := files.ReadFile(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %w", err)
+		return nil, fmt.Errorf("failed to read file %s: %w", filePath, err)
 	}
 
 	var catalog gemara.ControlCatalog
 	// Use goccy/go-yaml (not gopkg.in/yaml.v3) so gemara enum types like EntityType
 	// are unmarshaled via their UnmarshalYAML([]byte) methods.
 	if err := yaml.Unmarshal(data, &catalog); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal YAML: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal YAML %s: %w", filePath, err)
 	}
 
 	return &catalog, nil
