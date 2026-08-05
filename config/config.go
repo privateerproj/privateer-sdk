@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/go-hclog"
@@ -205,15 +206,18 @@ func sanitizeVars(vars map[string]interface{}) map[string]interface{} {
 	return sanitizedVars
 }
 
-func defaultWritePath() string {
+// defaultWritePath returns the default write directory, computed once per
+// process so that every config created during a run shares the same
+// timestamped log directory.
+var defaultWritePath = sync.OnceValue(func() string {
 	home, err := os.UserHomeDir()
-	datetime := time.Now().Local().Format(time.RFC3339)
-	dirName := strings.ReplaceAll(datetime, ":", "")
 	if err != nil {
 		return ""
 	}
+	datetime := time.Now().Local().Format(time.RFC3339)
+	dirName := strings.ReplaceAll(datetime, ":", "")
 	return filepath.Join(home, ".privateer", "logs", dirName)
-}
+})
 
 // SetupLogging configures logging for the plugin with the given name and format.
 func (c *Config) SetupLogging(name string, jsonFormat bool) {

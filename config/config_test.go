@@ -575,6 +575,10 @@ func TestDefaultWritePath(t *testing.T) {
 	if !strings.Contains(path, "logs") {
 		t.Error("expected path to contain 'logs'")
 	}
+
+	if again := defaultWritePath(); again != path {
+		t.Errorf("expected defaultWritePath to be stable within a process, got '%s' then '%s'", path, again)
+	}
 }
 
 func TestPrintSanitizedVars(t *testing.T) {
