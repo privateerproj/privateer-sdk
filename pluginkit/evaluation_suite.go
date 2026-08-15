@@ -264,6 +264,8 @@ func (e *EvaluationSuite) setupEvalLog(steps map[string][]gemara.AssessmentStep)
 				reqSteps,                  // steps
 			)
 
+			assessment.Requirement.ReferenceId = e.CatalogId
+
 			// Handle case where no steps were found
 			if _, ok := steps[requirement.Id]; !ok {
 				assessment.Result = gemara.Unknown

@@ -232,6 +232,44 @@ func TestSetupEvalLog(t *testing.T) {
 		}
 	})
 
+	t.Run("Assessment requirements cite the catalog", func(t *testing.T) {
+		// Gemara unifies each assessment-log's requirement reference-id with its
+		// control's, and the formulation supplies the control's value only when
+		// the assessment OMITS one. An unset ReferenceId is not omitted — it
+		// serializes as "" and contradicts the control's, so a log that leaves
+		// it unset fails validation against gemara's own schema.
+		suite := &EvaluationSuite{
+			catalog:   getTestCatalogWithRequirements(),
+			CatalogId: "CCC.ObjStor",
+		}
+
+		evalLog, err := suite.setupEvalLog(createPassingStepsMap())
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if len(evalLog.Evaluations) == 0 {
+			t.Fatal("Expected non-empty evaluations list")
+		}
+
+		for _, evaluation := range evalLog.Evaluations {
+			if evaluation.Control.ReferenceId != suite.CatalogId {
+				t.Errorf("control reference-id = %q, want %q",
+					evaluation.Control.ReferenceId, suite.CatalogId)
+			}
+			if len(evaluation.AssessmentLogs) == 0 {
+				t.Errorf("control %q produced no assessment logs", evaluation.Control.EntryId)
+			}
+			for _, assessment := range evaluation.AssessmentLogs {
+				if assessment.Requirement.ReferenceId != suite.CatalogId {
+					t.Errorf("requirement %q reference-id = %q, want %q — an unset value serializes as \"\" and conflicts with the control's",
+						assessment.Requirement.EntryId,
+						assessment.Requirement.ReferenceId,
+						suite.CatalogId)
+				}
+			}
+		}
+	})
+
 	t.Run("Empty Steps Map", func(t *testing.T) {
 		catalog := getTestCatalogWithRequirements()
 
