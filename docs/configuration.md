@@ -29,11 +29,20 @@ Example `config.yml`:
 hub-url: https://hub.preview.grc.store
 autoinstall: true
 binaries-path: ./.privateer/bin
-services:
-  my-service:
+targets:
+  my-target:
     plugin: ossf/pvtr-github-repo-scanner
     version: 1.4.0   # optional; omit for the latest installed version
 ```
+
+## Targets and the legacy `services` alias
+
+`targets:` names the things a run evaluates. The `services:` key and the
+`--service` / `-s` flag are legacy aliases kept for compatibility: `services:`
+works exactly like `targets:`, and `--service` works like `--target`. When both
+are present, `target` / `targets:` win (`targets:` replaces `services:`
+entirely; the maps are not merged). Prefer `targets:` and `--target` in new
+configs; `--target` has no shorthand because `-t` belongs to `--test-suites`.
 
 ## Publishing from CI
 

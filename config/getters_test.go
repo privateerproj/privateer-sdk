@@ -315,6 +315,93 @@ func TestGetServicePlugin(t *testing.T) {
 	}
 }
 
+func TestTargetName(t *testing.T) {
+	tests := []struct {
+		name    string
+		target  string
+		service string
+		want    string
+	}{
+		{name: "target only", target: "tgt-1", want: "tgt-1"},
+		{name: "service only", service: "svc-1", want: "svc-1"},
+		{name: "target wins over service", target: "tgt-1", service: "svc-1", want: "tgt-1"},
+		{name: "neither set", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+			t.Cleanup(viper.Reset)
+			if tt.target != "" {
+				viper.Set("target", tt.target)
+			}
+			if tt.service != "" {
+				viper.Set("service", tt.service)
+			}
+			if got := TargetName(); got != tt.want {
+				t.Errorf("TargetName() = %q, want = %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTargetName_FromEnv(t *testing.T) {
+	withEnvAwareViper(t)
+	t.Setenv("PVTR_TARGET", "env-target")
+	if got := TargetName(); got != "env-target" {
+		t.Errorf("TargetName() = %q, want = %q", got, "env-target")
+	}
+}
+
+func TestGetServices_TargetsAlias(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	viper.Set("targets", map[string]interface{}{
+		"tgt1": map[string]interface{}{"plugin": "my-plugin"},
+	})
+	got := GetServices()
+	if len(got) != 1 {
+		t.Fatalf("GetServices() returned %d entries, want 1", len(got))
+	}
+	if _, ok := got["tgt1"]; !ok {
+		t.Error("GetServices() missing key tgt1")
+	}
+}
+
+func TestGetServices_TargetsWinsOverServices(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	viper.Set("services", map[string]interface{}{
+		"svc1": map[string]interface{}{"plugin": "legacy-plugin"},
+	})
+	viper.Set("targets", map[string]interface{}{
+		"tgt1": map[string]interface{}{"plugin": "my-plugin"},
+	})
+	got := GetServices()
+	if _, ok := got["tgt1"]; !ok {
+		t.Error("GetServices() missing key tgt1 from targets")
+	}
+	if _, ok := got["svc1"]; ok {
+		t.Error("GetServices() included svc1 from services; targets should win, not merge")
+	}
+}
+
+func TestGetServicePlugin_TargetsAlias(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	viper.Set("targets", map[string]interface{}{
+		"tgt1": map[string]interface{}{"plugin": "ossf/pvtr-github-repo-scanner", "version": "v1.4.0"},
+	})
+	if got := GetServicePlugin("tgt1"); got != "ossf/pvtr-github-repo-scanner" {
+		t.Errorf("GetServicePlugin(%q) = %q, want ossf/pvtr-github-repo-scanner", "tgt1", got)
+	}
+	if got := GetServiceVersion("tgt1"); got != "1.4.0" {
+		t.Errorf("GetServiceVersion(%q) = %q, want 1.4.0", "tgt1", got)
+	}
+}
+
 func BenchmarkGetVar_Hit(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, _ = testConfig.GetVar("stringKey")

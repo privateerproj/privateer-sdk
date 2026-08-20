@@ -544,6 +544,78 @@ services:
 	}
 }
 
+func TestNewConfig_TargetsConfigAlias(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.SetConfigType("yaml")
+	err := viper.ReadConfig(bytes.NewBufferString(`
+targets:
+  my-target-1:
+    loglevel: debug
+    vars:
+      key1: value1
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: ["tlp_green"]
+`))
+	if err != nil {
+		t.Fatalf("failed to read config: %v", err)
+	}
+	viper.Set("target", "my-target-1")
+
+	cfg := NewConfig(nil)
+	if cfg.Error != nil {
+		t.Fatalf("NewConfig() error = %v, want nil", cfg.Error)
+	}
+	if cfg.ServiceName != "my-target-1" {
+		t.Errorf("ServiceName: got = %q, want = %q", cfg.ServiceName, "my-target-1")
+	}
+	if cfg.LogLevel != "debug" {
+		t.Errorf("LogLevel: got = %q, want = %q", cfg.LogLevel, "debug")
+	}
+	if len(cfg.Policy.ControlCatalogs) != 1 || cfg.Policy.ControlCatalogs[0] != "FINOS-CCC" {
+		t.Errorf("ControlCatalogs: got = %v, want = [FINOS-CCC]", cfg.Policy.ControlCatalogs)
+	}
+	if got := cfg.GetString("key1"); got != "value1" {
+		t.Errorf("Vars[key1]: got = %q, want = %q", got, "value1")
+	}
+}
+
+func TestNewConfig_TargetWinsOverService(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.SetConfigType("yaml")
+	err := viper.ReadConfig(bytes.NewBufferString(`
+services:
+  legacy-service:
+    policy:
+      catalogs: ["LEGACY"]
+      applicability: ["legacy"]
+targets:
+  my-target-1:
+    policy:
+      catalogs: ["FINOS-CCC"]
+      applicability: ["tlp_green"]
+`))
+	if err != nil {
+		t.Fatalf("failed to read config: %v", err)
+	}
+	viper.Set("service", "legacy-service")
+	viper.Set("target", "my-target-1")
+
+	cfg := NewConfig(nil)
+	if cfg.Error != nil {
+		t.Fatalf("NewConfig() error = %v, want nil", cfg.Error)
+	}
+	if cfg.ServiceName != "my-target-1" {
+		t.Errorf("ServiceName: got = %q, want = %q", cfg.ServiceName, "my-target-1")
+	}
+	if len(cfg.Policy.ControlCatalogs) != 1 || cfg.Policy.ControlCatalogs[0] != "FINOS-CCC" {
+		t.Errorf("ControlCatalogs: got = %v, want = [FINOS-CCC]", cfg.Policy.ControlCatalogs)
+	}
+}
+
 func TestNewConfig_DoesNotInheritBoundFlagDefaultIntoVars(t *testing.T) {
 	viper.Reset()
 	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)

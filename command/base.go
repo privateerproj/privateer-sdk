@@ -34,8 +34,12 @@ func SetRunFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringP("write-directory", "w", "evaluation_results", "Directory to write evaluation results to")
 	_ = viper.BindPFlag("write-directory", cmd.PersistentFlags().Lookup("write-directory"))
 
-	cmd.PersistentFlags().StringP("service", "s", "", "Named service to execute from the config")
+	cmd.PersistentFlags().StringP("service", "s", "", "Named service to execute from the config (alias for --target)")
 	_ = viper.BindPFlag("service", cmd.PersistentFlags().Lookup("service"))
+
+	// No shorthand: -t belongs to --test-suites.
+	cmd.PersistentFlags().String("target", "", "Named target to execute from the config (takes precedence over --service)")
+	_ = viper.BindPFlag("target", cmd.PersistentFlags().Lookup("target"))
 
 	cmd.PersistentFlags().StringP("test-suites", "t", "default", "Named set of test sets to execute from the plugin")
 	_ = viper.BindPFlag("test-suites", cmd.PersistentFlags().Lookup("test-suites"))

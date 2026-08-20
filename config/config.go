@@ -61,7 +61,8 @@ type Policy struct {
 func NewConfig(requiredVars []string) Config {
 	var errString string
 
-	serviceName := viper.GetString("service") // the currently running service; if empty, we're probably running from core
+	serviceName := TargetName() // the currently running target; if empty, we're probably running from core
+	svcKey := targetsKey()      // "targets" or its legacy "services" alias, whichever the config uses
 
 	write := viper.GetBool("write")                                         // defaults to true, but allow the user to disable file writing
 	output := strings.ToLower(strings.TrimSpace(viper.GetString("output"))) // defaults to yaml; can be set to json, sarif, or gemara
@@ -70,7 +71,7 @@ func NewConfig(requiredVars []string) Config {
 	benchmarkPayloadOnly := viper.GetBool("benchmark-payload-only")         // defaults to false; loader only, skip steps
 
 	vars := viper.GetStringMap("vars")
-	localVars := viper.GetStringMap(fmt.Sprintf("services.%s.vars", serviceName))
+	localVars := viper.GetStringMap(fmt.Sprintf("%s.%s.vars", svcKey, serviceName))
 	for key, value := range localVars {
 		// Overwrite or add local vars onto the global vars
 		vars[key] = value
@@ -89,7 +90,7 @@ func NewConfig(requiredVars []string) Config {
 	}
 
 	topLoglevel := viper.GetString("loglevel")
-	loglevel := viper.GetString(fmt.Sprintf("services.%s.loglevel", serviceName))
+	loglevel := viper.GetString(fmt.Sprintf("%s.%s.loglevel", svcKey, serviceName))
 	if loglevel == "" && topLoglevel != "" {
 		loglevel = topLoglevel
 	} else if loglevel == "" {
@@ -102,19 +103,19 @@ func NewConfig(requiredVars []string) Config {
 	}
 
 	topInvasive := viper.GetBool("invasive") // make sure we're actually using this to block changes
-	invasive := viper.GetBool(fmt.Sprintf("services.%s.invasive", serviceName))
+	invasive := viper.GetBool(fmt.Sprintf("%s.%s.invasive", svcKey, serviceName))
 	if !invasive && topInvasive {
 		invasive = topInvasive
 	}
 
 	topCatalogs := viper.GetStringSlice("policy.catalogs")
-	catalogs := viper.GetStringSlice(fmt.Sprintf("services.%s.policy.catalogs", serviceName))
+	catalogs := viper.GetStringSlice(fmt.Sprintf("%s.%s.policy.catalogs", svcKey, serviceName))
 	if len(catalogs) == 0 {
 		catalogs = topCatalogs
 	}
 
 	topApplicability := viper.GetStringSlice("policy.applicability")
-	applicability := viper.GetStringSlice(fmt.Sprintf("services.%s.policy.applicability", serviceName))
+	applicability := viper.GetStringSlice(fmt.Sprintf("%s.%s.policy.applicability", svcKey, serviceName))
 	if len(applicability) == 0 {
 		applicability = topApplicability
 	}

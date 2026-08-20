@@ -39,6 +39,34 @@ func TestSetBase_ConfigFlagDefaultIsEmpty(t *testing.T) {
 	}
 }
 
+func TestSetRunFlags_TargetAliasForService(t *testing.T) {
+	resetViper()
+	cmd := &cobra.Command{Use: "test"}
+	SetRunFlags(cmd)
+
+	target := cmd.PersistentFlags().Lookup("target")
+	if target == nil {
+		t.Fatal("expected target flag to be registered")
+	}
+	if target.Shorthand != "" {
+		t.Errorf("target flag shorthand: got = %q, want none (-t belongs to --test-suites)", target.Shorthand)
+	}
+
+	service := cmd.PersistentFlags().Lookup("service")
+	if service == nil {
+		t.Fatal("expected service flag to remain registered")
+	} else if service.Shorthand != "s" {
+		t.Errorf("service flag shorthand: got = %q, want = %q", service.Shorthand, "s")
+	}
+
+	if err := cmd.PersistentFlags().Set("target", "my-target"); err != nil {
+		t.Fatalf("failed to set target flag: %v", err)
+	}
+	if got := viper.GetString("target"); got != "my-target" {
+		t.Errorf("viper target binding: got = %q, want = %q", got, "my-target")
+	}
+}
+
 func TestReadConfig_ExplicitConfigPath(t *testing.T) {
 	resetViper()
 
