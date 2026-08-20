@@ -40,7 +40,7 @@ func SetRunFlags(cmd *cobra.Command) {
 	_ = viper.BindPFlag("service", cmd.PersistentFlags().Lookup("service"))
 
 	// No shorthand: -t belongs to --test-suites.
-	cmd.PersistentFlags().String("target", "", "Named target to execute from the config (takes precedence over --service)")
+	cmd.PersistentFlags().String("target", "", "Named target to execute from the config")
 	_ = viper.BindPFlag("target", cmd.PersistentFlags().Lookup("target"))
 
 	// Let config.TargetName rank explicitly passed --target/--service flags

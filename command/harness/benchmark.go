@@ -92,7 +92,7 @@ func benchmarkCmd(writerFn func() Writer) *cobra.Command {
 		},
 	}
 	benchmarkCmd.Flags().StringVarP(&service, "service", "s", "", "Named service from the config to evaluate (alias for --target)")
-	benchmarkCmd.Flags().StringVar(&target, "target", "", "Named target from the config to evaluate (required; wins over --service)")
+	benchmarkCmd.Flags().StringVar(&target, "target", "", "Named target from the config to evaluate (required)")
 	benchmarkCmd.Flags().BoolVar(&jsonOut, "json", false, "Emit the machine-readable benchmark report as JSON (for diffing runs in CI)")
 	benchmarkCmd.Flags().StringVarP(&writeDir, "write-directory", "w", "", "Directory for the run's results and report (default: a temp directory)")
 	benchmarkCmd.Flags().BoolVar(&payloadOnly, "payload-only", false, "Stop after payload retrieval and time only the loader (skip assessment steps)")
