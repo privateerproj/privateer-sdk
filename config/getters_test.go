@@ -1,9 +1,11 @@
 package config
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
@@ -341,6 +343,96 @@ func TestTargetName(t *testing.T) {
 				t.Errorf("TargetName() = %q, want = %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// bindTestFlags registers a run-style flag set with the config package the way
+// command.SetRunFlags does, so TargetName sees flag Changed state. Call AFTER
+// any viper.Reset in the test, since Reset drops viper's flag bindings.
+func bindTestFlags(t *testing.T) *pflag.FlagSet {
+	t.Helper()
+	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	fs.StringP("service", "s", "", "")
+	fs.String("target", "", "")
+	_ = viper.BindPFlag("service", fs.Lookup("service"))
+	_ = viper.BindPFlag("target", fs.Lookup("target"))
+	BindTargetFlags(fs)
+	t.Cleanup(func() { BindTargetFlags(nil) })
+	return fs
+}
+
+func TestTargetName_ChangedTargetFlagBeatsServiceFlag(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	fs := bindTestFlags(t)
+	if err := fs.Set("service", "flag-service"); err != nil {
+		t.Fatal(err)
+	}
+	if err := fs.Set("target", "flag-target"); err != nil {
+		t.Fatal(err)
+	}
+	if got := TargetName(); got != "flag-target" {
+		t.Errorf("TargetName() = %q, want = %q", got, "flag-target")
+	}
+}
+
+func TestTargetName_ChangedServiceFlagBeatsEnvTarget(t *testing.T) {
+	withEnvAwareViper(t)
+	fs := bindTestFlags(t)
+	t.Setenv("PVTR_TARGET", "env-target")
+	if err := fs.Set("service", "flag-service"); err != nil {
+		t.Fatal(err)
+	}
+	if got := TargetName(); got != "flag-service" {
+		t.Errorf("TargetName() = %q, want = %q (explicit flag must beat inherited env)", got, "flag-service")
+	}
+}
+
+func TestTargetName_ChangedServiceFlagBeatsConfigTarget(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.SetConfigType("yaml")
+	if err := viper.ReadConfig(bytes.NewBufferString("target: config-target\n")); err != nil {
+		t.Fatal(err)
+	}
+	fs := bindTestFlags(t)
+	if err := fs.Set("service", "flag-service"); err != nil {
+		t.Fatal(err)
+	}
+	if got := TargetName(); got != "flag-service" {
+		t.Errorf("TargetName() = %q, want = %q (explicit flag must beat config file)", got, "flag-service")
+	}
+}
+
+func TestTargetsKey_EnvTargetsDoesNotMaskServices(t *testing.T) {
+	withEnvAwareViper(t)
+	t.Setenv("PVTR_TARGETS", "oops")
+	viper.Set("services", map[string]interface{}{
+		"svc1": map[string]interface{}{"plugin": "my-plugin"},
+	})
+	if got := GetServicePlugin("svc1"); got != "my-plugin" {
+		t.Errorf("GetServicePlugin(%q) = %q, want my-plugin (PVTR_TARGETS must not mask services)", "svc1", got)
+	}
+	if got := GetServices(); len(got) != 1 {
+		t.Errorf("GetServices() returned %d entries, want 1", len(got))
+	}
+}
+
+func TestTargetsKey_EmptyTargetsMapFallsBackToServices(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.SetConfigType("yaml")
+	err := viper.ReadConfig(bytes.NewBufferString(`
+targets: {}
+services:
+  svc1:
+    plugin: my-plugin
+`))
+	if err != nil {
+		t.Fatalf("failed to read config: %v", err)
+	}
+	if got := GetServicePlugin("svc1"); got != "my-plugin" {
+		t.Errorf("GetServicePlugin(%q) = %q, want my-plugin (empty targets map must not mask services)", "svc1", got)
 	}
 }
 

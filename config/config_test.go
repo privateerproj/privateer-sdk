@@ -616,6 +616,36 @@ targets:
 	}
 }
 
+func TestNewConfig_ErrorHintsWhenNameOnlyInLegacyServices(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.SetConfigType("yaml")
+	err := viper.ReadConfig(bytes.NewBufferString(`
+targets:
+  tgt1:
+    policy:
+      catalogs: ["FINOS-CCC"]
+      applicability: ["tlp_green"]
+services:
+  svc1:
+    policy:
+      catalogs: ["FINOS-CCC"]
+      applicability: ["tlp_green"]
+`))
+	if err != nil {
+		t.Fatalf("failed to read config: %v", err)
+	}
+	viper.Set("service", "svc1")
+
+	cfg := NewConfig(nil)
+	if cfg.Error == nil {
+		t.Fatal("NewConfig() error = nil, want policy error with legacy-services hint")
+	}
+	if !strings.Contains(cfg.Error.Error(), "legacy services key") {
+		t.Errorf("error %q is missing the legacy services hint", cfg.Error.Error())
+	}
+}
+
 func TestNewConfig_DoesNotInheritBoundFlagDefaultIntoVars(t *testing.T) {
 	viper.Reset()
 	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)

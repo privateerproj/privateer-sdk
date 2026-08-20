@@ -123,6 +123,9 @@ func NewConfig(requiredVars []string) Config {
 	if serviceName != "" && (len(applicability) == 0 || len(catalogs) == 0) {
 		errString = fmt.Sprintf("invalid policy for service %s. applicability=%v catalogs=%v",
 			serviceName, len(applicability), len(catalogs))
+		if svcKey == "targets" && viper.IsSet("services."+serviceName) {
+			errString += fmt.Sprintf("; %q is defined under the legacy services key, which is ignored because a targets key is present", serviceName)
+		}
 	}
 
 	var missingVars []string

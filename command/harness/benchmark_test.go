@@ -21,21 +21,41 @@ func TestGetBenchmarkCmd_Shape(t *testing.T) {
 	if cmd.Use != "benchmark <plugin-binary>" {
 		t.Errorf("unexpected Use: %q", cmd.Use)
 	}
-	for _, flag := range []string{"service", "json", "write-directory", "payload-only"} {
+	for _, flag := range []string{"service", "target", "json", "write-directory", "payload-only"} {
 		if cmd.Flags().Lookup(flag) == nil {
 			t.Errorf("expected --%s flag", flag)
 		}
 	}
 }
 
-func TestBenchmarkCmd_RequiresService(t *testing.T) {
+func TestBenchmarkCmd_RequiresTarget(t *testing.T) {
 	cmd := GetBenchmarkCmd(func() Writer { return &benchBufWriter{} })
 	cmd.SetArgs([]string{"/does/not/matter"})
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "--service is required") {
-		t.Errorf("expected missing-service error, got: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "--target is required") {
+		t.Errorf("expected missing-target error, got: %v", err)
+	}
+}
+
+// --target and its legacy alias --service both satisfy the requirement; when
+// both are given, --target wins. A bogus binary path keeps Execute from
+// launching a plugin while still proving flag resolution ran past validation.
+func TestBenchmarkCmd_TargetAliasAccepted(t *testing.T) {
+	for _, args := range [][]string{
+		{"/does/not/exist", "--target", "tgt1"},
+		{"/does/not/exist", "-s", "svc1"},
+		{"/does/not/exist", "--target", "tgt1", "-s", "svc1"},
+	} {
+		cmd := GetBenchmarkCmd(func() Writer { return &benchBufWriter{} })
+		cmd.SetArgs(args)
+		cmd.SilenceUsage = true
+		cmd.SilenceErrors = true
+		err := cmd.Execute()
+		if err == nil || strings.Contains(err.Error(), "is required") {
+			t.Errorf("args %v: expected binary-path error, got: %v", args, err)
+		}
 	}
 }
 

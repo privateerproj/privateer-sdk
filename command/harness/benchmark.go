@@ -33,6 +33,7 @@ type benchmarkRow struct {
 func benchmarkCmd(writerFn func() Writer) *cobra.Command {
 	var (
 		service     string
+		target      string
 		jsonOut     bool
 		writeDir    string
 		payloadOnly bool
@@ -46,14 +47,17 @@ func benchmarkCmd(writerFn func() Writer) *cobra.Command {
 			"individual assessment step, using monotonic sub-millisecond durations.\n\n" +
 			"Takes the path to a compiled plugin binary — the plugin runs as a separate " +
 			"process, so build it first (`make build`, or `go build -o <name> .`) and pass " +
-			"the resulting executable. The named --service must exist in the config file so " +
-			"the plugin has its vars, catalogs, and applicability.",
+			"the resulting executable. The named --target (or its legacy alias --service) " +
+			"must exist in the config file so the plugin has its vars, catalogs, and applicability.",
 		Args: cobra.ExactArgs(1),
 		// runtime failures shouldn't reprint usage text
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if target != "" {
+				service = target
+			}
 			if service == "" {
-				return fmt.Errorf("--service is required: the plugin needs a configured service to evaluate")
+				return fmt.Errorf("--target is required: the plugin needs a configured target to evaluate")
 			}
 			binPath, err := resolvePluginBinary(args[0])
 			if err != nil {
@@ -87,7 +91,8 @@ func benchmarkCmd(writerFn func() Writer) *cobra.Command {
 			return benchmarkRunError(exitCode)
 		},
 	}
-	benchmarkCmd.Flags().StringVarP(&service, "service", "s", "", "Named service from the config to evaluate (required)")
+	benchmarkCmd.Flags().StringVarP(&service, "service", "s", "", "Named service from the config to evaluate (alias for --target)")
+	benchmarkCmd.Flags().StringVar(&target, "target", "", "Named target from the config to evaluate (required; wins over --service)")
 	benchmarkCmd.Flags().BoolVar(&jsonOut, "json", false, "Emit the machine-readable benchmark report as JSON (for diffing runs in CI)")
 	benchmarkCmd.Flags().StringVarP(&writeDir, "write-directory", "w", "", "Directory for the run's results and report (default: a temp directory)")
 	benchmarkCmd.Flags().BoolVar(&payloadOnly, "payload-only", false, "Stop after payload retrieval and time only the loader (skip assessment steps)")
