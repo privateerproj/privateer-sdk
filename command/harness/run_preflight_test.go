@@ -95,6 +95,38 @@ func TestEnsureRequestedInstalled_AttemptsInstallWhenMissing(t *testing.T) {
 	}
 }
 
+// A targeted run must not install other services' plugins: with the target's
+// own plugin already installed, the preflight is a no-op (the hub fails the
+// test if contacted) even though another service's plugin is missing.
+func TestEnsureRequestedInstalled_ScopedToTarget(t *testing.T) {
+	binDir := t.TempDir()
+	m := &manifest.Manifest{}
+	m.Add(manifest.Plugin{Name: "acme/hello", Version: "1.0.0", BinaryPath: "acme/hello/1.0.0/hello"})
+	if err := m.Save(binDir); err != nil {
+		t.Fatalf("seeding manifest: %v", err)
+	}
+
+	t.Cleanup(viper.Reset)
+	viper.Set("autoinstall", true)
+	viper.Set("binaries-path", binDir)
+	viper.Set("services", map[string]interface{}{
+		"svc-ok":     map[string]interface{}{"plugin": "acme/hello"},
+		"svc-broken": map[string]interface{}{"plugin": "acme/missing"},
+	})
+	viper.Set("target", "svc-ok")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("hub must not be contacted for a service outside the target scope")
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	viper.Set("hub-url", srv.URL)
+
+	if err := ensureRequestedInstalled(context.Background(), io.Discard); err != nil {
+		t.Fatalf("targeted preflight should ignore other services, got: %v", err)
+	}
+}
+
 // No services configured => nothing to install, even with autoinstall on.
 func TestEnsureRequestedInstalled_NoServices(t *testing.T) {
 	configureRun(t, true, t.TempDir(), "", "")

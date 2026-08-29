@@ -20,11 +20,14 @@ import (
 const maxConcurrentInstalls = 4
 
 // FromConfig installs every plugin referenced by the active config that is not
-// already present in the local manifest. Each service's plugin field is the
-// grc.store <namespace>/<plugin_id> coordinate (optionally pinned with an
-// @<version>); missing plugins are resolved against grc.store and installed
-// concurrently, bounded by maxConcurrentInstalls. The first failure cancels the
-// remaining installs and is returned wrapped with its coordinate.
+// already present in the local manifest. A non-empty target scopes that to the
+// single named service: other services' plugins are neither resolved nor
+// installed, so a targeted run's preflight cannot fail on an unrelated config
+// entry. Each service's plugin field is the grc.store <namespace>/<plugin_id>
+// coordinate (optionally pinned with an @<version>); missing plugins are
+// resolved against grc.store and installed concurrently, bounded by
+// maxConcurrentInstalls. The first failure cancels the remaining installs and
+// is returned wrapped with its coordinate.
 //
 // It is a no-op (returns nil) when no services are configured or every requested
 // plugin is already installed. Per-plugin progress is buffered and flushed to w
@@ -34,8 +37,8 @@ const maxConcurrentInstalls = 4
 // It reads the active config from the same viper state as the config getters, so
 // the caller must have loaded config (e.g. the CLI's PersistentPreRun) before
 // invoking it — otherwise no services are visible and it is a no-op.
-func FromConfig(ctx context.Context, w io.Writer) error {
-	args, err := missingFromConfig()
+func FromConfig(ctx context.Context, w io.Writer, target string) error {
+	args, err := missingFromConfig(target)
 	if err != nil {
 		return err
 	}
@@ -68,7 +71,9 @@ func FromConfig(ctx context.Context, w io.Writer) error {
 
 // missingFromConfig resolves the active config's services to the deduped list of
 // <namespace>/<plugin_id>[@<version>] coordinates that are not yet installed.
-func missingFromConfig() ([]string, error) {
+// A non-empty target restricts resolution to that service; a target naming no
+// configured service resolves nothing (the run itself reports the bad target).
+func missingFromConfig(target string) ([]string, error) {
 	services := config.GetServices()
 	if len(services) == 0 {
 		return nil, nil
@@ -84,6 +89,9 @@ func missingFromConfig() ([]string, error) {
 	seen := make(map[string]bool)
 	var args []string
 	for serviceName := range services {
+		if target != "" && serviceName != target {
+			continue
+		}
 		name := config.GetServicePlugin(serviceName)
 		if name == "" {
 			continue

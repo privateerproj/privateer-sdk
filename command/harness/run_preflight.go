@@ -19,11 +19,13 @@ import (
 // then surfaces during the run as the usual "not installed" failure, preserving
 // the explicit-install default. The resolve-and-install itself (concurrent,
 // first-failure-aborts) is shared with `pvtr install --from-config` via
-// install.FromConfig. Per-plugin install progress is written to w; Run flushes w
-// before starting plugins.
+// install.FromConfig, but scoped to config.TargetName() so a targeted run never
+// installs (or fails on) another service's plugin; `install --from-config`
+// itself stays whole-config. Per-plugin install progress is written to w; Run
+// flushes w before starting plugins.
 func ensureRequestedInstalled(ctx context.Context, w io.Writer) error {
 	if !config.AutoInstall() {
 		return nil
 	}
-	return install.FromConfig(ctx, w)
+	return install.FromConfig(ctx, w, config.TargetName())
 }
