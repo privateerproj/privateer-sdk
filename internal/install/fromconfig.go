@@ -72,8 +72,8 @@ func FromConfig(ctx context.Context, w io.Writer, target string) error {
 
 // missingFromConfig resolves the active config's services to the deduped list of
 // <namespace>/<plugin_id>[@<version>] coordinates that are not yet installed.
-// A non-empty target restricts resolution to that service; a target naming no
-// configured service resolves nothing (the run itself reports the bad target).
+// A target naming no configured service resolves nothing (the run itself
+// reports the bad target).
 func missingFromConfig(target string) ([]string, error) {
 	services := config.GetServices()
 	if len(services) == 0 {
@@ -90,8 +90,7 @@ func missingFromConfig(target string) ([]string, error) {
 	seen := make(map[string]bool)
 	var args []string
 	for serviceName := range services {
-		// Fold case to match planRun's target scoping (command/run.go), which
-		// explains why: viper lowercases config map keys.
+		// Fold case to match planRun's target scoping (command/run.go).
 		if target != "" && !strings.EqualFold(serviceName, target) {
 			continue
 		}

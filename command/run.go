@@ -57,8 +57,7 @@ func mergeExitCode(prev, next int) int {
 //
 // Pulling this decision out of the execution loop lets it be table-tested
 // without go-plugin fakes. It validates the whole scoped list up front, so a
-// config that requests an uninstalled plugin fails before any plugin runs, and
-// every missing plugin is reported at once rather than one failure per run.
+// config that requests an uninstalled plugin fails before any plugin runs.
 func planRun(plugins []*PluginPkg, target string) (toRun []*PluginPkg, earlyExit int, errMsg string) {
 	if len(plugins) == 0 {
 		return nil, NoTests, ""

@@ -30,8 +30,6 @@ func TestMissingFromConfig_TargetScoping(t *testing.T) {
 		{"empty target resolves every service", "", []string{"acme/alpha", "acme/beta@1.2.0"}},
 		{"target scopes to the named service", "svc-a", []string{"acme/alpha"}},
 		{"target scopes to a version-pinned service", "svc-b", []string{"acme/beta@1.2.0"}},
-		// Viper lowercases config map keys, so the service key is "svc-a" even
-		// when the user types the target with different casing.
 		{"mixed-case target matches the lowercased service key", "Svc-A", []string{"acme/alpha"}},
 		{"unknown target resolves nothing", "ghost", nil},
 	}

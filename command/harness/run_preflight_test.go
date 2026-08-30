@@ -95,9 +95,8 @@ func TestEnsureRequestedInstalled_AttemptsInstallWhenMissing(t *testing.T) {
 	}
 }
 
-// A targeted run must not install other services' plugins: with the target's
-// own plugin already installed, the preflight is a no-op (the hub fails the
-// test if contacted) even though another service's plugin is missing.
+// A targeted run must not install another service's plugin; the hub fails the
+// test if contacted.
 func TestEnsureRequestedInstalled_ScopedToTarget(t *testing.T) {
 	binDir := t.TempDir()
 	m := &manifest.Manifest{}
@@ -155,11 +154,8 @@ func TestRun_PreflightFailureAbortsWithBadUsage(t *testing.T) {
 	}
 }
 
-// An active target must be announced on the run's output writer, not the
-// level-filtered logger: the shipped default loglevel is error, which filters
-// Info, so a logger-only announcement would leave an env- or config-sourced
-// target narrowing the run invisibly. The null logger here proves the writer
-// path alone carries the announcement.
+// The null logger proves the target announcement rides the output writer, not
+// the level-filtered logger (see harness.Run for why that matters).
 func TestRun_AnnouncesTargetOnWriter(t *testing.T) {
 	t.Cleanup(viper.Reset)
 	viper.Set("target", "svc-a")

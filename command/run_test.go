@@ -105,8 +105,6 @@ func TestPlanRun(t *testing.T) {
 			wantErrMsg: "requested plugin that is not installed: acme/missing (required by targets: svc-b)",
 		},
 		{
-			// A service entry with no plugin: key produces an empty Name; the
-			// message must say so rather than render a blank.
 			name:       "service entry with no plugin key reports no plugin configured",
 			plugins:    []*PluginPkg{pkg("", "svc-x", false, true)},
 			wantRun:    nil,
@@ -156,8 +154,6 @@ func TestPlanRun(t *testing.T) {
 			wantErrMsg: "requested plugin that is not installed: acme/missing (required by targets: svc-b)",
 		},
 		{
-			// Viper lowercases config map keys, so ServiceTarget is always
-			// lowercase; the user-typed target must still match it.
 			name: "mixed-case target matches the viper-lowercased service key",
 			plugins: []*PluginPkg{
 				pkg("acme/scanner", "svc-a", true, true),
