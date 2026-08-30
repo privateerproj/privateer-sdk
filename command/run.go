@@ -131,6 +131,11 @@ func missingPluginsMsg(missing []*PluginPkg) string {
 	for _, name := range names {
 		targets := byPlugin[name]
 		sort.Strings(targets)
+		// A service entry with no plugin: key reaches here with an empty name;
+		// say so rather than render a blank.
+		if name == "" {
+			name = "no plugin configured"
+		}
 		parts = append(parts, fmt.Sprintf("%s (required by targets: %s)", name, strings.Join(targets, ", ")))
 	}
 	noun := "plugin that is"
@@ -148,15 +153,7 @@ func Run(logger hclog.Logger, getPlugins func() []*PluginPkg) (exitCode int) {
 	logger.Trace(fmt.Sprintf(
 		"Using bin: %s", viper.GetString("binaries-path")))
 
-	// Announce an active target before planning: it may come from the env or
-	// config tiers (not just an explicit flag), and a narrowed run that exits 0
-	// must never look like a full-config evaluation.
-	target := config.TargetName()
-	if target != "" {
-		logger.Info(fmt.Sprintf("run scoped to target %q", target))
-	}
-
-	toRun, earlyExit, errMsg := planRun(getPlugins(), target)
+	toRun, earlyExit, errMsg := planRun(getPlugins(), config.TargetName())
 	switch earlyExit {
 	case NoTests:
 		logger.Error(fmt.Sprintf("no plugins were requested in config: %s", viper.GetString("binaries-path")))

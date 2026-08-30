@@ -58,13 +58,12 @@ because `-t` belongs to `--test-suites`.
 
 When a target is set (via flag, env var, or config key), `pvtr run` is scoped
 to that single target: only its plugin is validated, autoinstalled (when
-`autoinstall: true`), and executed. The run logs the active target up front,
-so a scope inherited from an env var or config key is always visible. Target
-names match config entries case-insensitively. Other entries in the config are
-ignored entirely, so a shared config with a broken or not-yet-installed entry
-does not block a targeted run. A target that names no configured entry fails
-with an error listing the targets the config defines; a config with no entries
-at all reports "no plugins were requested" instead.
+`autoinstall: true`), and executed. The run prints the active target to its
+output up front, so a scope inherited from an env var or config key is always
+visible. Target names match config entries case-insensitively. Other entries
+in the config are ignored entirely, so a shared config with a broken or
+not-yet-installed entry does not block a targeted run. A target that names no
+configured entry fails with an error listing the targets the config defines.
 
 Without a target, a run covers every configured entry. Any plugins that are
 requested but not installed are reported together in a single error; with

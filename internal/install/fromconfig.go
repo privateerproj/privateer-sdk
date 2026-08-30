@@ -90,9 +90,8 @@ func missingFromConfig(target string) ([]string, error) {
 	seen := make(map[string]bool)
 	var args []string
 	for serviceName := range services {
-		// Viper lowercases config map keys (so serviceName is lowercase), while
-		// the target arrives with the user's casing; fold to match the
-		// case-insensitive lookups everywhere else in the config layer.
+		// Fold case to match planRun's target scoping (command/run.go), which
+		// explains why: viper lowercases config map keys.
 		if target != "" && !strings.EqualFold(serviceName, target) {
 			continue
 		}

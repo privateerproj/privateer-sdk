@@ -155,6 +155,29 @@ func TestRun_PreflightFailureAbortsWithBadUsage(t *testing.T) {
 	}
 }
 
+// An active target must be announced on the run's output writer, not the
+// level-filtered logger: the shipped default loglevel is error, which filters
+// Info, so a logger-only announcement would leave an env- or config-sourced
+// target narrowing the run invisibly. The null logger here proves the writer
+// path alone carries the announcement.
+func TestRun_AnnouncesTargetOnWriter(t *testing.T) {
+	t.Cleanup(viper.Reset)
+	viper.Set("target", "svc-a")
+
+	// The scoped plugin is missing, so Run exits at the plan without spawning
+	// subprocesses; the announcement must already be written by then.
+	getPlugins := func() []*PluginPkg {
+		return []*PluginPkg{{Name: "acme/missing", ServiceTarget: "svc-a", Installed: false, Requested: true}}
+	}
+	var w bufWriter
+	if code := Run(context.Background(), &w, hclog.NewNullLogger(), getPlugins); code != BadUsage {
+		t.Fatalf("Run = %d, want BadUsage (%d)", code, BadUsage)
+	}
+	if !strings.Contains(w.String(), `run scoped to target "svc-a"`) {
+		t.Errorf("run output %q does not announce the target scope", w.String())
+	}
+}
+
 // With autoinstall off, Run skips the preflight and delegates to the plugin loop;
 // an empty plugin set yields NoTests, confirming the loop was reached.
 func TestRun_DisabledPreflightDelegatesToLoop(t *testing.T) {

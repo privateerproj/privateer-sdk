@@ -1,9 +1,7 @@
 package command
 
 import (
-	"bytes"
 	"runtime"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -105,6 +103,15 @@ func TestPlanRun(t *testing.T) {
 			wantRun:    nil,
 			wantExit:   BadUsage,
 			wantErrMsg: "requested plugin that is not installed: acme/missing (required by targets: svc-b)",
+		},
+		{
+			// A service entry with no plugin: key produces an empty Name; the
+			// message must say so rather than render a blank.
+			name:       "service entry with no plugin key reports no plugin configured",
+			plugins:    []*PluginPkg{pkg("", "svc-x", false, true)},
+			wantRun:    nil,
+			wantExit:   BadUsage,
+			wantErrMsg: "requested plugin that is not installed: no plugin configured (required by targets: svc-x)",
 		},
 		{
 			name: "all missing plugins are reported with their targets, sorted",
@@ -222,30 +229,6 @@ func TestRun_ConsultsTargetName(t *testing.T) {
 	}
 	if code := Run(hclog.NewNullLogger(), getPlugins); code != BadUsage {
 		t.Errorf("Run with an unknown target = %d, want BadUsage (%d)", code, BadUsage)
-	}
-}
-
-// TestRun_LogsTargetScope proves an active target is announced before the plan
-// is evaluated, so a target sourced from the env or config tiers (where the
-// operator may not realize it is set) can never narrow the run silently.
-func TestRun_LogsTargetScope(t *testing.T) {
-	resetViper()
-	t.Cleanup(resetViper)
-	viper.Set("target", "svc-a")
-
-	var buf bytes.Buffer
-	logger := hclog.New(&hclog.LoggerOptions{Output: &buf})
-
-	// The scoped plugin is missing, so Run exits at the plan without spawning
-	// subprocesses; the scope line must already be logged by then.
-	getPlugins := func() []*PluginPkg {
-		return []*PluginPkg{{Name: "acme/missing", ServiceTarget: "svc-a", Installed: false, Requested: true}}
-	}
-	if code := Run(logger, getPlugins); code != BadUsage {
-		t.Fatalf("Run = %d, want BadUsage (%d)", code, BadUsage)
-	}
-	if !strings.Contains(buf.String(), `run scoped to target "svc-a"`) {
-		t.Errorf("log output %q does not announce the target scope", buf.String())
 	}
 }
 

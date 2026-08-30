@@ -34,6 +34,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/privateerproj/privateer-sdk/command"
+	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/privateerproj/privateer-sdk/shared"
 )
 
@@ -117,6 +118,13 @@ func GeneratePlugin(logger hclog.Logger) (exitCode int) {
 // ctx bounds the preflight's hub/registry calls. w receives install progress and
 // is flushed before plugins start. logger and getPlugins drive the run loop.
 func Run(ctx context.Context, w Writer, logger hclog.Logger, getPlugins func() []*PluginPkg) (exitCode int) {
+	// Announce an active target on the run's output writer rather than the
+	// logger: the shipped default loglevel is error, which filters Info lines
+	// out, and a target inherited from the env or config tiers must never
+	// narrow the run invisibly. w is flushed below, before plugins start.
+	if target := config.TargetName(); target != "" {
+		_, _ = fmt.Fprintf(w, "run scoped to target %q\n", target)
+	}
 	if err := ensureRequestedInstalled(ctx, w); err != nil {
 		logger.Error(fmt.Sprintf("autoinstall preflight failed: %s", err))
 		_ = w.Flush()
