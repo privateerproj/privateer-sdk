@@ -74,7 +74,10 @@ func planRun(plugins []*PluginPkg, target string) (toRun []*PluginPkg, earlyExit
 	if target != "" {
 		var scoped []*PluginPkg
 		for _, pluginPkg := range requested {
-			if pluginPkg.ServiceTarget == target {
+			// Viper lowercases config map keys (so ServiceTarget is lowercase),
+			// while the target arrives with the user's casing; fold to match
+			// the case-insensitive lookups everywhere else in the config layer.
+			if strings.EqualFold(pluginPkg.ServiceTarget, target) {
 				scoped = append(scoped, pluginPkg)
 			}
 		}
@@ -145,7 +148,15 @@ func Run(logger hclog.Logger, getPlugins func() []*PluginPkg) (exitCode int) {
 	logger.Trace(fmt.Sprintf(
 		"Using bin: %s", viper.GetString("binaries-path")))
 
-	toRun, earlyExit, errMsg := planRun(getPlugins(), config.TargetName())
+	// Announce an active target before planning: it may come from the env or
+	// config tiers (not just an explicit flag), and a narrowed run that exits 0
+	// must never look like a full-config evaluation.
+	target := config.TargetName()
+	if target != "" {
+		logger.Info(fmt.Sprintf("run scoped to target %q", target))
+	}
+
+	toRun, earlyExit, errMsg := planRun(getPlugins(), target)
 	switch earlyExit {
 	case NoTests:
 		logger.Error(fmt.Sprintf("no plugins were requested in config: %s", viper.GetString("binaries-path")))

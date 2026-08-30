@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 
 	"golang.org/x/sync/errgroup"
@@ -89,7 +90,10 @@ func missingFromConfig(target string) ([]string, error) {
 	seen := make(map[string]bool)
 	var args []string
 	for serviceName := range services {
-		if target != "" && serviceName != target {
+		// Viper lowercases config map keys (so serviceName is lowercase), while
+		// the target arrives with the user's casing; fold to match the
+		// case-insensitive lookups everywhere else in the config layer.
+		if target != "" && !strings.EqualFold(serviceName, target) {
 			continue
 		}
 		name := config.GetServicePlugin(serviceName)
