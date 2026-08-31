@@ -95,6 +95,37 @@ func TestEnsureRequestedInstalled_AttemptsInstallWhenMissing(t *testing.T) {
 	}
 }
 
+// A targeted run must not install another service's plugin; the hub fails the
+// test if contacted.
+func TestEnsureRequestedInstalled_ScopedToTarget(t *testing.T) {
+	binDir := t.TempDir()
+	m := &manifest.Manifest{}
+	m.Add(manifest.Plugin{Name: "acme/hello", Version: "1.0.0", BinaryPath: "acme/hello/1.0.0/hello"})
+	if err := m.Save(binDir); err != nil {
+		t.Fatalf("seeding manifest: %v", err)
+	}
+
+	t.Cleanup(viper.Reset)
+	viper.Set("autoinstall", true)
+	viper.Set("binaries-path", binDir)
+	viper.Set("services", map[string]interface{}{
+		"svc-ok":     map[string]interface{}{"plugin": "acme/hello"},
+		"svc-broken": map[string]interface{}{"plugin": "acme/missing"},
+	})
+	viper.Set("target", "svc-ok")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("hub must not be contacted for a service outside the target scope")
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	viper.Set("hub-url", srv.URL)
+
+	if err := ensureRequestedInstalled(context.Background(), io.Discard); err != nil {
+		t.Fatalf("targeted preflight should ignore other services, got: %v", err)
+	}
+}
+
 // No services configured => nothing to install, even with autoinstall on.
 func TestEnsureRequestedInstalled_NoServices(t *testing.T) {
 	configureRun(t, true, t.TempDir(), "", "")
@@ -120,6 +151,26 @@ func TestRun_PreflightFailureAbortsWithBadUsage(t *testing.T) {
 	}
 	if code := Run(context.Background(), flushWriter{}, hclog.NewNullLogger(), getPlugins); code != BadUsage {
 		t.Errorf("expected BadUsage (%d) on preflight failure, got %d", BadUsage, code)
+	}
+}
+
+// The null logger proves the target announcement rides the output writer, not
+// the level-filtered logger (see harness.Run for why that matters).
+func TestRun_AnnouncesTargetOnWriter(t *testing.T) {
+	t.Cleanup(viper.Reset)
+	viper.Set("target", "svc-a")
+
+	// The scoped plugin is missing, so Run exits at the plan without spawning
+	// subprocesses; the announcement must already be written by then.
+	getPlugins := func() []*PluginPkg {
+		return []*PluginPkg{{Name: "acme/missing", ServiceTarget: "svc-a", Installed: false, Requested: true}}
+	}
+	var w bufWriter
+	if code := Run(context.Background(), &w, hclog.NewNullLogger(), getPlugins); code != BadUsage {
+		t.Fatalf("Run = %d, want BadUsage (%d)", code, BadUsage)
+	}
+	if !strings.Contains(w.String(), `run scoped to target "svc-a"`) {
+		t.Errorf("run output %q does not announce the target scope", w.String())
 	}
 }
 

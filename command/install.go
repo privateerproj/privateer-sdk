@@ -36,7 +36,7 @@ func GetInstallCmd(writerFn func() Writer) *cobra.Command {
 				return install.Local(w, localPath)
 			}
 			if fromConfig {
-				return install.FromConfig(cmd.Context(), w)
+				return install.FromConfig(cmd.Context(), w, "")
 			}
 			if len(args) == 0 {
 				return fmt.Errorf("a plugin coordinate <namespace>/<plugin_id> is required (or use --local or --from-config)")

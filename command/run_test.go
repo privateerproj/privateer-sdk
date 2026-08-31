@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	hclog "github.com/hashicorp/go-hclog"
 	"github.com/spf13/viper"
 )
 
@@ -39,16 +40,17 @@ func TestMergeExitCode(t *testing.T) {
 // the go-plugin RPC chain. The subprocess execution itself stays a thin shell
 // in Run around this decision.
 func TestPlanRun(t *testing.T) {
-	pkg := func(name string, installed, requested bool) *PluginPkg {
-		return &PluginPkg{Name: name, Installed: installed, Requested: requested}
+	pkg := func(name, service string, installed, requested bool) *PluginPkg {
+		return &PluginPkg{Name: name, ServiceTarget: service, Installed: installed, Requested: requested}
 	}
 
 	tests := []struct {
-		name        string
-		plugins     []*PluginPkg
-		wantRun     []string // plugin names expected in toRun, in order
-		wantExit    int
-		wantCulprit string // "" when no culprit expected
+		name       string
+		plugins    []*PluginPkg
+		target     string
+		wantRun    []string // plugin names expected in toRun, in order
+		wantExit   int
+		wantErrMsg string // "" when no error message expected
 	}{
 		{
 			name:     "empty list returns NoTests",
@@ -57,30 +59,37 @@ func TestPlanRun(t *testing.T) {
 			wantExit: NoTests,
 		},
 		{
+			name:     "empty list with a target still returns NoTests",
+			plugins:  nil,
+			target:   "svc-a",
+			wantRun:  nil,
+			wantExit: NoTests,
+		},
+		{
 			name:     "only non-requested plugins run nothing",
-			plugins:  []*PluginPkg{pkg("acme/installed-only", true, false)},
+			plugins:  []*PluginPkg{pkg("acme/installed-only", "", true, false)},
 			wantRun:  nil,
 			wantExit: 0,
 		},
 		{
 			name:     "requested and installed is selected",
-			plugins:  []*PluginPkg{pkg("acme/scanner", true, true)},
+			plugins:  []*PluginPkg{pkg("acme/scanner", "svc-a", true, true)},
 			wantRun:  []string{"acme/scanner"},
 			wantExit: 0,
 		},
 		{
-			name:        "requested but not installed returns BadUsage",
-			plugins:     []*PluginPkg{pkg("acme/missing", false, true)},
-			wantRun:     nil,
-			wantExit:    BadUsage,
-			wantCulprit: "acme/missing",
+			name:       "requested but not installed returns BadUsage",
+			plugins:    []*PluginPkg{pkg("acme/missing", "svc-a", false, true)},
+			wantRun:    nil,
+			wantExit:   BadUsage,
+			wantErrMsg: "requested plugin that is not installed: acme/missing (required by targets: svc-a)",
 		},
 		{
 			name: "mixed list selects only requested-and-installed, in order",
 			plugins: []*PluginPkg{
-				pkg("acme/local-only", true, false),
-				pkg("acme/scanner", true, true),
-				pkg("acme/second", true, true),
+				pkg("acme/local-only", "", true, false),
+				pkg("acme/scanner", "svc-a", true, true),
+				pkg("acme/second", "svc-b", true, true),
 			},
 			wantRun:  []string{"acme/scanner", "acme/second"},
 			wantExit: 0,
@@ -88,18 +97,96 @@ func TestPlanRun(t *testing.T) {
 		{
 			name: "not-installed requested plugin aborts before running earlier ones",
 			plugins: []*PluginPkg{
-				pkg("acme/scanner", true, true),
-				pkg("acme/missing", false, true),
+				pkg("acme/scanner", "svc-a", true, true),
+				pkg("acme/missing", "svc-b", false, true),
 			},
-			wantRun:     nil,
-			wantExit:    BadUsage,
-			wantCulprit: "acme/missing",
+			wantRun:    nil,
+			wantExit:   BadUsage,
+			wantErrMsg: "requested plugin that is not installed: acme/missing (required by targets: svc-b)",
+		},
+		{
+			name:       "service entry with no plugin key reports no plugin configured",
+			plugins:    []*PluginPkg{pkg("", "svc-x", false, true)},
+			wantRun:    nil,
+			wantExit:   BadUsage,
+			wantErrMsg: "requested plugin that is not installed: no plugin configured (required by targets: svc-x)",
+		},
+		{
+			name: "all missing plugins are reported with their targets, sorted",
+			plugins: []*PluginPkg{
+				pkg("acme/gone", "b-svc", false, true),
+				pkg("acme/gone", "a-svc", false, true),
+				pkg("acme/absent", "z-svc", false, true),
+			},
+			wantRun:    nil,
+			wantExit:   BadUsage,
+			wantErrMsg: "requested plugins that are not installed: acme/absent (required by targets: z-svc), acme/gone (required by targets: a-svc, b-svc)",
+		},
+		{
+			name: "target scopes the run to the named service",
+			plugins: []*PluginPkg{
+				pkg("acme/scanner", "svc-a", true, true),
+				pkg("acme/second", "svc-b", true, true),
+			},
+			target:   "svc-a",
+			wantRun:  []string{"acme/scanner"},
+			wantExit: 0,
+		},
+		{
+			name: "target ignores another service's missing plugin",
+			plugins: []*PluginPkg{
+				pkg("acme/scanner", "svc-a", true, true),
+				pkg("acme/missing", "svc-b", false, true),
+			},
+			target:   "svc-a",
+			wantRun:  []string{"acme/scanner"},
+			wantExit: 0,
+		},
+		{
+			name: "target whose own plugin is missing returns BadUsage",
+			plugins: []*PluginPkg{
+				pkg("acme/scanner", "svc-a", true, true),
+				pkg("acme/missing", "svc-b", false, true),
+			},
+			target:     "svc-b",
+			wantRun:    nil,
+			wantExit:   BadUsage,
+			wantErrMsg: "requested plugin that is not installed: acme/missing (required by targets: svc-b)",
+		},
+		{
+			name: "mixed-case target matches the viper-lowercased service key",
+			plugins: []*PluginPkg{
+				pkg("acme/scanner", "svc-a", true, true),
+				pkg("acme/second", "svc-b", true, true),
+			},
+			target:   "Svc-A",
+			wantRun:  []string{"acme/scanner"},
+			wantExit: 0,
+		},
+		{
+			name: "unknown target returns BadUsage listing available targets",
+			plugins: []*PluginPkg{
+				pkg("acme/scanner", "svc-a", true, true),
+				pkg("acme/second", "svc-b", true, true),
+			},
+			target:     "ghost",
+			wantRun:    nil,
+			wantExit:   BadUsage,
+			wantErrMsg: `target "ghost" is not defined in the config (available targets: svc-a, svc-b)`,
+		},
+		{
+			name:       "unknown target with no requested plugins omits the available list",
+			plugins:    []*PluginPkg{pkg("acme/installed-only", "", true, false)},
+			target:     "ghost",
+			wantRun:    nil,
+			wantExit:   BadUsage,
+			wantErrMsg: `target "ghost" is not defined in the config`,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			toRun, earlyExit, culprit := planRun(tt.plugins)
+			toRun, earlyExit, errMsg := planRun(tt.plugins, tt.target)
 
 			if earlyExit != tt.wantExit {
 				t.Errorf("earlyExit = %d, want %d", earlyExit, tt.wantExit)
@@ -118,14 +205,26 @@ func TestPlanRun(t *testing.T) {
 				}
 			}
 
-			gotCulprit := ""
-			if culprit != nil {
-				gotCulprit = culprit.Name
-			}
-			if gotCulprit != tt.wantCulprit {
-				t.Errorf("culprit = %q, want %q", gotCulprit, tt.wantCulprit)
+			if errMsg != tt.wantErrMsg {
+				t.Errorf("errMsg = %q, want %q", errMsg, tt.wantErrMsg)
 			}
 		})
+	}
+}
+
+// TestRun_ConsultsTargetName proves Run wires config.TargetName() into the plan:
+// a target set via the config/env tier (viper) that names no configured service
+// must abort with BadUsage before any plugin is considered runnable.
+func TestRun_ConsultsTargetName(t *testing.T) {
+	resetViper()
+	t.Cleanup(resetViper)
+	viper.Set("target", "ghost")
+
+	getPlugins := func() []*PluginPkg {
+		return []*PluginPkg{{Name: "acme/scanner", ServiceTarget: "svc-a", Installed: true, Requested: true}}
+	}
+	if code := Run(hclog.NewNullLogger(), getPlugins); code != BadUsage {
+		t.Errorf("Run with an unknown target = %d, want BadUsage (%d)", code, BadUsage)
 	}
 }
 

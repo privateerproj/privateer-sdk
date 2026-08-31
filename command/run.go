@@ -5,13 +5,16 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"sort"
 	"strconv"
+	"strings"
 
 	hclog "github.com/hashicorp/go-hclog"
 	hcplugin "github.com/hashicorp/go-plugin"
 	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/privateerproj/privateer-sdk/shared"
 )
 
@@ -44,29 +47,101 @@ func mergeExitCode(prev, next int) int {
 // planRun decides, without executing anything, what Run should do with the
 // resolved plugin list:
 //   - toRun is the requested-and-installed plugins to execute, in input order.
+//     A non-empty target scopes it to that service alone; other services are
+//     ignored for both execution and validation, so a shared config with a
+//     broken unrelated entry cannot block a targeted run.
 //   - earlyExit is non-zero when Run must return immediately without executing:
-//     NoTests when the plugin list is empty, BadUsage when a requested plugin
-//     is not installed (culprit names it, for the log line).
+//     NoTests when the plugin list is empty, BadUsage when the target names no
+//     configured service or a requested plugin is not installed (errMsg is the
+//     ready-to-log explanation).
 //
 // Pulling this decision out of the execution loop lets it be table-tested
-// without go-plugin fakes. It validates the whole list up front, so a config
-// that requests an uninstalled plugin now fails before any plugin runs.
-// Previously a requested+installed plugin earlier in the (map-ordered, so
-// non-deterministic) slice could execute before the BadUsage abort.
-func planRun(plugins []*PluginPkg) (toRun []*PluginPkg, earlyExit int, culprit *PluginPkg) {
+// without go-plugin fakes. It validates the whole scoped list up front, so a
+// config that requests an uninstalled plugin fails before any plugin runs.
+func planRun(plugins []*PluginPkg, target string) (toRun []*PluginPkg, earlyExit int, errMsg string) {
 	if len(plugins) == 0 {
-		return nil, NoTests, nil
+		return nil, NoTests, ""
 	}
+
+	var requested []*PluginPkg
 	for _, pluginPkg := range plugins {
-		if !pluginPkg.Requested {
-			continue
+		if pluginPkg.Requested {
+			requested = append(requested, pluginPkg)
 		}
-		if !pluginPkg.Installed {
-			return nil, BadUsage, pluginPkg
-		}
-		toRun = append(toRun, pluginPkg)
 	}
-	return toRun, 0, nil
+
+	if target != "" {
+		var scoped []*PluginPkg
+		for _, pluginPkg := range requested {
+			// Viper lowercases config map keys (so ServiceTarget is lowercase),
+			// while the target arrives with the user's casing; fold to match
+			// the case-insensitive lookups everywhere else in the config layer.
+			if strings.EqualFold(pluginPkg.ServiceTarget, target) {
+				scoped = append(scoped, pluginPkg)
+			}
+		}
+		if len(scoped) == 0 {
+			return nil, BadUsage, unknownTargetMsg(target, requested)
+		}
+		requested = scoped
+	}
+
+	var missing []*PluginPkg
+	for _, pluginPkg := range requested {
+		if !pluginPkg.Installed {
+			missing = append(missing, pluginPkg)
+		}
+	}
+	if len(missing) > 0 {
+		return nil, BadUsage, missingPluginsMsg(missing)
+	}
+	return requested, 0, ""
+}
+
+// unknownTargetMsg names the target that matched no configured service and
+// lists the targets the config does define, so a typo is a one-glance fix.
+func unknownTargetMsg(target string, requested []*PluginPkg) string {
+	names := make([]string, 0, len(requested))
+	for _, pluginPkg := range requested {
+		names = append(names, pluginPkg.ServiceTarget)
+	}
+	if len(names) == 0 {
+		return fmt.Sprintf("target %q is not defined in the config", target)
+	}
+	sort.Strings(names)
+	return fmt.Sprintf("target %q is not defined in the config (available targets: %s)", target, strings.Join(names, ", "))
+}
+
+// missingPluginsMsg reports every requested-but-not-installed plugin with the
+// targets that require it, sorted for deterministic output, so a shared config
+// can be fixed in one pass instead of one failure per run.
+func missingPluginsMsg(missing []*PluginPkg) string {
+	byPlugin := make(map[string][]string, len(missing))
+	for _, pluginPkg := range missing {
+		byPlugin[pluginPkg.Name] = append(byPlugin[pluginPkg.Name], pluginPkg.ServiceTarget)
+	}
+	names := make([]string, 0, len(byPlugin))
+	for name := range byPlugin {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	parts := make([]string, 0, len(names))
+	for _, name := range names {
+		targets := byPlugin[name]
+		sort.Strings(targets)
+		// A service entry with no plugin: key reaches here with an empty name;
+		// say so rather than render a blank.
+		if name == "" {
+			name = "no plugin configured"
+		}
+		parts = append(parts, fmt.Sprintf("%s (required by targets: %s)", name, strings.Join(targets, ", ")))
+	}
+	noun := "plugin that is"
+	if len(names) > 1 {
+		noun = "plugins that are"
+	}
+	return fmt.Sprintf("requested %s not installed: %s", noun, strings.Join(parts, ", "))
 }
 
 // Run executes all plugins with handling for the command line.
@@ -77,13 +152,13 @@ func Run(logger hclog.Logger, getPlugins func() []*PluginPkg) (exitCode int) {
 	logger.Trace(fmt.Sprintf(
 		"Using bin: %s", viper.GetString("binaries-path")))
 
-	toRun, earlyExit, culprit := planRun(getPlugins())
+	toRun, earlyExit, errMsg := planRun(getPlugins(), config.TargetName())
 	switch earlyExit {
 	case NoTests:
 		logger.Error(fmt.Sprintf("no plugins were requested in config: %s", viper.GetString("binaries-path")))
 		return NoTests
 	case BadUsage:
-		logger.Error(fmt.Sprintf("requested plugin that is not installed: %s", culprit.Name))
+		logger.Error(errMsg)
 		return BadUsage
 	}
 
