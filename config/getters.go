@@ -89,6 +89,20 @@ func GetServices() map[string]interface{} {
 	return viper.GetStringMap(targetsKey())
 }
 
+// GetTargetVars returns the vars declared directly on a target, excluding
+// inherited top-level and global vars. The bool reports whether the target
+// exists, distinguishing an empty target vars map from a hand-built Config.
+func GetTargetVars(targetName string) (map[string]interface{}, bool) {
+	if targetName == "" {
+		return nil, false
+	}
+	targetKey := fmt.Sprintf("%s.%s", targetsKey(), targetName)
+	if !viper.IsSet(targetKey) {
+		return nil, false
+	}
+	return viper.GetStringMap(targetKey + ".vars"), true
+}
+
 // GetServicePlugin returns the plugin name for the given service.
 // It reads from the same viper state as NewConfig (e.g. after command.ReadConfig()).
 func GetServicePlugin(serviceName string) string {

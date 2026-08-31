@@ -6,6 +6,37 @@ import (
 	"testing"
 )
 
+func TestConfigValidate_APIKeyRequirementDependsOnBaseURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  Config
+		wantErr bool
+	}{
+		{
+			name:    "default endpoint requires credential",
+			config:  Config{Provider: "openai", Model: "gpt-4o-mini"},
+			wantErr: true,
+		},
+		{
+			name:   "custom endpoint permits no credential",
+			config: Config{Provider: "openai", Model: "gpt-4o-mini", BaseURL: "http://127.0.0.1:8000/v1"},
+		},
+		{
+			name:   "custom endpoint retains credential",
+			config: Config{Provider: "openai", Model: "gpt-4o-mini", BaseURL: "https://gateway.example/v1", APIKey: "gateway-key"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.config.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Validate() error = %v, wantErr %t", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 // Config.String must keep the credential out of any fmt-formatted output, since
 // %v/%+v on an adapter (or its embedded Base) recurses into Config.
 func TestConfigString_RedactsAPIKey(t *testing.T) {

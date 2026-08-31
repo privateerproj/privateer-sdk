@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path"
 	"strings"
@@ -13,6 +14,8 @@ import (
 	"github.com/gemaraproj/go-gemara"
 	"github.com/gemaraproj/go-gemara/gemaraconv"
 	"github.com/goccy/go-yaml"
+	"github.com/privateerproj/privateer-sdk/ai"
+	"github.com/privateerproj/privateer-sdk/ai/provider"
 	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/privateerproj/privateer-sdk/utils"
 )
@@ -226,12 +229,55 @@ func getImportedControls(catalog *gemara.ControlCatalog, referenceCatalogs map[s
 	return result
 }
 
+// validateAIConfig fails a run at mobilization time when AI is enabled but
+// misconfigured, so the problem surfaces as a config error up front rather than
+// as a step failure on the first AI call. AI is opt-in, so a config that does
+// not enable it is not an error.
+func validateAIConfig(cfg *config.Config) error {
+	aiConfig, configured, err := provider.ConfigFromSDKConfig(*cfg)
+	if err != nil {
+		return fmt.Errorf("target %q: invalid AI configuration: %w", cfg.ServiceName, err)
+	}
+	if !configured {
+		return nil
+	}
+
+	// aiConfig is already normalized, so every string field is trimmed here.
+	if aiConfig.Model == "" {
+		return fmt.Errorf("target %q: ai_model is required when ai_provider is set", cfg.ServiceName)
+	}
+	if aiConfig.APIKey == "" && aiConfig.BaseURL == "" {
+		return fmt.Errorf(
+			"target %q: an AI credential is required for provider %q. Set PVTR_AI_API_KEY, or set ai_base_url if the endpoint needs no credential",
+			cfg.ServiceName,
+			aiConfig.Provider,
+		)
+	}
+	if aiConfig.BaseURL != "" {
+		parsed, parseErr := url.Parse(aiConfig.BaseURL)
+		validScheme := parseErr == nil && (strings.EqualFold(parsed.Scheme, "http") || strings.EqualFold(parsed.Scheme, "https"))
+		if !validScheme || parsed.Host == "" || parsed.User != nil || parsed.ForceQuery || parsed.RawQuery != "" || parsed.Fragment != "" {
+			return fmt.Errorf("target %q: ai_base_url must be an absolute HTTP(S) API root URL without userinfo, query, or fragment", cfg.ServiceName)
+		}
+	}
+	// The checks above exist to give operators a message naming the offending
+	// key; this is the authoritative one, and the only check for whether the
+	// provider is registered. The discarded adapter costs one struct per run.
+	if _, err := ai.NewClientWithAIConfig(aiConfig); err != nil {
+		return fmt.Errorf("target %q: invalid ai_provider %q: %w", cfg.ServiceName, aiConfig.Provider, err)
+	}
+	return nil
+}
+
 // Mobilize initializes the orchestrator and executes all evaluation suites.
 func (v *EvaluationOrchestrator) Mobilize() error {
 	v.Evaluation_Suites = nil
 	v.setupConfig()
 	if v.config.Error != nil {
 		return BAD_CONFIG(v.config.Error, "mob10")
+	}
+	if err := validateAIConfig(v.config); err != nil {
+		return BAD_CONFIG(err, "mob15")
 	}
 
 	if len(v.config.Policy.ControlCatalogs) == 0 {
