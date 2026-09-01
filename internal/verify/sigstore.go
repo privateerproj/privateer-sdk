@@ -9,12 +9,12 @@ package verify
 import (
 	"context"
 	"crypto/sha256"
-	_ "embed"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/gemaraproj/grc-store-clientkit/trustroot"
 	"github.com/revanite-io/grc-store-protocol/identity"
 	"github.com/sigstore/sigstore-go/pkg/bundle"
 	"github.com/sigstore/sigstore-go/pkg/root"
@@ -24,12 +24,15 @@ import (
 // embeddedTrustedRoot is the pinned public-good Sigstore trusted root
 // (Fulcio/Rekor/CTFE). Pinning it — rather than fetching live via TUF — makes
 // verification offline and deterministic; the binary self-contains the trust
-// material. It is the SAME public-good root the grc.store hub embeds, so a
-// GitHub-Actions-keyless signature the hub accepts verifies here identically.
-// OPERATIONAL OBLIGATION: refresh this file when the public-good root rotates.
+// material.
 //
-//go:embed trusted_root.json
-var embeddedTrustedRoot []byte
+// It is the SAME public-good root the grc.store hub and grcli use, which is
+// precisely why it is no longer vendored here: all three shipped a
+// byte-identical copy, so a rotation was three edits and three chances to miss
+// one — and a component left behind on a stale root rejects signatures the
+// others accept. It now comes from grc-store-clientkit, where refreshing it is
+// a single release.
+var embeddedTrustedRoot = trustroot.Bytes()
 
 // Named fail-closed errors. Every one ABORTS the install and is surfaced with
 // the signer identity (when known) and coordinate by the caller.

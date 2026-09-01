@@ -36,6 +36,7 @@ func makeSigningJWT(t *testing.T, claims map[string]any) string {
 func clearAmbientSigningEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv(signingTokenEnv, "")
+	t.Setenv("GITHUB_ACTIONS", "")
 	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_URL", "")
 	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "")
 }
@@ -133,60 +134,53 @@ func ghaTokenServer(t *testing.T, h http.HandlerFunc) {
 	t.Helper()
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
+	t.Setenv("GITHUB_ACTIONS", "true")
 	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_URL", srv.URL)
 	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "request-token")
 }
 
-func TestGithubActionsSigningToken_HappyPath(t *testing.T) {
-	t.Setenv(signingTokenEnv, "") // ensure GHA path, not the env override
+// The GHA token request itself now lives in grc-store-clientkit and is tested
+// there. What remains pvtr's to get right is the WIRING: that ambient detection
+// routes here at all, and that it asks for Fulcio's audience rather than the
+// hub's. A token minted for the wrong audience is rejected by Fulcio at signing
+// time, long after the mistake.
+func TestSigningIDToken_GitHubActionsPathUsesFulcioAudience(t *testing.T) {
+	t.Setenv(signingTokenEnv, "") // ensure the GHA path, not the env override
 	jwt := makeSigningJWT(t, map[string]any{"aud": fulcioAudience})
-	var gotAudience, gotAuth string
+	var gotAudience string
 	ghaTokenServer(t, func(w http.ResponseWriter, r *http.Request) {
 		gotAudience = r.URL.Query().Get("audience")
-		gotAuth = r.Header.Get("Authorization")
 		_ = json.NewEncoder(w).Encode(map[string]string{"value": jwt})
 	})
 
-	tok, ok, err := githubActionsSigningToken(context.Background())
-	if err != nil || !ok {
-		t.Fatalf("expected a token, got ok=%v err=%v", ok, err)
+	tok, err := SigningIDToken(context.Background(), io.Discard)
+	if err != nil {
+		t.Fatalf("SigningIDToken: %v", err)
 	}
 	if tok != jwt {
-		t.Errorf("returned token does not match server response")
+		t.Error("returned token does not match the one the token service served")
 	}
 	if gotAudience != fulcioAudience {
-		t.Errorf("audience query = %q, want %q", gotAudience, fulcioAudience)
-	}
-	if gotAuth != "Bearer request-token" {
-		t.Errorf("authorization header = %q", gotAuth)
+		t.Errorf("audience = %q, want %q — public-good Fulcio rejects anything else", gotAudience, fulcioAudience)
 	}
 }
 
-func TestGithubActionsSigningToken_Non200Errors(t *testing.T) {
-	t.Setenv(signingTokenEnv, "")
+// An explicit SIGSTORE_ID_TOKEN must still win over ambient GHA detection, so a
+// runner that can mint its own token for a different trust domain is not
+// silently overridden by the one the runner offers.
+func TestSigningIDToken_EnvOverrideBeatsGitHubActions(t *testing.T) {
+	override := makeSigningJWT(t, map[string]any{"aud": fulcioAudience, "iss": "https://gitlab.example"})
 	ghaTokenServer(t, func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, "no token for you", http.StatusForbidden)
+		t.Error("the GHA token service must not be called when SIGSTORE_ID_TOKEN is set")
+		_ = json.NewEncoder(w).Encode(map[string]string{"value": "from-gha"})
 	})
-	if _, ok, err := githubActionsSigningToken(context.Background()); err == nil || ok {
-		t.Errorf("expected an error on non-200, got ok=%v err=%v", ok, err)
-	}
-}
+	t.Setenv(signingTokenEnv, override)
 
-func TestGithubActionsSigningToken_EmptyValueErrors(t *testing.T) {
-	t.Setenv(signingTokenEnv, "")
-	ghaTokenServer(t, func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]string{"value": ""})
-	})
-	if _, ok, err := githubActionsSigningToken(context.Background()); err == nil || ok {
-		t.Errorf("expected an error on empty value, got ok=%v err=%v", ok, err)
+	tok, err := SigningIDToken(context.Background(), io.Discard)
+	if err != nil {
+		t.Fatalf("SigningIDToken: %v", err)
 	}
-}
-
-// Not in GitHub Actions (neither env var set) → ok=false, no error.
-func TestGithubActionsSigningToken_NotInGHA(t *testing.T) {
-	clearAmbientSigningEnv(t)
-	tok, ok, err := githubActionsSigningToken(context.Background())
-	if err != nil || ok || tok != "" {
-		t.Errorf("expected (\"\", false, nil) outside GHA, got (%q, %v, %v)", tok, ok, err)
+	if tok != override {
+		t.Errorf("got the ambient token, want the explicit %s override", signingTokenEnv)
 	}
 }

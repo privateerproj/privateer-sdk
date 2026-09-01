@@ -6,13 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
-	"net/url"
 	"os"
 	"slices"
 	"strings"
-	"time"
 
+	clientauth "github.com/gemaraproj/grc-store-clientkit/auth"
 	"github.com/sigstore/sigstore/pkg/oauthflow"
 )
 
@@ -24,11 +22,6 @@ const sigstoreOIDCIssuer = "https://oauth2.sigstore.dev/auth"
 // sigstoreClientID is the public client id for the interactive sigstore flow
 // (the same cosign uses).
 const sigstoreClientID = "sigstore"
-
-// ghaTokenTimeout bounds the GitHub Actions OIDC token request. It is more
-// generous than the hub's httpTimeout because the GHA token service can be
-// slower than the hub's own OIDC discovery.
-const ghaTokenTimeout = 15 * time.Second
 
 // signingTokenEnv is an explicit OIDC signing-token override: any environment
 // that can mint an aud=sigstore token (GitLab CI `id_tokens`, a manually minted
@@ -68,11 +61,11 @@ func SigningIDToken(ctx context.Context, promptOut io.Writer) (string, error) {
 		return raw, nil
 	}
 
-	// 2. GitHub Actions ambient OIDC.
-	if tok, ok, err := githubActionsSigningToken(ctx); err != nil {
-		return "", err
-	} else if ok {
-		return tok, nil
+	// 2. GitHub Actions ambient OIDC. The request itself is shared with grcli
+	// (grc-store-clientkit) — only the audience differs between the two uses,
+	// and here it must be Fulcio's.
+	if clientauth.InGitHubActions() {
+		return clientauth.FetchGitHubActionsToken(ctx, fulcioAudience)
 	}
 
 	// 3. Interactive — only viable with a human at a terminal.
@@ -90,50 +83,6 @@ func SigningIDToken(ctx context.Context, promptOut io.Writer) (string, error) {
 				"where it is detected automatically", signingTokenEnv, fulcioAudience)
 	}
 	return interactiveSigningToken(promptOut)
-}
-
-// githubActionsSigningToken requests a GHA OIDC ID token with audience
-// "sigstore" when running in GitHub Actions (ACTIONS_ID_TOKEN_REQUEST_URL +
-// _TOKEN are present). Returns ok=false when not in that environment.
-func githubActionsSigningToken(ctx context.Context) (string, bool, error) {
-	reqURL := strings.TrimSpace(os.Getenv("ACTIONS_ID_TOKEN_REQUEST_URL"))
-	reqTok := strings.TrimSpace(os.Getenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN"))
-	if reqURL == "" || reqTok == "" {
-		return "", false, nil
-	}
-	u, err := url.Parse(reqURL)
-	if err != nil {
-		return "", false, fmt.Errorf("parsing ACTIONS_ID_TOKEN_REQUEST_URL: %w", err)
-	}
-	q := u.Query()
-	q.Set("audience", fulcioAudience)
-	u.RawQuery = q.Encode()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-	if err != nil {
-		return "", false, fmt.Errorf("building GHA OIDC request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+reqTok)
-	req.Header.Set("Accept", "application/json")
-	resp, err := (&http.Client{Timeout: ghaTokenTimeout}).Do(req)
-	if err != nil {
-		return "", false, fmt.Errorf("requesting GHA OIDC token: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-	if resp.StatusCode != http.StatusOK {
-		return "", false, fmt.Errorf("GHA OIDC token request returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	var out struct {
-		Value string `json:"value"`
-	}
-	if err := json.Unmarshal(body, &out); err != nil {
-		return "", false, fmt.Errorf("decoding GHA OIDC token: %w", err)
-	}
-	if out.Value == "" {
-		return "", false, fmt.Errorf("GHA OIDC token response had no value")
-	}
-	return out.Value, true, nil
 }
 
 // validateSigningToken does a lightweight, signature-less sanity check of a
