@@ -92,16 +92,16 @@ func TestBearerToken_StoreWriteFailureReturnsToken(t *testing.T) {
 		t.Skip("chmod-based read-only dir test not applicable on Windows")
 	}
 
-	// A minimal OIDC server: discovery plus a token endpoint that honours any
+	// A minimal OIDC server: discovery plus a token endpoint that honors any
 	// refresh grant.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/.well-known/openid-configuration":
-			fmt.Fprintf(w, `{"issuer":%q,"device_authorization_endpoint":"%s/device","token_endpoint":"%s/token"}`,
+			_, _ = fmt.Fprintf(w, `{"issuer":%q,"device_authorization_endpoint":"%s/device","token_endpoint":"%s/token"}`,
 				"http://"+r.Host, "http://"+r.Host, "http://"+r.Host)
 		case "/token":
-			fmt.Fprint(w, `{"access_token":"refreshed-token","token_type":"Bearer","expires_in":3600,"refresh_token":"new-refresh"}`)
+			_, _ = fmt.Fprint(w, `{"access_token":"refreshed-token","token_type":"Bearer","expires_in":3600,"refresh_token":"new-refresh"}`)
 		default:
 			http.NotFound(w, r)
 		}
