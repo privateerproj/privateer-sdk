@@ -13,7 +13,7 @@ import (
 
 // ReservedPluginSegment is the reserved repo path segment distinguishing a
 // plugin OCI repository (<ns>/plugins/<plugin_id>) from a Gemara catalog repo
-// under the same namespace (grc.store ADR-0034 decision 5). Mirrors the hub's
+// under the same namespace (a grc.store hub rule). Mirrors the hub's
 // store.ReservedPluginSegment. It must stay OCI-distribution-spec-valid (a path
 // component must begin with [a-z0-9]); the earlier "_plugins" value was illegal
 // and was changed to "plugins".
@@ -92,8 +92,8 @@ func pushBlobTo(ctx context.Context, target oras.Target, b blob) error {
 // newPluginRepository builds the oras repository client for a plugin
 // coordinate. The repo path is "<namespace>/plugins/<plugin_id>" — the
 // `plugins` segment is reserved by grc.store to distinguish plugin repos from
-// catalog repos under the same namespace (ADR-0034 decision 5; `plugins` is
-// also a reserved org slug, so the first segment can never collide with it).
+// catalog repos under the same namespace (`plugins` is also a
+// reserved org slug, so the first segment can never collide with it).
 func newPluginRepository(opts PushOptions, coordinate string) (*remote.Repository, error) {
 	if opts.RegistryHost == "" {
 		return nil, fmt.Errorf("registry host is required")

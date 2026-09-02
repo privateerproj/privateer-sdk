@@ -20,7 +20,7 @@ import (
 
 // BundleMediaType is the artifactType/mediaType of the Sigstore v0.3 bundle
 // stored as an OCI 1.1 referrer of the plugin index — re-exported from the
-// shared protocol contract (single source of truth; ADR-0035).
+// shared protocol contract (single source of truth).
 const BundleMediaType = mediatype.SigstoreBundle
 
 // maxBlobBytes caps any single fetched blob (manifest, config, bundle). The

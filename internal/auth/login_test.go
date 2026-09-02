@@ -16,11 +16,9 @@ import (
 	clientauth "github.com/gemaraproj/grc-store-clientkit/auth"
 )
 
-// storeUnder builds a store at the path pvtrApp resolves to under an XDG root,
-// so a test can seed credentials the wrappers will actually find. It asserts
-// the layout rather than assuming it: if grc-store-clientkit ever changed where
-// an App's file lives, these tests would otherwise pass while pvtr silently
-// wrote somewhere new.
+// storeUnder builds the store pvtrApp resolves to under an XDG root, so a test
+// can seed credentials the wrappers will find. It asserts the path so that a
+// change in where grc-store-clientkit places an App's file fails here.
 func storeUnder(t *testing.T, xdgRoot string) *clientauth.Store {
 	t.Helper()
 	s, err := clientauth.NewDefaultStore(pvtrApp)
@@ -57,8 +55,7 @@ func TestBearerToken_ResolutionOrder(t *testing.T) {
 	if !errors.As(err, &noTok) {
 		t.Fatalf("expected *ErrNoToken, got %v", err)
 	}
-	// The hint must name pvtr. The shared package also serves grcli, and
-	// telling a pvtr user to run `grcli login` is worse than saying nothing.
+	// The hint must name pvtr, not grcli.
 	if msg := err.Error(); !strings.Contains(msg, "pvtr login") || !strings.Contains(msg, "PVTR_TOKEN") {
 		t.Errorf("error should name pvtr and PVTR_TOKEN, got: %v", err)
 	}
@@ -88,10 +85,8 @@ func TestBearerToken_FromStore(t *testing.T) {
 }
 
 // When the store's Put fails after a successful refresh (an unwritable
-// directory), BearerToken must still return the valid access token rather than
-// surfacing the write error. Under refresh-token rotation the old token is
-// already consumed, so the warning on stderr is informational — returning the
-// token is mandatory.
+// directory), BearerToken must still return the refreshed access token: under
+// refresh-token rotation the old token is already consumed.
 func TestBearerToken_StoreWriteFailureReturnsToken(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("chmod-based read-only dir test not applicable on Windows")

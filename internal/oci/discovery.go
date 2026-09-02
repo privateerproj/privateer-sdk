@@ -3,8 +3,8 @@
 //
 // This file is the first, deliberately small member: hub discovery. A user
 // configures exactly ONE endpoint — the hub base URL — and the OCI registry
-// host is learned from the hub's /.well-known/grc-store-configuration document
-// (ADR-0026). Nothing in pvtr hardcodes the registry host, mirroring how the
+// host is learned from the hub's /.well-known/grc-store-configuration
+// document. Nothing in pvtr hardcodes the registry host, mirroring how the
 // hub advertises it via HUB_OCI_PUBLIC_URL.
 package oci
 
@@ -41,7 +41,7 @@ const hubURLKey = "hub-url"
 // already honors it via AutomaticEnv.
 const hubURLEnv = "PVTR_HUB_URL"
 
-// wellKnownPath is the discovery document path served by the hub (ADR-0026)
+// wellKnownPath is the discovery document path served by the hub
 // this should remain consistent for self-hosted registries as well
 const wellKnownPath = "/.well-known/grc-store-configuration"
 
@@ -221,7 +221,7 @@ func (d *Discovery) parseRegistryURL() (*url.URL, error) {
 
 // RegistryHost returns the OCI registry host (no scheme, no trailing slash)
 // to build an oras/Docker reference from. registry_url is advertised WITH a
-// scheme (ADR-0026) but OCI references are host[:port]-only, so the scheme is
+// scheme but OCI references are host[:port]-only, so the scheme is
 // stripped here — part of the same single-point-of-truth as PlainHTTP.
 func (d *Discovery) RegistryHost() (string, error) {
 	u, err := d.parseRegistryURL()

@@ -4,7 +4,7 @@ import (
 	"context"
 )
 
-// browsePath is the hub's anonymous plugin-directory endpoint (ADR-0034).
+// browsePath is the hub's anonymous plugin-directory endpoint.
 const browsePath = "/v1/plugins"
 
 // BrowseItem is one entry from GET {hub}/v1/plugins. Only the fields pvtr uses

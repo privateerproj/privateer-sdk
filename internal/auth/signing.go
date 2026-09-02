@@ -61,9 +61,8 @@ func SigningIDToken(ctx context.Context, promptOut io.Writer) (string, error) {
 		return raw, nil
 	}
 
-	// 2. GitHub Actions ambient OIDC. The request itself is shared with grcli
-	// (grc-store-clientkit) — only the audience differs between the two uses,
-	// and here it must be Fulcio's.
+	// 2. GitHub Actions ambient OIDC, requested with Fulcio's audience rather
+	// than the hub's.
 	if clientauth.InGitHubActions() {
 		return clientauth.FetchGitHubActionsToken(ctx, fulcioAudience)
 	}

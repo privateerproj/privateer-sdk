@@ -139,11 +139,9 @@ func ghaTokenServer(t *testing.T, h http.HandlerFunc) {
 	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "request-token")
 }
 
-// The GHA token request itself now lives in grc-store-clientkit and is tested
-// there. What remains pvtr's to get right is the WIRING: that ambient detection
-// routes here at all, and that it asks for Fulcio's audience rather than the
-// hub's. A token minted for the wrong audience is rejected by Fulcio at signing
-// time, long after the mistake.
+// In GitHub Actions, SigningIDToken must request the ambient token with
+// Fulcio's audience rather than the hub's. The token request itself is tested
+// in grc-store-clientkit.
 func TestSigningIDToken_GitHubActionsPathUsesFulcioAudience(t *testing.T) {
 	t.Setenv(signingTokenEnv, "") // ensure the GHA path, not the env override
 	jwt := makeSigningJWT(t, map[string]any{"aud": fulcioAudience})
@@ -161,13 +159,11 @@ func TestSigningIDToken_GitHubActionsPathUsesFulcioAudience(t *testing.T) {
 		t.Error("returned token does not match the one the token service served")
 	}
 	if gotAudience != fulcioAudience {
-		t.Errorf("audience = %q, want %q — public-good Fulcio rejects anything else", gotAudience, fulcioAudience)
+		t.Errorf("audience = %q, want %q", gotAudience, fulcioAudience)
 	}
 }
 
-// An explicit SIGSTORE_ID_TOKEN must still win over ambient GHA detection, so a
-// runner that can mint its own token for a different trust domain is not
-// silently overridden by the one the runner offers.
+// An explicit SIGSTORE_ID_TOKEN wins over ambient GHA detection.
 func TestSigningIDToken_EnvOverrideBeatsGitHubActions(t *testing.T) {
 	override := makeSigningJWT(t, map[string]any{"aud": fulcioAudience, "iss": "https://gitlab.example"})
 	ghaTokenServer(t, func(w http.ResponseWriter, _ *http.Request) {

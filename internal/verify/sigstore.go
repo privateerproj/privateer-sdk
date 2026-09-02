@@ -24,14 +24,8 @@ import (
 // embeddedTrustedRoot is the pinned public-good Sigstore trusted root
 // (Fulcio/Rekor/CTFE). Pinning it — rather than fetching live via TUF — makes
 // verification offline and deterministic; the binary self-contains the trust
-// material.
-//
-// It is the SAME public-good root the grc.store hub and grcli use, which is
-// precisely why it is no longer vendored here: all three shipped a
-// byte-identical copy, so a rotation was three edits and three chances to miss
-// one — and a component left behind on a stale root rejects signatures the
-// others accept. It now comes from grc-store-clientkit, where refreshing it is
-// a single release.
+// material. It is the same public-good root the grc.store hub and grcli use,
+// sourced from grc-store-clientkit so that all three rotate together.
 var embeddedTrustedRoot = trustroot.Bytes()
 
 // Named fail-closed errors. Every one ABORTS the install and is surfaced with

@@ -17,8 +17,8 @@ import (
 )
 
 // grc.store plugin media types — re-exported from the shared protocol contract
-// so the wire strings have a single source of truth (grc-store-protocol/mediatype,
-// ADR-0035) instead of a hand-synced copy.
+// so the wire strings have a single source of truth (grc-store-protocol/mediatype)
+// instead of a hand-synced copy.
 const (
 	MediaTypePluginConfig = mediatype.PluginConfig
 	MediaTypePluginBinary = mediatype.PluginBinary
@@ -31,7 +31,7 @@ const defaultProtocol = "netrpc"
 // The signed config-blob schema (vnd.grc-store.plugin.config.v1+json) — the
 // descriptor a bare binary can't self-carry (entrypoint rename, protocol,
 // in-model `evaluates` linkage) — is the shared producer↔hub contract type
-// pluginspec.Config (ADR-0035). pvtr writes and signs it; the hub reads it as
+// pluginspec.Config. pvtr writes and signs it; the hub reads it as
 // the authoritative source on sync. We use pluginspec.Config/Platform/Evaluate
 // directly so the wire shape can't drift from the hub's reader.
 

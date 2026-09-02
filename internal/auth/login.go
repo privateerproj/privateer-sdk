@@ -1,16 +1,10 @@
-// Package auth is pvtr's thin layer over grc-store-clientkit's OIDC machinery:
-// the device-grant login, the credential store, and the token resolution that
-// authenticate `pvtr publish` against grc.store (ADR-0028).
+// Package auth authenticates `pvtr publish` against grc.store. The
+// device-grant login, credential store, and token resolution come from
+// grc-store-clientkit; this package supplies pvtr's App identity and prompt
+// wording, plus the Sigstore signing identity in signing.go, which is a
+// separate token from a separate issuer.
 //
-// The flows themselves are no longer implemented here. They were, and so were
-// near-identical copies of them in grcli — 148 identical lines of credential
-// store and 187 of device grant — until both moved to
-// github.com/gemaraproj/grc-store-clientkit. What remains in this package is
-// what is genuinely pvtr's: its prompt wording, its App identity, and the
-// Sigstore signing identity in signing.go, which is a DIFFERENT token from a
-// DIFFERENT issuer and deliberately not shared.
-//
-// The consumer (install) path stays anonymous and does not touch this package.
+// The consumer (install) path is anonymous and does not use this package.
 package auth
 
 import (
@@ -24,10 +18,9 @@ import (
 )
 
 // pvtrApp identifies pvtr to grc-store-clientkit. It selects the credential
-// file at ${XDG_DATA_HOME:-~/.local/share}/pvtr/credentials.json — the same
-// path pvtr has always written, and deliberately NOT grcli's, so the two tools
-// cannot clobber each other's tokens — and names pvtr in every "run `pvtr
-// login`" hint the shared code emits.
+// file at ${XDG_DATA_HOME:-~/.local/share}/pvtr/credentials.json, kept separate
+// from grcli's so the two tools cannot clobber each other's tokens, and names
+// pvtr in the "run `pvtr login`" hints the shared code emits.
 var pvtrApp = clientauth.App{Name: "pvtr", TokenEnv: "PVTR_TOKEN"}
 
 // Login runs the device-authorization grant against the issuer and stores the
@@ -54,8 +47,8 @@ func Login(ctx context.Context, issuer, clientID string, promptOut io.Writer) (s
 
 	creds, err := clientauth.PollForToken(ctx, meta, clientID, da)
 	if err != nil {
-		// The shared sentinels carry no tool name — one package serves both
-		// pvtr and grcli — so the "what do I do now" half is added here.
+		// The shared sentinel carries no tool name, so the pvtr-specific hint
+		// is appended here.
 		if errors.Is(err, clientauth.ErrExpiredDeviceCode) {
 			return "", fmt.Errorf("%w — %s again", err, pvtrApp.LoginHint())
 		}
@@ -88,10 +81,10 @@ func Logout(issuer string) error {
 //  2. The device-grant store for the given issuer, refreshing if near expiry.
 //
 // When neither is available the error names both sources and points at `pvtr
-// login`, so the fix is in the message rather than in the reader's head.
+// login`.
 //
-// This is NOT a signing identity. Fulcio trusts public OIDC issuers, not the
-// grc.store Keycloak — see SigningIDToken.
+// This is not a signing identity; Fulcio trusts public OIDC issuers, not the
+// grc.store Keycloak. See SigningIDToken.
 func BearerToken(ctx context.Context, issuer, clientID string) (string, error) {
 	in := clientauth.ResolveInput{
 		App:      pvtrApp,
@@ -99,8 +92,8 @@ func BearerToken(ctx context.Context, issuer, clientID string) (string, error) {
 		ClientID: clientID,
 		Warn:     os.Stderr,
 	}
-	// A store that cannot be located must not mask PVTR_TOKEN, which Resolve
-	// consults first and which is the whole CI path — so this is best-effort.
+	// Store lookup is best-effort: a missing store must not mask PVTR_TOKEN,
+	// which Resolve consults first.
 	if store, err := clientauth.NewDefaultStore(pvtrApp); err == nil {
 		in.Store = store
 	}
