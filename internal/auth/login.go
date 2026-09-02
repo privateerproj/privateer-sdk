@@ -100,38 +100,12 @@ func BearerToken(ctx context.Context, issuer, clientID string) (string, error) {
 		in.Store = store
 	}
 	tok, err := clientauth.Resolve(ctx, in)
+	// grc-store-clientkit words the no-token error itself, but it cannot know
+	// why the store was unavailable: without this the failure surfaces as "no
+	// OIDC issuer is known", which is not the fix the user needs.
 	var noTok *clientauth.ErrNoToken
-	if errors.As(err, &noTok) {
-		return "", &noTokenError{inner: noTok, msg: noTokenMessage(issuer, storeErr)}
+	if storeErr != nil && errors.As(err, &noTok) {
+		return "", fmt.Errorf("%w (the credential store could not be located: %v)", err, storeErr)
 	}
 	return tok, err
-}
-
-// noTokenError restates the shared ErrNoToken in pvtr's terms. The shared
-// message opens with "--token unset", naming a flag pvtr does not register;
-// Unwrap keeps errors.Is/As matching the sentinel for callers that type-check.
-type noTokenError struct {
-	inner *clientauth.ErrNoToken
-	msg   string
-}
-
-func (e *noTokenError) Error() string { return e.msg }
-func (e *noTokenError) Unwrap() error { return e.inner }
-
-// noTokenMessage names the source that is actually missing. The shared text
-// blames a missing hub URL whenever the store was not consulted, which for pvtr
-// is never the reason: pvtr always has a hub, so the cause is either an
-// unlocatable store or a hub that advertises no issuer to key credentials on.
-func noTokenMessage(issuer string, storeErr error) string {
-	switch {
-	case storeErr != nil:
-		return fmt.Sprintf("no token available: %s unset and the credential store could not be located (%v) — set %s, or fix the data directory and %s",
-			pvtrApp.TokenEnv, storeErr, pvtrApp.TokenEnv, pvtrApp.LoginHint())
-	case issuer == "":
-		return fmt.Sprintf("no token available: %s unset and the hub advertises no OIDC issuer, so there are no stored credentials to consult — set %s",
-			pvtrApp.TokenEnv, pvtrApp.TokenEnv)
-	default:
-		return fmt.Sprintf("no token available: %s unset and no stored credentials for %s — %s",
-			pvtrApp.TokenEnv, issuer, pvtrApp.LoginHint())
-	}
 }
