@@ -93,9 +93,45 @@ func BearerToken(ctx context.Context, issuer, clientID string) (string, error) {
 		Warn:     os.Stderr,
 	}
 	// Store lookup is best-effort: a missing store must not mask PVTR_TOKEN,
-	// which Resolve consults first.
-	if store, err := clientauth.NewDefaultStore(pvtrApp); err == nil {
+	// which Resolve consults first. The error is kept rather than dropped so the
+	// no-token path can name the real cause.
+	store, storeErr := clientauth.NewDefaultStore(pvtrApp)
+	if storeErr == nil {
 		in.Store = store
 	}
-	return clientauth.Resolve(ctx, in)
+	tok, err := clientauth.Resolve(ctx, in)
+	var noTok *clientauth.ErrNoToken
+	if errors.As(err, &noTok) {
+		return "", &noTokenError{inner: noTok, msg: noTokenMessage(issuer, storeErr)}
+	}
+	return tok, err
+}
+
+// noTokenError restates the shared ErrNoToken in pvtr's terms. The shared
+// message opens with "--token unset", naming a flag pvtr does not register;
+// Unwrap keeps errors.Is/As matching the sentinel for callers that type-check.
+type noTokenError struct {
+	inner *clientauth.ErrNoToken
+	msg   string
+}
+
+func (e *noTokenError) Error() string { return e.msg }
+func (e *noTokenError) Unwrap() error { return e.inner }
+
+// noTokenMessage names the source that is actually missing. The shared text
+// blames a missing hub URL whenever the store was not consulted, which for pvtr
+// is never the reason: pvtr always has a hub, so the cause is either an
+// unlocatable store or a hub that advertises no issuer to key credentials on.
+func noTokenMessage(issuer string, storeErr error) string {
+	switch {
+	case storeErr != nil:
+		return fmt.Sprintf("no token available: %s unset and the credential store could not be located (%v) — set %s, or fix the data directory and %s",
+			pvtrApp.TokenEnv, storeErr, pvtrApp.TokenEnv, pvtrApp.LoginHint())
+	case issuer == "":
+		return fmt.Sprintf("no token available: %s unset and the hub advertises no OIDC issuer, so there are no stored credentials to consult — set %s",
+			pvtrApp.TokenEnv, pvtrApp.TokenEnv)
+	default:
+		return fmt.Sprintf("no token available: %s unset and no stored credentials for %s — %s",
+			pvtrApp.TokenEnv, issuer, pvtrApp.LoginHint())
+	}
 }

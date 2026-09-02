@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -55,9 +56,58 @@ func TestBearerToken_ResolutionOrder(t *testing.T) {
 	if !errors.As(err, &noTok) {
 		t.Fatalf("expected *ErrNoToken, got %v", err)
 	}
-	// The hint must name pvtr, not grcli.
-	if msg := err.Error(); !strings.Contains(msg, "pvtr login") || !strings.Contains(msg, "PVTR_TOKEN") {
+	// The hint must name pvtr, not grcli, and must not offer a --token flag:
+	// the shared message names one, but pvtr registers no such flag.
+	msg := err.Error()
+	if !strings.Contains(msg, "pvtr login") || !strings.Contains(msg, "PVTR_TOKEN") {
 		t.Errorf("error should name pvtr and PVTR_TOKEN, got: %v", err)
+	}
+	if strings.Contains(msg, "--token") {
+		t.Errorf("error offers a --token flag pvtr does not have, got: %v", err)
+	}
+}
+
+// With no issuer to key credentials on, the error must say so rather than blame
+// a missing hub URL, which pvtr always has.
+func TestBearerToken_NoIssuerNamesTheRealCause(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv(pvtrApp.TokenEnv, "")
+
+	_, err := BearerToken(context.Background(), "", "pvtr-cli")
+	if err == nil {
+		t.Fatal("expected an error with no token and no issuer")
+	}
+	if msg := err.Error(); !strings.Contains(msg, "no OIDC issuer") || strings.Contains(msg, "hub URL") {
+		t.Errorf("error should blame the missing issuer, not a missing hub URL, got: %v", err)
+	}
+}
+
+// Login appends pvtr's own hint to the shared expired-device-code sentinel.
+// That wrapping is the only pvtr-specific branch left in the login path.
+func TestLogin_ExpiredDeviceCodeNamesPvtr(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			_, _ = fmt.Fprintf(w, `{"issuer":%q,"device_authorization_endpoint":"%s/device","token_endpoint":"%s/token"}`,
+				"http://"+r.Host, "http://"+r.Host, "http://"+r.Host)
+		case "/device":
+			// interval 1 is the floor: clientkit clamps 0 to RFC 8628's 5s default.
+			_, _ = fmt.Fprint(w, `{"device_code":"dc","user_code":"UC","verification_uri":"https://example.test/device","expires_in":60,"interval":1}`)
+		case "/token":
+			_, _ = fmt.Fprint(w, `{"error":"expired_token"}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	_, err := Login(context.Background(), srv.URL, "pvtr-cli", io.Discard)
+	if !errors.Is(err, clientauth.ErrExpiredDeviceCode) {
+		t.Fatalf("expected ErrExpiredDeviceCode, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "pvtr login") {
+		t.Errorf("error should point at `pvtr login`, got: %v", err)
 	}
 }
 
