@@ -4,7 +4,7 @@ go 1.26.2
 
 require (
 	github.com/gemaraproj/go-gemara v0.9.2
-	github.com/gemaraproj/grc-store-clientkit v0.1.1
+	github.com/gemaraproj/grc-store-clientkit v0.1.2
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/goccy/go-yaml v1.19.2
 	github.com/hashicorp/go-hclog v1.6.3
