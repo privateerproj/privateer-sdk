@@ -178,7 +178,7 @@ func Publish(ctx context.Context, w io.Writer, p Params) error {
 
 	bearer, err := auth.BearerToken(ctx, disco.OIDCIssuer, disco.OIDCClientID)
 	if err != nil {
-		return fmt.Errorf("authentication required to publish (run `pvtr login`, or set PVTR_TOKEN in CI): %w", err)
+		return fmt.Errorf("authentication required to publish: %w", err)
 	}
 	regToken, err := oci.MintRegistryToken(ctx, oci.HubURL(), coordinate, bearer)
 	if err != nil {

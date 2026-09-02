@@ -67,18 +67,72 @@ func TestBearerToken_ResolutionOrder(t *testing.T) {
 	}
 }
 
-// With no issuer to key credentials on, the error must say so rather than blame
-// a missing hub URL, which pvtr always has.
-func TestBearerToken_NoIssuerNamesTheRealCause(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+// When the credential store cannot be located at all, the message must lead with
+// that cause. clientkit cannot tell "no store" from "no issuer" — it reports both
+// as "no OIDC issuer is known", which is the wrong fix whenever an issuer was in
+// fact supplied. This is also the only test that reaches the wrap in BearerToken.
+func TestBearerToken_StoreNotLocatableLeadsWithTheRealCause(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("HOME/XDG_DATA_HOME are not how the store is located on Windows")
+	}
+	// Both unset: clientkit falls back to os.UserHomeDir, which then fails.
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("HOME", "")
 	t.Setenv(pvtrApp.TokenEnv, "")
 
-	_, err := BearerToken(context.Background(), "", "pvtr-cli")
-	if err == nil {
-		t.Fatal("expected an error with no token and no issuer")
+	_, err := BearerToken(context.Background(), "https://issuer", "pvtr-cli")
+	var noTok *clientauth.ErrNoToken
+	if !errors.As(err, &noTok) {
+		t.Fatalf("the shared sentinel must stay matchable through the wrap, got %v", err)
 	}
-	if msg := err.Error(); !strings.Contains(msg, "no OIDC issuer") || strings.Contains(msg, "hub URL") {
-		t.Errorf("error should blame the missing issuer, not a missing hub URL, got: %v", err)
+	if msg := err.Error(); !strings.HasPrefix(msg, "the credential store could not be located") {
+		t.Errorf("error should lead with the store failure, got: %v", err)
+	}
+}
+
+// Login's success path: a completed device flow must persist credentials to
+// pvtr's own store and return the canonical issuer, and Logout must remove them.
+// clientkit covers its own internals; this pins the wiring, so a clientkit patch
+// release that regressed either one fails here rather than in a user's publish.
+func TestLogin_PersistsCredentialsAndLogoutRemovesThem(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			_, _ = fmt.Fprintf(w, `{"issuer":%q,"device_authorization_endpoint":"%s/device","token_endpoint":"%s/token"}`,
+				"http://"+r.Host, "http://"+r.Host, "http://"+r.Host)
+		case "/device":
+			_, _ = fmt.Fprint(w, `{"device_code":"dc","user_code":"UC","verification_uri":"https://example.test/device","expires_in":60,"interval":1}`)
+		case "/token":
+			_, _ = fmt.Fprint(w, `{"access_token":"fresh-token","token_type":"Bearer","expires_in":3600,"refresh_token":"r"}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+	t.Setenv(pvtrApp.TokenEnv, "")
+
+	issuer, err := Login(context.Background(), srv.URL, "pvtr-cli", io.Discard)
+	if err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+	if _, err := os.Stat(storeUnder(t, dir).Path); err != nil {
+		t.Fatalf("Login did not write pvtr's credential file: %v", err)
+	}
+	// What Login stored must be what BearerToken then resolves, with no network.
+	tok, err := BearerToken(context.Background(), issuer, "pvtr-cli")
+	if err != nil || tok != "fresh-token" {
+		t.Fatalf("after Login, BearerToken = %q, %v; want \"fresh-token\", nil", tok, err)
+	}
+
+	if err := Logout(issuer); err != nil {
+		t.Fatalf("Logout: %v", err)
+	}
+	if _, err := BearerToken(context.Background(), issuer, "pvtr-cli"); err == nil {
+		t.Error("BearerToken should fail once Logout has removed the credentials")
 	}
 }
 

@@ -101,11 +101,11 @@ func BearerToken(ctx context.Context, issuer, clientID string) (string, error) {
 	}
 	tok, err := clientauth.Resolve(ctx, in)
 	// grc-store-clientkit words the no-token error itself, but it cannot know
-	// why the store was unavailable: without this the failure surfaces as "no
-	// OIDC issuer is known", which is not the fix the user needs.
+	// why the store was unavailable, and its "no OIDC issuer is known" lead-in
+	// is wrong when an issuer was supplied — lead with the real cause instead.
 	var noTok *clientauth.ErrNoToken
 	if storeErr != nil && errors.As(err, &noTok) {
-		return "", fmt.Errorf("%w (the credential store could not be located: %v)", err, storeErr)
+		return "", fmt.Errorf("the credential store could not be located (%v): %w", storeErr, err)
 	}
 	return tok, err
 }
