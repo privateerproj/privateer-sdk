@@ -67,10 +67,11 @@ func TestBearerToken_ResolutionOrder(t *testing.T) {
 	}
 }
 
-// When the credential store cannot be located at all, the message must lead with
-// that cause. clientkit cannot tell "no store" from "no issuer" — it reports both
-// as "no OIDC issuer is known", which is the wrong fix whenever an issuer was in
-// fact supplied. This is also the only test that reaches the wrap in BearerToken.
+// When the credential store cannot be located at all, the message must name that
+// cause and nothing else: an issuer WAS supplied here, so blaming a missing one
+// sends the user at a fix they cannot apply. BearerToken hands the store failure
+// to Resolve for exactly this; the assertion below is what makes that wiring
+// load-bearing rather than decorative.
 func TestBearerToken_StoreNotLocatableLeadsWithTheRealCause(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("HOME/XDG_DATA_HOME are not how the store is located on Windows")
@@ -85,8 +86,12 @@ func TestBearerToken_StoreNotLocatableLeadsWithTheRealCause(t *testing.T) {
 	if !errors.As(err, &noTok) {
 		t.Fatalf("the shared sentinel must stay matchable through the wrap, got %v", err)
 	}
-	if msg := err.Error(); !strings.HasPrefix(msg, "the credential store could not be located") {
-		t.Errorf("error should lead with the store failure, got: %v", err)
+	msg := err.Error()
+	if !strings.Contains(msg, "the credential store could not be located") {
+		t.Errorf("error should name the store failure, got: %v", err)
+	}
+	if strings.Contains(msg, "no OIDC issuer") || strings.Contains(msg, "advertises oidc_issuer") {
+		t.Errorf("an issuer was supplied; the error must not blame a missing one, got: %v", err)
 	}
 }
 

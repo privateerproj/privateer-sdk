@@ -93,19 +93,14 @@ func BearerToken(ctx context.Context, issuer, clientID string) (string, error) {
 		Warn:     os.Stderr,
 	}
 	// Store lookup is best-effort: a missing store must not mask PVTR_TOKEN,
-	// which Resolve consults first. The error is kept rather than dropped so the
-	// no-token path can name the real cause.
+	// which Resolve consults first. Hand the failure to Resolve rather than
+	// dropping it, so the no-token error names this instead of guessing at a
+	// missing issuer.
 	store, storeErr := clientauth.NewDefaultStore(pvtrApp)
-	if storeErr == nil {
+	if storeErr != nil {
+		in.StoreErr = storeErr
+	} else {
 		in.Store = store
 	}
-	tok, err := clientauth.Resolve(ctx, in)
-	// grc-store-clientkit words the no-token error itself, but it cannot know
-	// why the store was unavailable, and its "no OIDC issuer is known" lead-in
-	// is wrong when an issuer was supplied — lead with the real cause instead.
-	var noTok *clientauth.ErrNoToken
-	if storeErr != nil && errors.As(err, &noTok) {
-		return "", fmt.Errorf("the credential store could not be located (%v): %w", storeErr, err)
-	}
-	return tok, err
+	return clientauth.Resolve(ctx, in)
 }
