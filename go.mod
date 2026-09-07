@@ -3,7 +3,7 @@ module github.com/privateerproj/privateer-sdk
 go 1.26.2
 
 require (
-	github.com/gemaraproj/go-gemara v0.9.2
+	github.com/gemaraproj/go-gemara v0.10.0
 	github.com/gemaraproj/grc-store-clientkit v0.2.0
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/goccy/go-yaml v1.19.2
