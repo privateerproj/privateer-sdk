@@ -41,15 +41,18 @@ func adaptTypedSteps[S ~func(T) (gemara.Result, string, gemara.ConfidenceLevel),
 	for id, list := range steps {
 		for _, step := range list {
 			fn := step // capture per iteration, not the loop variable
-			names[id] = append(names[id], FuncName(fn))
-			adapted[id] = append(adapted[id], func(payload any) (gemara.Result, string, gemara.ConfidenceLevel) {
+			name := FuncName(fn)
+			names[id] = append(names[id], name)
+			// NamedStep keeps the real name on the wire: without it every adapted
+			// step serializes as this closure's symbol.
+			adapted[id] = append(adapted[id], gemara.NamedStep(name, func(payload any) (gemara.Result, string, gemara.ConfidenceLevel) {
 				typed, ok := payload.(T)
 				if !ok {
 					var zero T
 					return gemara.Unknown, fmt.Sprintf("expected %T, got %T", zero, payload), 0
 				}
 				return fn(typed)
-			})
+			}))
 		}
 	}
 	return adapted, names

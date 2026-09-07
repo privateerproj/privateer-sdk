@@ -81,6 +81,13 @@ func TestAdaptTypedSteps_CapturesRealNames(t *testing.T) {
 		t.Errorf("expected second name to be the real function, got %q", got[1])
 	}
 
+	// the adapted steps carry those names themselves, so they reach the wire
+	for i, step := range adapted["CCC.Core.C01.TR01"] {
+		if step.String() != got[i] {
+			t.Errorf("adapted step %d serializes as %q, want %q", i, step.String(), got[i])
+		}
+	}
+
 	// the adapted step still runs, with the payload asserted for the caller
 	result, message, _ := adapted["CCC.Core.C01.TR01"][0](testPayload{Repo: "x"})
 	if result != gemara.Passed {
