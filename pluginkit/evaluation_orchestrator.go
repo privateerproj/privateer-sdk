@@ -126,15 +126,8 @@ func (v *EvaluationOrchestrator) addPossibleControls(catalog *gemara.ControlCata
 // Steps registered this way are named by symbol lookup at report time, which
 // only resolves while the step is a plain function value. Plugins that adapt
 // their steps through a closure should register via AddEvaluationSuiteTyped so
-// the SDK captures each step's name before it is captured.
+// the SDK resolves each step's name before wrapping it.
 func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader DataLoader, steps map[string][]gemara.AssessmentStep) error {
-	return v.addEvaluationSuiteNamed(catalogId, loader, steps, nil)
-}
-
-// addEvaluationSuiteNamed is AddEvaluationSuite with optional step names,
-// supplied by the typed registration helpers. names is keyed by requirement id
-// and positionally parallel to steps; a nil map falls back to symbol lookup.
-func (v *EvaluationOrchestrator) addEvaluationSuiteNamed(catalogId string, loader DataLoader, steps map[string][]gemara.AssessmentStep, names map[string][]string) error {
 	if catalogId == "" {
 		return BAD_CATALOG(v.PluginName, "suite catalog id cannot be empty", "aos10")
 	}
@@ -145,7 +138,7 @@ func (v *EvaluationOrchestrator) addEvaluationSuiteNamed(catalogId string, loade
 		if catalog.Metadata.Id == "" {
 			return BAD_CATALOG(v.PluginName, "no id found in catalog metadata", "aos30")
 		}
-		v.addEvaluationSuite(catalog, loader, steps, names)
+		v.addEvaluationSuite(catalog, loader, steps)
 		return nil
 	}
 	return BAD_CATALOG(v.PluginName, fmt.Sprintf("no reference catalog found with id '%s'", catalogId), "aos40")
@@ -167,7 +160,7 @@ func (v *EvaluationOrchestrator) AddEvaluationSuiteForAllCatalogs(loader DataLoa
 	return nil
 }
 
-func (v *EvaluationOrchestrator) addEvaluationSuite(catalog *gemara.ControlCatalog, loader DataLoader, steps map[string][]gemara.AssessmentStep, names map[string][]string) {
+func (v *EvaluationOrchestrator) addEvaluationSuite(catalog *gemara.ControlCatalog, loader DataLoader, steps map[string][]gemara.AssessmentStep) {
 	for _, existing := range v.possibleSuites {
 		if existing.CatalogId == catalog.Metadata.Id {
 			return
@@ -190,7 +183,6 @@ func (v *EvaluationOrchestrator) addEvaluationSuite(catalog *gemara.ControlCatal
 		CatalogId: catalog.Metadata.Id,
 		catalog:   suiteCatalog,
 		steps:     steps,
-		stepNames: names,
 		config:    v.config,
 	}
 

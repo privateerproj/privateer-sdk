@@ -68,24 +68,18 @@ func TestAdaptTypedSteps_CapturesRealNames(t *testing.T) {
 		"CCC.Core.C01.TR01": {typedStep_BranchProtection, typedStep_SigningEnabled},
 	}
 
-	adapted, names := adaptTypedSteps[pluginTypedStep, testPayload](steps)
+	adapted := adaptTypedSteps[pluginTypedStep, testPayload](steps)
 
-	got := names["CCC.Core.C01.TR01"]
+	got := adapted["CCC.Core.C01.TR01"]
 	if len(got) != 2 {
-		t.Fatalf("expected 2 captured names, got %d", len(got))
+		t.Fatalf("expected 2 adapted steps, got %d", len(got))
 	}
-	if !strings.HasSuffix(got[0], "typedStep_BranchProtection") {
-		t.Errorf("expected first name to be the real function, got %q", got[0])
+	// String is what every marshaler writes, so this is the wire name
+	if !strings.HasSuffix(got[0].String(), "typedStep_BranchProtection") {
+		t.Errorf("expected first name to be the real function, got %q", got[0].String())
 	}
-	if !strings.HasSuffix(got[1], "typedStep_SigningEnabled") {
-		t.Errorf("expected second name to be the real function, got %q", got[1])
-	}
-
-	// the adapted steps carry those names themselves, so they reach the wire
-	for i, step := range adapted["CCC.Core.C01.TR01"] {
-		if step.String() != got[i] {
-			t.Errorf("adapted step %d serializes as %q, want %q", i, step.String(), got[i])
-		}
+	if !strings.HasSuffix(got[1].String(), "typedStep_SigningEnabled") {
+		t.Errorf("expected second name to be the real function, got %q", got[1].String())
 	}
 
 	// the adapted step still runs, with the payload asserted for the caller
@@ -99,7 +93,7 @@ func TestAdaptTypedSteps_PayloadMismatch(t *testing.T) {
 	steps := map[string][]pluginTypedStep{
 		"CCC.Core.C01.TR01": {typedStep_BranchProtection},
 	}
-	adapted, _ := adaptTypedSteps[pluginTypedStep, testPayload](steps)
+	adapted := adaptTypedSteps[pluginTypedStep, testPayload](steps)
 
 	result, message, _ := adapted["CCC.Core.C01.TR01"][0]("not-a-payload")
 	if result != gemara.Unknown {
@@ -124,11 +118,10 @@ func TestBenchmark_TypedSteps_ReportsRealNames(t *testing.T) {
 	typed := map[string][]pluginTypedStep{
 		"CCC.Core.C01.TR01": {typedStep_BranchProtection, typedStep_SigningEnabled},
 	}
-	adapted, names := adaptTypedSteps[pluginTypedStep, testPayload](typed)
+	adapted := adaptTypedSteps[pluginTypedStep, testPayload](typed)
 
 	orchestrator := benchmarkOrchestrator(cfg, adapted)
 	orchestrator.loader = func(*config.Config) (any, error) { return testPayload{Repo: "x"}, nil }
-	orchestrator.possibleSuites[0].stepNames = names
 
 	if err := orchestrator.Mobilize(); err != nil {
 		t.Fatalf("Mobilize failed: %v", err)
@@ -156,5 +149,30 @@ func TestBenchmark_TypedSteps_ReportsRealNames(t *testing.T) {
 		if !strings.HasSuffix(reported[i], want) {
 			t.Errorf("step %d: expected name ending %q, got %q", i, want, reported[i])
 		}
+	}
+}
+
+// TestMobilize_TypedSteps_NamesReachTheWire asserts the plugin's function name
+// is what the evaluation log serializes, not the adapter's symbol.
+func TestMobilize_TypedSteps_NamesReachTheWire(t *testing.T) {
+	cfg := setBasicConfig()
+	cfg.Policy.ControlCatalogs = []string{"CCC.ObjStor"}
+	cfg.Write = false
+
+	adapted := adaptTypedSteps[pluginTypedStep, testPayload](map[string][]pluginTypedStep{
+		"CCC.Core.C01.TR01": {typedStep_BranchProtection},
+	})
+	orchestrator := benchmarkOrchestrator(cfg, adapted)
+	orchestrator.loader = func(*config.Config) (any, error) { return testPayload{Repo: "x"}, nil }
+	if err := orchestrator.Mobilize(); err != nil {
+		t.Fatalf("Mobilize failed: %v", err)
+	}
+
+	wire, err := json.Marshal(orchestrator.Evaluation_Suites[0].EvaluationLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(wire), "typedStep_BranchProtection") || strings.Contains(string(wire), "adaptTypedSteps") {
+		t.Errorf("serialized log does not carry the plugin's step name: %s", wire)
 	}
 }

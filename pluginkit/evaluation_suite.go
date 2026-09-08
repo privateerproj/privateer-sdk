@@ -33,7 +33,6 @@ type EvaluationSuite struct {
 	changeManager *ChangeManager                     // changes is a list of changes made during the evaluation
 	catalog       *gemara.ControlCatalog             // The Catalog this evaluation suite references
 	steps         map[string][]gemara.AssessmentStep // steps is a map of control IDs to their assessment steps
-	stepNames     map[string][]string                // step names captured at registration, parallel to steps; nil falls back to symbol lookup
 
 	evalSuccesses int // successes is the number of successful evaluations
 	evalFailures  int // failures is the number of failed evaluations
@@ -160,18 +159,6 @@ func (e *EvaluationSuite) restoreSteps() {
 	}
 }
 
-// stepName returns the name captured at registration for the step at index i of
-// requirementId, falling back to symbol lookup when the plugin registered
-// untyped steps. Symbol lookup is only meaningful when the registered value is
-// the plugin's own function; a plugin-side adapter closure resolves to the
-// adapter, identically for every step it wraps.
-func (e *EvaluationSuite) stepName(requirementId string, i int, step gemara.AssessmentStep) string {
-	if names, ok := e.stepNames[requirementId]; ok && i < len(names) && names[i] != "" {
-		return names[i]
-	}
-	return step.String()
-}
-
 // timedSteps wraps each executed step in a closure that records its duration, name, and result.
 func (e *EvaluationSuite) timedSteps(controlId, requirementId string, steps []gemara.AssessmentStep) []gemara.AssessmentStep {
 	if len(steps) == 0 {
@@ -179,7 +166,7 @@ func (e *EvaluationSuite) timedSteps(controlId, requirementId string, steps []ge
 	}
 	timed := make([]gemara.AssessmentStep, len(steps))
 	for i, step := range steps {
-		name := e.stepName(requirementId, i, step)
+		name := step.String()
 		timed[i] = func(payload interface{}) (gemara.Result, string, gemara.ConfidenceLevel) {
 			start := time.Now()
 			result, message, confidence := step(payload)

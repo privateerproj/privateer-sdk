@@ -589,9 +589,16 @@ func TestEvaluationOrchestrator_WriteResults_SARIF(t *testing.T) {
 				config:        cfg,
 			}
 
+			// One assessment per result class the converter emits; NotRun is skipped.
+			evalLog := createTestEvalLog()
+			evalLog.Evaluations = append(evalLog.Evaluations, failingEvaluation(), needsReviewEvaluation())
+			evalLog.Evaluations[0].AssessmentLogs[0].Result = gemara.Passed
+			evalLog.Evaluations[1].AssessmentLogs[0].Result = gemara.Failed
+			evalLog.Evaluations[2].AssessmentLogs[0].Result = gemara.NeedsReview
+
 			suite := &EvaluationSuite{
 				CatalogId:     "test-catalog",
-				EvaluationLog: createTestEvalLog(),
+				EvaluationLog: evalLog,
 				catalog:       tc.catalog,
 				config:        cfg,
 			}
@@ -625,6 +632,11 @@ func TestEvaluationOrchestrator_WriteResults_SARIF(t *testing.T) {
 							} `json:"rules"`
 						} `json:"driver"`
 					} `json:"tool"`
+					Results []struct {
+						RuleID string `json:"ruleId"`
+						Kind   string `json:"kind"`
+						Level  string `json:"level"`
+					} `json:"results"`
 				} `json:"runs"`
 			}
 			if err := json.Unmarshal(data, &report); err != nil {
@@ -645,6 +657,28 @@ func TestEvaluationOrchestrator_WriteResults_SARIF(t *testing.T) {
 			}
 			if driver.InformationURI != "https://github.com/test/repo" {
 				t.Errorf("expected driver informationUri from EvaluationLog metadata, got %q", driver.InformationURI)
+			}
+
+			// go-gemara v0.10.0 reports status as SARIF kind; level is set only for fail.
+			// Consumers filter on these, so pin them.
+			want := map[string][2]string{
+				"assessment-good":   {"pass", ""},
+				"assessment-bad":    {"fail", "error"},
+				"assessment-review": {"review", ""},
+			}
+			results := report.Runs[0].Results
+			if len(results) != len(want) {
+				t.Fatalf("expected %d SARIF results, got %d", len(want), len(results))
+			}
+			for _, r := range results {
+				kl, ok := want[r.RuleID]
+				if !ok {
+					t.Errorf("unexpected SARIF result for rule %q", r.RuleID)
+					continue
+				}
+				if r.Kind != kl[0] || r.Level != kl[1] {
+					t.Errorf("rule %q: expected kind/level %q/%q, got %q/%q", r.RuleID, kl[0], kl[1], r.Kind, r.Level)
+				}
 			}
 		})
 	}
