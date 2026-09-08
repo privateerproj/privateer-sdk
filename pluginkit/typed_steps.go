@@ -31,35 +31,31 @@ func FuncName(fn any) string {
 }
 
 // adaptTypedSteps converts payload-typed steps into gemara.AssessmentStep,
-// resolving each step's name before the closure captures it. It returns the
-// adapted steps and a parallel map of names keyed by requirement id.
+// resolving each step's name before the closure captures it.
 func adaptTypedSteps[S ~func(T) (gemara.Result, string, gemara.ConfidenceLevel), T any](
 	steps map[string][]S,
-) (map[string][]gemara.AssessmentStep, map[string][]string) {
+) map[string][]gemara.AssessmentStep {
 	adapted := make(map[string][]gemara.AssessmentStep, len(steps))
-	names := make(map[string][]string, len(steps))
 	for id, list := range steps {
 		for _, step := range list {
-			fn := step // capture per iteration, not the loop variable
-			names[id] = append(names[id], FuncName(fn))
-			adapted[id] = append(adapted[id], func(payload any) (gemara.Result, string, gemara.ConfidenceLevel) {
+			adapted[id] = append(adapted[id], gemara.NamedStep(FuncName(step), func(payload any) (gemara.Result, string, gemara.ConfidenceLevel) {
 				typed, ok := payload.(T)
 				if !ok {
 					var zero T
 					return gemara.Unknown, fmt.Sprintf("expected %T, got %T", zero, payload), 0
 				}
-				return fn(typed)
-			})
+				return step(typed)
+			}))
 		}
 	}
-	return adapted, names
+	return adapted
 }
 
 // AddEvaluationSuiteTyped registers an evaluation suite whose steps take a
 // concrete payload type T rather than an untyped any. The SDK performs the
 // payload type assertion once, so plugins need neither a per-step payload guard
 // nor their own adapter — and because the adaptation happens here, each step's
-// real function name survives into the benchmark report.
+// real function name survives into the written results.
 //
 // It is a package-level function rather than a method because Go does not allow
 // type parameters on methods.
@@ -69,8 +65,7 @@ func adaptTypedSteps[S ~func(T) (gemara.Result, string, gemara.ConfidenceLevel),
 func AddEvaluationSuiteTyped[S ~func(T) (gemara.Result, string, gemara.ConfidenceLevel), T any](
 	v *EvaluationOrchestrator, catalogId string, loader DataLoader, steps map[string][]S,
 ) error {
-	adapted, names := adaptTypedSteps[S, T](steps)
-	return v.addEvaluationSuiteNamed(catalogId, loader, adapted, names)
+	return v.AddEvaluationSuite(catalogId, loader, adaptTypedSteps[S, T](steps))
 }
 
 // AddEvaluationSuiteTypedForAllCatalogs is AddEvaluationSuiteTyped applied to
@@ -82,9 +77,9 @@ func AddEvaluationSuiteTypedForAllCatalogs[S ~func(T) (gemara.Result, string, ge
 	if len(v.referenceCatalogs) == 0 {
 		return BAD_CATALOG(v.PluginName, "no reference catalogs loaded", "aac10")
 	}
-	adapted, names := adaptTypedSteps[S, T](steps)
+	adapted := adaptTypedSteps[S, T](steps)
 	for catalogId := range v.referenceCatalogs {
-		if err := v.addEvaluationSuiteNamed(catalogId, loader, adapted, names); err != nil {
+		if err := v.AddEvaluationSuite(catalogId, loader, adapted); err != nil {
 			return err
 		}
 	}

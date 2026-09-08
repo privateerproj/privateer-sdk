@@ -3,7 +3,7 @@ module github.com/privateerproj/privateer-sdk
 go 1.26.2
 
 require (
-	github.com/gemaraproj/go-gemara v0.9.2
+	github.com/gemaraproj/go-gemara v0.10.0
 	github.com/gemaraproj/grc-store-clientkit v0.2.0
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/goccy/go-yaml v1.19.2
@@ -120,7 +120,7 @@ require (
 	go.opentelemetry.io/otel v1.44.0 // indirect
 	go.opentelemetry.io/otel/metric v1.44.0 // indirect
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
-	go.yaml.in/yaml/v3 v3.0.4 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.54.0 // indirect
 	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
