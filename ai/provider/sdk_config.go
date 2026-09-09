@@ -2,6 +2,7 @@ package provider
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -9,38 +10,49 @@ import (
 	"github.com/spf13/viper"
 )
 
-// ConfigFromSDKConfig extracts the ai_* settings into a provider-neutral
-// Config. The configured return is false only when none are set,
-// distinguishing "intentionally disabled" from "misconfigured" (a non-nil
-// error, e.g. an unparseable ai_timeout).
+// ConfigFromSDKConfig extracts enabled ai_* settings into a provider-neutral
+// Config. The returned bool reports whether AI is enabled, and is false both
+// when AI is disabled and when the configuration is invalid, so callers must
+// check the error before treating false as "AI disabled".
 func ConfigFromSDKConfig(config sdkconfig.Config) (Config, bool, error) {
+	skip, err := resolveAISkip(config)
+	if err != nil {
+		return Config{}, false, err
+	}
+	if skip {
+		return Config{}, false, nil
+	}
+
+	// ai_provider is the only key that can enable AI: unset means AI is off, and
+	// no other ai_* key turns it on.
 	providerText, err := getSDKConfigString(config, "ai_provider")
 	if err != nil {
-		return Config{}, true, err
+		return Config{}, false, err
 	}
+	if providerText == "" {
+		return Config{}, false, nil
+	}
+
 	provider := Provider(providerText)
 	model, err := getSDKConfigString(config, "ai_model")
 	if err != nil {
-		return Config{}, true, err
+		return Config{}, false, err
 	}
-	apiKey, err := getSDKConfigString(config, "ai_api_key")
+	apiKey, err := resolveAPIKey(config)
 	if err != nil {
-		return Config{}, true, err
+		return Config{}, false, err
 	}
 	baseURL, err := getSDKConfigString(config, "ai_base_url")
 	if err != nil {
-		return Config{}, true, err
+		return Config{}, false, err
 	}
 	timeoutText, err := getSDKConfigString(config, "ai_timeout")
 	if err != nil {
-		return Config{}, true, err
+		return Config{}, false, err
 	}
 	maxTokens, err := getSDKConfigInt(config, "ai_max_tokens")
 	if err != nil {
-		return Config{}, true, err
-	}
-	if provider == "" && model == "" && apiKey == "" && baseURL == "" && timeoutText == "" && maxTokens == 0 {
-		return Config{}, false, nil
+		return Config{}, false, err
 	}
 
 	aiConfig := Config{
@@ -54,12 +66,97 @@ func ConfigFromSDKConfig(config sdkconfig.Config) (Config, bool, error) {
 	if timeoutText != "" {
 		timeout, err := time.ParseDuration(timeoutText)
 		if err != nil {
-			return Config{}, true, fmt.Errorf("invalid ai_timeout %q: %w", timeoutText, err)
+			return Config{}, false, fmt.Errorf("invalid ai_timeout %q: %w", timeoutText, err)
+		}
+		if timeout <= 0 {
+			return Config{}, false, fmt.Errorf("ai_timeout must be positive, got %q", timeoutText)
 		}
 		aiConfig.Timeout = timeout
 	}
+	if isSDKConfigKeySet(config, "ai_max_tokens") && maxTokens <= 0 {
+		return Config{}, false, fmt.Errorf("ai_max_tokens must be positive, got %d", maxTokens)
+	}
 
 	return aiConfig.Normalized(), true, nil
+}
+
+// resolveAPIKey applies the credential precedence, highest first: target
+// ai_api_key, target ai_api_key_env, PVTR_AI_API_KEY, top-level ai_api_key,
+// then top-level ai_api_key_env. A hand-built Config has no target entry in
+// Viper, so its Vars stand in for the target tier and outrank the environment,
+// matching how every other ai_* key treats hand-built Vars.
+func resolveAPIKey(config sdkconfig.Config) (string, error) {
+	targetVars, targetConfigured := sdkconfig.GetTargetVars(config.ServiceName)
+	if !targetConfigured {
+		targetVars = config.Vars
+	}
+	if len(targetVars) > 0 {
+		if apiKey, found, err := stringValue(targetVars, "ai_api_key"); err != nil {
+			return "", err
+		} else if found && apiKey != "" {
+			return apiKey, nil
+		}
+		if envName, found, err := stringValue(targetVars, "ai_api_key_env"); found || err != nil {
+			if err != nil {
+				return "", err
+			}
+			return apiKeyFromEnv(envName)
+		}
+	}
+
+	// The process environment is consulted only when Viper's env binding is
+	// active, so a hand-built Config in a process that never called
+	// command.SetBase does not inherit an ambient PVTR_AI_API_KEY.
+	if viper.IsSet("ai_api_key") {
+		if apiKey := strings.TrimSpace(os.Getenv("PVTR_AI_API_KEY")); apiKey != "" {
+			return apiKey, nil
+		}
+	}
+	// The top-level pass is skipped when the target tier already collapsed onto
+	// config.Vars above, since it would repeat those lookups on the same map.
+	if targetConfigured {
+		if apiKey, found, err := stringValue(config.Vars, "ai_api_key"); err != nil {
+			return "", err
+		} else if found && apiKey != "" {
+			return apiKey, nil
+		}
+	}
+	if apiKey := strings.TrimSpace(viper.GetString("ai_api_key")); apiKey != "" {
+		return apiKey, nil
+	}
+	if targetConfigured {
+		if envName, found, err := stringValue(config.Vars, "ai_api_key_env"); found || err != nil {
+			if err != nil {
+				return "", err
+			}
+			return apiKeyFromEnv(envName)
+		}
+	}
+
+	return "", nil
+}
+
+func stringValue(vars map[string]interface{}, key string) (string, bool, error) {
+	value, found := vars[key]
+	if !found {
+		return "", false, nil
+	}
+	text, ok := value.(string)
+	if !ok {
+		return "", true, fmt.Errorf("%s must be a string, got %T", key, value)
+	}
+	return strings.TrimSpace(text), true, nil
+}
+
+func apiKeyFromEnv(envName string) (string, error) {
+	if envName == "" {
+		return "", fmt.Errorf("ai_api_key_env must name a non-empty environment variable")
+	}
+	apiKey := strings.TrimSpace(os.Getenv(envName))
+	if apiKey == "" {
+		return "", fmt.Errorf("ai_api_key_env names environment variable %q, but it is unset or empty", envName)
+	}
+	return apiKey, nil
 }
 
 // getSDKConfigString resolves on key presence, not value, so an explicit empty
@@ -91,4 +188,38 @@ func getSDKConfigInt(config sdkconfig.Config, key string) (int, error) {
 	default:
 		return 0, fmt.Errorf("%s must be an int, got %s", key, valType)
 	}
+}
+
+// resolveAISkip applies the true-wins rule across the sources this package can
+// see. NewConfig has already folded the environment, target and top-level file
+// values into Vars, so Viper is consulted only for callers that configure it
+// directly, and an explicit false in either source cannot mask a true.
+func resolveAISkip(config sdkconfig.Config) (bool, error) {
+	var invalidType string
+	if value, valType := config.GetVar("ai_skip"); valType == "bool" {
+		if value.(bool) {
+			return true, nil
+		}
+	} else if valType != "missing" {
+		invalidType = fmt.Sprintf("ai_skip must be a bool, got %s", valType)
+	}
+	if viper.IsSet("ai_skip") {
+		value := viper.Get("ai_skip")
+		if skip, ok := value.(bool); ok {
+			if skip {
+				return true, nil
+			}
+		} else if invalidType == "" {
+			invalidType = fmt.Sprintf("ai_skip must be a bool, got %T", value)
+		}
+	}
+	if invalidType != "" {
+		return false, fmt.Errorf("%s", invalidType)
+	}
+	return false, nil
+}
+
+func isSDKConfigKeySet(config sdkconfig.Config, key string) bool {
+	_, valType := config.GetVar(key)
+	return valType != "missing" || viper.IsSet(key)
 }

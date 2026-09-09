@@ -18,29 +18,63 @@ The SDK provides two things:
 
 ## Configuration
 
-AI is opt-in. When none of the `ai_*` keys are set, `ai.NewClient` returns
-`(nil, nil)` and a plugin should simply skip its AI-assisted paths. Keys set at
-the top level of the config file are inherited into every service.
+**AI is enabled when `ai_provider` is set, unless `ai_skip` is `true`.** When
+`ai_provider` is unset, `ai.NewClient` returns `(nil, nil)` and a plugin should
+simply skip its AI-assisted paths; no other recognized `ai_*` key turns AI on
+or causes an error while dormant. Keys set at the top level of the config file
+are inherited into every service.
 
 <!-- markdownlint-disable MD013 -->
 
 | Config key | Env var | Default | Purpose |
 | --- | --- | --- | --- |
-| `ai_provider` | `PVTR_AI_PROVIDER` | -- | Backend adapter. Currently `openai` or `anthropic`. |
-| `ai_model` | `PVTR_AI_MODEL` | -- | Provider model id (e.g. `gpt-4o-mini`). |
-| `ai_api_key` | `PVTR_AI_API_KEY` | -- | Provider credential. |
-| `ai_base_url` | `PVTR_AI_BASE_URL` | adapter default | Override endpoint (proxy, gateway, self-hosted). |
-| `ai_timeout` | `PVTR_AI_TIMEOUT` | `30s` | Per-call timeout (Go duration string). |
-| `ai_max_tokens` | `PVTR_AI_MAX_TOKENS` | `1024` | Response length cap. |
+| `ai_provider` | `PVTR_AI_PROVIDER` | -- | Backend adapter. Currently `openai` or `anthropic`. Enables AI. |
+| `ai_model` | `PVTR_AI_MODEL` | -- | Provider model id (e.g. `gpt-4o-mini`). Required when `ai_provider` is set. |
+| `ai_api_key` | `PVTR_AI_API_KEY` | -- | Provider credential. A config-file value is accepted with a warning; prefer the environment or `ai_api_key_env`. |
+| `ai_api_key_env` | -- | -- | Name of the environment variable holding the credential. Config-file only, so a target can point at its own variable. |
+| `ai_base_url` | `PVTR_AI_BASE_URL` | adapter default | Absolute HTTP(S) API-root URL for a proxy, gateway, or self-hosted endpoint; no userinfo, query, or fragment. Stands in for the credential when the endpoint needs none. |
+| `ai_timeout` | `PVTR_AI_TIMEOUT` | `30s` | Per-call timeout (Go duration string). Must be positive. |
+| `ai_max_tokens` | `PVTR_AI_MAX_TOKENS` | `1024` | Response length cap. Must be positive. |
+| `ai_skip` | `PVTR_AI_SKIP` | `false` | Turn AI off without removing the rest of the config. True at any level wins. A non-boolean config-file value is a startup error, not a skip; the environment side is looser and parses any Go boolean literal. |
 
 <!-- markdownlint-enable MD013 -->
+
+For settings other than credentials and `ai_skip`, precedence is
+`PVTR_AI_*` environment variable, target `vars`, top-level `vars:` compatibility
+value, flat top-level config value, then the built-in default. `ai_skip` is true
+if it is true at any of those levels. `ai_api_key_env` is config-file only;
+`PVTR_AI_API_KEY_ENV` is not supported.
+
+A credential is resolved highest-priority first: the target's `ai_api_key`, the
+target's `ai_api_key_env`, `PVTR_AI_API_KEY`, the top-level `ai_api_key`, then
+the top-level `ai_api_key_env`. When `ai_api_key_env` is the selected source, an
+unset or empty named variable is an error rather than a signal to try a
+lower-priority source. Top-level credential sources may use flat keys or the
+compatibility `vars:` map; when both spellings define the same key, `vars:` wins.
+
+A `Config` built by hand rather than by `NewConfig` has no target entry to read,
+so its `Vars` are treated as the target tier and the top-level pass is skipped.
+Such a config also does not inherit `PVTR_AI_*` from the process environment,
+because those values reach the SDK through Viper's env binding, which only a
+Privateer command sets up.
+
+Privateer accepts `ai_api_key` in the config file for compatibility and for
+ephemeral secret-mounted configurations, but warns whenever the flat top level,
+global `vars:`, or selected target stores a non-empty value, even when a
+higher-priority credential is selected. A key under an unselected target warns
+when that target is evaluated. Avoid committing credentials; prefer
+`PVTR_AI_API_KEY` for one shared credential or a target's `ai_api_key_env` for
+per-target credentials. Neither the warning nor config tracing includes the
+credential value.
+
+A run fails at startup when AI is enabled but misconfigured, rather than at the
+first AI call.
 
 Example `config.yml`:
 
 ```yaml
 ai_provider: openai
 ai_model: gpt-4o-mini
-# Prefer the env var PVTR_AI_API_KEY for the credential rather than the file.
 services:
   my-service:
     plugin: ossf/pvtr-github-repo-scanner

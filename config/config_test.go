@@ -663,6 +663,180 @@ func TestNewConfig_DoesNotInheritBoundFlagDefaultIntoVars(t *testing.T) {
 	}
 }
 
+func TestNewConfig_InheritsAIControlKeys(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.Set("service", "my-service-1")
+	viper.Set("services.my-service-1.policy.catalogs", []string{"FINOS-CCC"})
+	viper.Set("services.my-service-1.policy.applicability", []string{"tlp_green"})
+	viper.Set("ai_skip", true)
+	viper.Set("ai_api_key_env", "PRIVATEER_OPENAI_KEY")
+
+	cfg := NewConfig(nil)
+	if got := cfg.GetBool("ai_skip"); !got {
+		t.Fatal("expected top-level ai_skip to be inherited")
+	}
+	if got := cfg.GetString("ai_api_key_env"); got != "PRIVATEER_OPENAI_KEY" {
+		t.Fatalf("ai_api_key_env = %q, want PRIVATEER_OPENAI_KEY", got)
+	}
+}
+
+func TestNewConfig_DoesNotInheritAIAPIKeyEnvFromAutomaticEnv(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.SetEnvPrefix("PVTR")
+	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+	viper.AutomaticEnv()
+	t.Setenv("PVTR_AI_API_KEY_ENV", "SHOULD_NOT_BE_USED")
+	viper.Set("service", "my-service-1")
+	viper.Set("services.my-service-1.policy.catalogs", []string{"FINOS-CCC"})
+	viper.Set("services.my-service-1.policy.applicability", []string{"tlp_green"})
+
+	cfg := NewConfig(nil)
+	if got, exists := cfg.Vars["ai_api_key_env"]; exists {
+		t.Fatalf("PVTR_AI_API_KEY_ENV must not be inherited, got %#v", got)
+	}
+}
+
+func TestNewConfig_WarnsForConfigFileAIAPIKey(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   string
+		envKey   string
+		wantWarn bool
+	}{
+		{
+			name:     "top-level key",
+			config:   "ai_api_key: fixture-credential\n",
+			wantWarn: true,
+		},
+		{
+			name:     "global vars key",
+			config:   "vars:\n  ai_api_key: fixture-credential\n",
+			wantWarn: true,
+		},
+		{
+			name:     "target vars key",
+			config:   "services:\n  my-service-1:\n    vars:\n      ai_api_key: fixture-credential\n",
+			wantWarn: true,
+		},
+		{
+			name:   "environment key only",
+			envKey: "fixture-credential",
+		},
+		{
+			name:     "environment key overrides top-level file key",
+			config:   "ai_api_key: dormant-file-credential\n",
+			envKey:   "fixture-credential",
+			wantWarn: true,
+		},
+		{
+			name:   "empty top-level file key does not warn",
+			config: "ai_api_key: \"\"\n",
+			envKey: "fixture-credential",
+		},
+		{
+			name:     "target file key overrides environment key",
+			config:   "services:\n  my-service-1:\n    vars:\n      ai_api_key: fixture-credential\n",
+			envKey:   "process-credential",
+			wantWarn: true,
+		},
+		{
+			name:     "target key environment name overrides top-level file key",
+			config:   "ai_api_key: dormant-file-credential\nservices:\n  my-service-1:\n    vars:\n      ai_api_key_env: PRIVATEER_TEST_AI_KEY\n",
+			wantWarn: true,
+		},
+		{
+			name:   "key environment variable name",
+			config: "ai_api_key_env: PRIVATEER_TEST_AI_KEY\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+			t.Cleanup(viper.Reset)
+			viper.SetEnvPrefix("PVTR")
+			viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+			viper.AutomaticEnv()
+			t.Setenv("PVTR_AI_API_KEY", tt.envKey)
+
+			configText := "loglevel: trace\n" + tt.config + `services:
+  my-service-1:
+    policy:
+      catalogs: [FINOS-CCC]
+      applicability: [tlp_green]
+`
+			if strings.Contains(tt.config, "services:") {
+				configText = "loglevel: trace\n" + tt.config + `    policy:
+      catalogs: [FINOS-CCC]
+      applicability: [tlp_green]
+`
+			}
+			configFile := path.Join(t.TempDir(), "config.yml")
+			if err := os.WriteFile(configFile, []byte(configText), 0o600); err != nil {
+				t.Fatalf("WriteFile() error = %v", err)
+			}
+			viper.SetConfigFile(configFile)
+			if err := viper.ReadInConfig(); err != nil {
+				t.Fatalf("ReadInConfig() error = %v", err)
+			}
+			viper.Set("service", "my-service-1")
+			logDir := t.TempDir()
+			viper.Set("write", true)
+			viper.Set("write-directory", logDir)
+
+			NewConfig(nil)
+			logBytes, err := os.ReadFile(path.Join(logDir, "my-service-1", "my-service-1.log"))
+			if err != nil {
+				t.Fatalf("ReadFile() error = %v", err)
+			}
+			logText := string(logBytes)
+			wantWarningCount := 0
+			if tt.wantWarn {
+				wantWarningCount = 1
+			}
+			if got := strings.Count(logText, aiAPIKeyConfigWarning); got != wantWarningCount {
+				t.Fatalf("warning count = %d, want %d", got, wantWarningCount)
+			}
+			if strings.Contains(logText, "fixture-credential") ||
+				strings.Contains(logText, "process-credential") ||
+				strings.Contains(logText, "dormant-file-credential") {
+				t.Fatal("log contains the credential")
+			}
+		})
+	}
+}
+
+func TestNewConfig_ReportsConfigFileSnapshotReadFailure(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	configFile := path.Join(t.TempDir(), "config.yml")
+	configText := `services:
+  my-service-1:
+    policy:
+      catalogs: [FINOS-CCC]
+      applicability: [tlp_green]
+`
+	if err := os.WriteFile(configFile, []byte(configText), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	viper.SetConfigFile(configFile)
+	if err := viper.ReadInConfig(); err != nil {
+		t.Fatalf("ReadInConfig() error = %v", err)
+	}
+	if err := os.Remove(configFile); err != nil {
+		t.Fatalf("Remove() error = %v", err)
+	}
+	viper.Set("service", "my-service-1")
+
+	cfg := NewConfig(nil)
+	if cfg.Error == nil || !strings.Contains(cfg.Error.Error(), "read raw config file") {
+		t.Fatalf("NewConfig() error = %v, want raw config file read error", cfg.Error)
+	}
+}
+
 func TestDefaultWritePath(t *testing.T) {
 	path := defaultWritePath()
 
@@ -709,6 +883,7 @@ func TestSanitizeVars(t *testing.T) {
 		{"exact apikey", "apikey", "val", "REDACTED"},
 		{"exact api_key", "api_key", "val", "REDACTED"},
 		{"exact ai_api_key", "ai_api_key", "val", "REDACTED"},
+		{"ai api key env name", "ai_api_key_env", "PRIVATEER_OPENAI_KEY", "PRIVATEER_OPENAI_KEY"},
 
 		// Compound keys (new behavior)
 		{"compound clientsecret", "clientsecret", "val", "REDACTED"},

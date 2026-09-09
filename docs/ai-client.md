@@ -17,11 +17,11 @@ the higher-level assessment accelerator built on top of this client, see
 Plugins should use **`ai.NewClient(sdkconfig.Config)`**. It reads the operator's
 `ai_*` settings (see the config table in
 [AI-assisted assessments](ai-assist.md)) and builds the client from them, and
-returns `(nil, nil)` when none are set — so a plugin can treat AI as an optional
-capability without special-casing the unset path. Check the returned client, not
-just the error: a nil client means AI is disabled. This is deliberate — the
-provider, model, and credentials are the *operator's* choice, made in config,
-not something a plugin hardcodes.
+returns `(nil, nil)` when `ai_provider` is unset — so a plugin can treat AI as an
+optional capability without special-casing the unset path. Check the returned
+client, not just the error: a nil client means AI is disabled. This is
+deliberate — the provider, model, and credentials are the *operator's* choice,
+made in config, not something a plugin hardcodes.
 
 `ai.NewClientWithAIConfig(ai.Config)` is the lower-level primitive that `NewClient`
 builds on. Reach for it directly only when you already hold a hand-built
@@ -32,7 +32,8 @@ hand-build a `Config`.
 
 `NewClientWithAIConfig` normalizes and validates the Config, then returns the
 adapter registered for `Config.Provider`; an unregistered provider surfaces as
-an error at construction rather than at first use.
+an error at construction rather than at first use. The error lists the
+registered providers in deterministic order.
 
 ## Config
 
@@ -45,7 +46,7 @@ responsibility.
 | Field | Purpose | Zero value |
 | --- | --- | --- |
 | `Provider` | Selects which adapter is constructed. | required |
-| `APIKey` | Credential passed to the provider. | required for live calls |
+| `APIKey` | Credential sent by the adapter when present. | required unless `BaseURL` is set |
 | `Model` | Provider model id (e.g. `gpt-4o-mini`). | required |
 | `BaseURL` | Overrides the adapter's default endpoint (proxies, gateways, self-hosted). | adapter default |
 | `Timeout` | Bounds a single `Analyze` call. | `30s` |
@@ -53,6 +54,14 @@ responsibility.
 | `HTTPClient` | Injects a custom transport (tests, instrumentation). | a `Timeout`-honoring client |
 
 <!-- markdownlint-enable MD013 -->
+
+Routing and authentication are independent for a custom `BaseURL`: when
+`APIKey` is present the adapter sends it to that endpoint, and when it is empty
+the adapter omits provider authentication headers. The provider's default
+endpoint always requires a credential. SDK configuration preflight requires an
+absolute HTTP(S) API-root URL without userinfo, query parameters, or a fragment
+because each adapter appends its own request path. Use `APIKey` for endpoint
+credentials rather than embedding credentials in the URL.
 
 `Model` may differ from the model the provider reports using when the requested
 name is an alias resolved to a pinned version (e.g. `gpt-4o-mini` ->

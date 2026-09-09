@@ -105,8 +105,10 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.Model) == "" {
 		return fmt.Errorf("ai model is required")
 	}
-	if strings.TrimSpace(c.APIKey) == "" {
-		return fmt.Errorf("ai api key is required")
+	// A custom BaseURL may front a gateway, proxy, or local model server that
+	// authenticates by other means, so it stands in for the credential here.
+	if strings.TrimSpace(c.APIKey) == "" && strings.TrimSpace(c.BaseURL) == "" {
+		return fmt.Errorf("ai api key is required unless ai base url is set")
 	}
 	return nil
 }

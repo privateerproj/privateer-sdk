@@ -12,7 +12,195 @@ import (
 	"github.com/gemaraproj/go-gemara"
 	"github.com/goccy/go-yaml"
 	"github.com/privateerproj/privateer-sdk/config"
+	"github.com/spf13/viper"
 )
+
+func TestValidateAIConfig(t *testing.T) {
+	tests := []struct {
+		name        string
+		vars        map[string]interface{}
+		wantErrText string
+	}{
+		{
+			name: "unsupported provider",
+			vars: map[string]interface{}{
+				"ai_provider": "unknown",
+				"ai_model":    "model",
+				"ai_api_key":  "key",
+			},
+			wantErrText: `unsupported ai provider "unknown"; supported: anthropic, openai`,
+		},
+		{
+			name: "missing model",
+			vars: map[string]interface{}{
+				"ai_provider": "openai",
+				"ai_api_key":  "key",
+			},
+			wantErrText: "ai_model",
+		},
+		{
+			name: "missing credential for default endpoint",
+			vars: map[string]interface{}{
+				"ai_provider": "openai",
+				"ai_model":    "gpt-4o-mini",
+			},
+			wantErrText: "an AI credential is required",
+		},
+		{
+			name: "unset credential environment variable",
+			vars: map[string]interface{}{
+				"ai_provider":    "openai",
+				"ai_model":       "gpt-4o-mini",
+				"ai_api_key_env": "PRIVATEER_TEST_MISSING_KEY",
+			},
+			wantErrText: "ai_api_key_env",
+		},
+		{
+			name: "invalid base URL",
+			vars: map[string]interface{}{
+				"ai_provider": "openai",
+				"ai_model":    "gpt-4o-mini",
+				"ai_base_url": "://bad",
+			},
+			wantErrText: "ai_base_url",
+		},
+		{
+			name: "base URL without a host",
+			vars: map[string]interface{}{
+				"ai_provider": "openai",
+				"ai_model":    "gpt-4o-mini",
+				"ai_base_url": "localhost:8000",
+			},
+			wantErrText: "ai_base_url",
+		},
+		{
+			name: "base URL with query parameters",
+			vars: map[string]interface{}{
+				"ai_provider": "openai",
+				"ai_model":    "gpt-4o-mini",
+				"ai_base_url": "https://gateway.example/v1?tenant=repo-one",
+			},
+			wantErrText: "ai_base_url",
+		},
+		{
+			name: "base URL with fragment",
+			vars: map[string]interface{}{
+				"ai_provider": "openai",
+				"ai_model":    "gpt-4o-mini",
+				"ai_base_url": "https://gateway.example/v1#models",
+			},
+			wantErrText: "ai_base_url",
+		},
+		{
+			name: "base URL with unsupported scheme",
+			vars: map[string]interface{}{
+				"ai_provider": "openai",
+				"ai_model":    "gpt-4o-mini",
+				"ai_base_url": "ftp://gateway.example/v1",
+			},
+			wantErrText: "ai_base_url",
+		},
+		{
+			name: "base URL with userinfo",
+			vars: map[string]interface{}{
+				"ai_provider": "openai",
+				"ai_model":    "gpt-4o-mini",
+				"ai_base_url": "https://user:password@gateway.example/v1",
+			},
+			wantErrText: "ai_base_url",
+		},
+		{
+			name: "non-positive timeout",
+			vars: map[string]interface{}{
+				"ai_provider": "openai",
+				"ai_timeout":  "-1s",
+			},
+			wantErrText: "ai_timeout",
+		},
+		{
+			name: "non-positive max tokens",
+			vars: map[string]interface{}{
+				"ai_provider":   "openai",
+				"ai_max_tokens": 0,
+			},
+			wantErrText: "ai_max_tokens",
+		},
+		{
+			name: "valid custom endpoint without credential",
+			vars: map[string]interface{}{
+				"ai_provider": "openai",
+				"ai_model":    "gpt-4o-mini",
+				"ai_base_url": "http://127.0.0.1:8000/v1",
+			},
+		},
+		{
+			name: "disabled by skip",
+			vars: map[string]interface{}{
+				"ai_provider": "openai",
+				"ai_skip":     true,
+			},
+		},
+		{
+			name: "skip suppresses other misconfiguration",
+			vars: map[string]interface{}{
+				"ai_provider": "unknown",
+				"ai_skip":     true,
+			},
+		},
+		{
+			name: "no provider means AI is off",
+			vars: map[string]interface{}{
+				"ai_model":      "gpt-4o-mini",
+				"ai_max_tokens": 512,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+			t.Cleanup(viper.Reset)
+			cfg := &config.Config{ServiceName: "repo-one", Vars: tt.vars}
+			err := validateAIConfig(cfg)
+			if tt.wantErrText == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErrText) {
+				t.Fatalf("error = %v, want substring %q", err, tt.wantErrText)
+			}
+		})
+	}
+}
+
+func TestMobilize_AIConfigPreflightRunsBeforeLoader(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	cfg := setBasicConfig()
+	cfg.Vars = map[string]interface{}{
+		"ai_provider": "openai",
+		"ai_model":    "gpt-4o-mini",
+	}
+	loaderCalled := false
+	orchestrator := &EvaluationOrchestrator{
+		PluginName: "test-plugin",
+		config:     cfg,
+		loader: func(*config.Config) (any, error) {
+			loaderCalled = true
+			return nil, nil
+		},
+	}
+
+	err := orchestrator.Mobilize()
+	if err == nil || !strings.Contains(err.Error(), "mob15") {
+		t.Fatalf("expected mob15 bad config error, got %v", err)
+	}
+	if loaderCalled {
+		t.Fatal("loader ran before AI configuration preflight")
+	}
+}
 
 func TestEvaluationOrchestrator_AddLoader(t *testing.T) {
 	orchestrator := &EvaluationOrchestrator{}
