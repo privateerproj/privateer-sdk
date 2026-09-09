@@ -91,7 +91,7 @@ func GetServices() map[string]interface{} {
 
 // GetTargetVars returns the vars declared directly on a target, excluding
 // inherited top-level and global vars. The bool reports whether the target
-// exists, distinguishing an empty target vars map from a hand-built Config.
+// exists in the loaded configuration.
 func GetTargetVars(targetName string) (map[string]interface{}, bool) {
 	if targetName == "" {
 		return nil, false

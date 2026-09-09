@@ -60,63 +60,31 @@ func TestConfigFromSDKConfig_StrayNonProviderKeysDoNotEnableAI(t *testing.T) {
 }
 
 func TestConfigFromSDKConfig_AISkip(t *testing.T) {
-	t.Run("target opts out", func(t *testing.T) {
-		viper.Reset()
-		t.Cleanup(viper.Reset)
-
-		_, configured, err := ConfigFromSDKConfig(sdkconfig.Config{Vars: map[string]interface{}{
-			"ai_provider": "openai",
-			"ai_skip":     true,
-		}})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if configured {
-			t.Fatal("expected ai_skip to disable AI")
-		}
-	})
-
-	t.Run("target false cannot override top-level true", func(t *testing.T) {
-		viper.Reset()
-		t.Cleanup(viper.Reset)
-		viper.Set("ai_skip", true)
-
-		_, configured, err := ConfigFromSDKConfig(sdkconfig.Config{Vars: map[string]interface{}{
-			"ai_provider": "openai",
-			"ai_skip":     false,
-		}})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if configured {
-			t.Fatal("expected top-level ai_skip to disable AI")
-		}
-	})
-
-	t.Run("environment false cannot override direct Viper true", func(t *testing.T) {
-		viper.Reset()
-		t.Cleanup(viper.Reset)
-		viper.Set("ai_skip", true)
-		t.Setenv("PVTR_AI_SKIP", "false")
-
-		_, configured, err := ConfigFromSDKConfig(sdkconfig.Config{Vars: map[string]interface{}{
-			"ai_provider": "openai",
-		}})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if configured {
-			t.Fatal("expected direct Viper ai_skip to disable AI")
-		}
-	})
-}
-
-func TestConfigFromSDKConfig_AISkipTrueAtAnyLevelSuppressesValidation(t *testing.T) {
 	tests := []struct {
-		name    string
-		config  string
-		envSkip string
+		name string
+		// config drives the file pipeline; vars builds the Config by hand.
+		// viperSkip seeds ai_skip directly in Viper for the hand-built cases.
+		config    string
+		vars      map[string]interface{}
+		viperSkip interface{}
+		envSkip   string
+		wantErr   string
 	}{
+		{
+			name: "target opts out",
+			vars: map[string]interface{}{"ai_provider": "openai", "ai_skip": true},
+		},
+		{
+			name:      "target false cannot override top-level true",
+			vars:      map[string]interface{}{"ai_provider": "openai", "ai_skip": false},
+			viperSkip: true,
+		},
+		{
+			name:      "environment false cannot override direct Viper true",
+			vars:      map[string]interface{}{"ai_provider": "openai"},
+			viperSkip: true,
+			envSkip:   "false",
+		},
 		{
 			name: "top-level true beats environment false",
 			config: `
@@ -158,56 +126,39 @@ services:
 `,
 			envSkip: "true",
 		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("PVTR_AI_SKIP", tt.envSkip)
-			cfg := configFromFileForTarget(t, tt.config, "repo-one")
-			aiConfig, configured, err := ConfigFromSDKConfig(cfg)
-			if err != nil {
-				t.Fatalf("ConfigFromSDKConfig() error = %v", err)
-			}
-			if configured {
-				t.Fatalf("expected disabled AI, got %#v", aiConfig)
-			}
-		})
-	}
-}
-
-func TestConfigFromSDKConfig_AISkipReportsHighestPriorityInvalidSource(t *testing.T) {
-	viper.Reset()
-	t.Cleanup(viper.Reset)
-	t.Setenv("PVTR_AI_SKIP", "not-a-bool")
-
-	_, configured, err := ConfigFromSDKConfig(sdkconfig.Config{Vars: map[string]interface{}{
-		"ai_provider": "openai",
-		"ai_skip":     123,
-	}})
-	if !configured {
-		t.Fatal("expected invalid enabled configuration")
-	}
-	if err == nil || !strings.Contains(err.Error(), "environment value") {
-		t.Fatalf("error = %v, want highest-priority environment ai_skip error", err)
-	}
-}
-
-func TestConfigFromSDKConfig_AISkipFalseDoesNotHideMalformedLowerSource(t *testing.T) {
-	tests := []struct {
-		name   string
-		config string
-	}{
 		{
-			name: "target value",
+			name: "target opts out of inherited global AI",
+			config: `
+ai_provider: openai
+ai_model: top-model
+ai_base_url: https://gateway.example/v1
+services:
+  repo-one:
+    vars: {ai_skip: true}
+    policy: {catalogs: [catalog], applicability: [all]}
+`,
+		},
+		{
+			// The ambient PVTR_AI_SKIP no longer participates for a hand-built
+			// Config, so the target's own type error is what surfaces.
+			name:    "wrong-typed target value",
+			vars:    map[string]interface{}{"ai_provider": "openai", "ai_skip": 123},
+			envSkip: "not-a-bool",
+			wantErr: "ai_skip must be a bool, got int",
+		},
+		{
+			name: "environment false does not hide malformed target value",
 			config: `
 services:
   repo-one:
     vars: {ai_provider: openai, ai_model: model, ai_api_key: key, ai_skip: not-a-bool}
     policy: {catalogs: [catalog], applicability: [all]}
 `,
+			envSkip: "false",
+			wantErr: "ai_skip must be a bool",
 		},
 		{
-			name: "top-level value",
+			name: "environment false does not hide malformed top-level value",
 			config: `
 ai_skip: not-a-bool
 services:
@@ -215,37 +166,47 @@ services:
     vars: {ai_provider: openai, ai_model: model, ai_api_key: key}
     policy: {catalogs: [catalog], applicability: [all]}
 `,
+			envSkip: "false",
+			wantErr: "ai_skip must be a bool",
+		},
+		{
+			name:      "wrong-typed Viper fallback",
+			vars:      map[string]interface{}{"ai_provider": "openai"},
+			viperSkip: 123,
+			wantErr:   "ai_skip must be a bool, got int",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("PVTR_AI_SKIP", "false")
-			cfg := configFromFileForTarget(t, tt.config, "repo-one")
-			_, configured, err := ConfigFromSDKConfig(cfg)
-			if !configured {
-				t.Fatal("expected invalid enabled configuration")
+			t.Setenv("PVTR_AI_SKIP", tt.envSkip)
+
+			var cfg sdkconfig.Config
+			if tt.config != "" {
+				cfg = configFromFileForTarget(t, tt.config, "repo-one")
+			} else {
+				viper.Reset()
+				t.Cleanup(viper.Reset)
+				if tt.viperSkip != nil {
+					viper.Set("ai_skip", tt.viperSkip)
+				}
+				cfg = sdkconfig.Config{Vars: tt.vars}
 			}
-			if err == nil || !strings.Contains(err.Error(), "ai_skip must be a bool") {
-				t.Fatalf("error = %v, want strict ai_skip type error", err)
+
+			aiConfig, configured, err := ConfigFromSDKConfig(cfg)
+			if configured {
+				t.Fatalf("expected disabled AI, got %#v", aiConfig)
+			}
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("ConfigFromSDKConfig() error = %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error = %v, want error containing %q", err, tt.wantErr)
 			}
 		})
-	}
-}
-
-func TestConfigFromSDKConfig_AISkipRejectsWrongTypedViperFallback(t *testing.T) {
-	viper.Reset()
-	t.Cleanup(viper.Reset)
-	viper.Set("ai_skip", 123)
-
-	_, configured, err := ConfigFromSDKConfig(sdkconfig.Config{Vars: map[string]interface{}{
-		"ai_provider": "openai",
-	}})
-	if !configured {
-		t.Fatal("expected invalid enabled configuration")
-	}
-	if err == nil || !strings.Contains(err.Error(), "ai_skip must be a bool, got int") {
-		t.Fatalf("error = %v, want strict Viper ai_skip type error", err)
 	}
 }
 
@@ -275,19 +236,75 @@ services:
 	}
 }
 
-func TestConfigFromSDKConfig_RejectsNonPositiveEnvironmentMaxTokensWithoutViper(t *testing.T) {
+// Environment values reach a hand-built Config only through Viper or
+// config.NewConfig, so a stray PVTR_AI_* export cannot enable or redirect AI in
+// a process that never configured either.
+func TestConfigFromSDKConfig_ProcessEnvironmentDoesNotReachHandBuiltVars(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	t.Setenv("PVTR_AI_BASE_URL", "http://localhost:11434/v1")
+	t.Setenv("PVTR_AI_MODEL", "env-model")
+	t.Setenv("PVTR_AI_MAX_TOKENS", "4096")
+	t.Setenv("PVTR_AI_API_KEY", "sk-ambient-credential")
+
+	aiConfig, configured, err := ConfigFromSDKConfig(sdkconfig.Config{Vars: map[string]interface{}{
+		"ai_provider": "openai",
+		"ai_model":    "gpt-4o-mini",
+		"ai_api_key":  "test-key",
+	}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !configured {
+		t.Fatal("expected configured AI")
+	}
+	if aiConfig.BaseURL != "" {
+		t.Fatalf("BaseURL = %q, want the process environment to be invisible here", aiConfig.BaseURL)
+	}
+	if aiConfig.Model != "gpt-4o-mini" || aiConfig.MaxTokens != defaultMaxTokens || aiConfig.APIKey != "test-key" {
+		t.Fatalf("hand-built Vars did not win over the environment: %s", aiConfig)
+	}
+}
+
+// Without Viper's env binding an ambient credential must not stand in for a
+// missing one, so a hand-built Config cannot be silently completed from the
+// shell of whatever process happens to be running.
+func TestConfigFromSDKConfig_AmbientCredentialDoesNotCompleteHandBuiltVars(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	t.Setenv("PVTR_AI_API_KEY", "sk-ambient-credential")
+
+	aiConfig, configured, err := ConfigFromSDKConfig(sdkconfig.Config{Vars: map[string]interface{}{
+		"ai_provider": "openai",
+		"ai_model":    "gpt-4o-mini",
+	}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !configured {
+		t.Fatal("expected configured AI")
+	}
+	if aiConfig.APIKey != "" {
+		t.Fatalf("APIKey = %q, want the ambient credential to be ignored", aiConfig.APIKey)
+	}
+}
+
+func TestConfigFromSDKConfig_RejectsNonPositiveEnvironmentMaxTokens(t *testing.T) {
 	for _, maxTokens := range []string{"0", "-1"} {
 		t.Run(maxTokens, func(t *testing.T) {
-			viper.Reset()
-			t.Cleanup(viper.Reset)
 			t.Setenv("PVTR_AI_PROVIDER", "openai")
 			t.Setenv("PVTR_AI_MODEL", "env-model")
 			t.Setenv("PVTR_AI_BASE_URL", "https://gateway.example/v1")
 			t.Setenv("PVTR_AI_MAX_TOKENS", maxTokens)
+			cfg := configFromFileForTarget(t, `
+services:
+  repo-one:
+    policy: {catalogs: [catalog], applicability: [all]}
+`, "repo-one")
 
-			_, configured, err := ConfigFromSDKConfig(sdkconfig.Config{})
-			if !configured {
-				t.Fatal("expected environment configuration to enable AI")
+			_, configured, err := ConfigFromSDKConfig(cfg)
+			if configured {
+				t.Fatal("expected an invalid configuration to report AI as not enabled")
 			}
 			if err == nil || !strings.Contains(err.Error(), "ai_max_tokens must be positive") {
 				t.Fatalf("error = %v, want positive ai_max_tokens error", err)
@@ -395,26 +412,6 @@ services:
 	}
 }
 
-func TestConfigFromSDKConfig_GlobalAIWithTargetOptOut(t *testing.T) {
-	cfg := configFromFileForTarget(t, `
-ai_provider: openai
-ai_model: top-model
-ai_base_url: https://gateway.example/v1
-services:
-  repo-one:
-    vars: {ai_skip: true}
-    policy: {catalogs: [catalog], applicability: [all]}
-`, "repo-one")
-
-	_, configured, err := ConfigFromSDKConfig(cfg)
-	if err != nil {
-		t.Fatalf("ConfigFromSDKConfig() error = %v", err)
-	}
-	if configured {
-		t.Fatal("expected target ai_skip to disable inherited AI")
-	}
-}
-
 func TestConfigFromSDKConfig_UnsupportedAPIKeyEnvDoesNotMaskFileValue(t *testing.T) {
 	t.Setenv("PVTR_AI_API_KEY_ENV", "IGNORED_VARIABLE_NAME")
 	t.Setenv("PRIVATEER_TEST_FILE_AI_KEY", "file-named-credential")
@@ -472,60 +469,6 @@ func TestConfigFromSDKConfig_APIKeyEnv(t *testing.T) {
 			t.Fatalf("expected unset ai_api_key_env error, got %v", err)
 		}
 	})
-}
-
-func TestConfigFromSDKConfig_TargetAPIKeyPrecedesTargetAPIKeyEnv(t *testing.T) {
-	viper.Reset()
-	t.Cleanup(viper.Reset)
-	t.Setenv("PRIVATEER_TEST_LOWER_PRIORITY_KEY", "key-from-env")
-	viper.Set("service", "repo-one")
-	viper.Set("services.repo-one.vars", map[string]interface{}{
-		"ai_provider":    "openai",
-		"ai_model":       "gpt-4o-mini",
-		"ai_api_key":     "direct-target-key",
-		"ai_api_key_env": "PRIVATEER_TEST_LOWER_PRIORITY_KEY",
-	})
-	viper.Set("services.repo-one.policy.catalogs", []string{"catalog"})
-	viper.Set("services.repo-one.policy.applicability", []string{"all"})
-
-	cfg := sdkconfig.NewConfig(nil)
-	aiConfig, configured, err := ConfigFromSDKConfig(cfg)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !configured {
-		t.Fatal("expected configured AI")
-	}
-	if aiConfig.APIKey != "direct-target-key" {
-		t.Fatalf("APIKey = %q, want direct target credential", aiConfig.APIKey)
-	}
-}
-
-func TestConfigFromSDKConfig_TargetAPIKeyEnvPrecedesTopLevelAPIKey(t *testing.T) {
-	viper.Reset()
-	t.Cleanup(viper.Reset)
-	t.Setenv("PRIVATEER_TEST_TARGET_KEY", "target-key")
-	viper.Set("service", "repo-one")
-	viper.Set("ai_provider", "openai")
-	viper.Set("ai_model", "gpt-4o-mini")
-	viper.Set("ai_api_key", "top-level-key")
-	viper.Set("services.repo-one.vars", map[string]interface{}{
-		"ai_api_key_env": "PRIVATEER_TEST_TARGET_KEY",
-	})
-	viper.Set("services.repo-one.policy.catalogs", []string{"catalog"})
-	viper.Set("services.repo-one.policy.applicability", []string{"all"})
-
-	cfg := sdkconfig.NewConfig(nil)
-	aiConfig, configured, err := ConfigFromSDKConfig(cfg)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !configured {
-		t.Fatal("expected configured AI")
-	}
-	if aiConfig.APIKey != "target-key" {
-		t.Fatalf("APIKey = %q, want target environment credential", aiConfig.APIKey)
-	}
 }
 
 func TestConfigFromSDKConfig_HandBuiltTargetCredentialsPrecedeProcessEnvironment(t *testing.T) {
@@ -691,8 +634,8 @@ services:
 	viper.Set("service", "repo-one")
 
 	_, configured, err := ConfigFromSDKConfig(sdkconfig.NewConfig(nil))
-	if !configured {
-		t.Fatal("expected configured AI")
+	if configured {
+		t.Fatal("expected an invalid configuration to report AI as not enabled")
 	}
 	if err == nil || !strings.Contains(err.Error(), "unset or empty") {
 		t.Fatalf("error = %v, want unset ai_api_key_env error", err)
@@ -753,8 +696,8 @@ func TestConfigFromSDKConfig_InvalidTimeout(t *testing.T) {
 		"ai_api_key":  "test-key",
 		"ai_timeout":  "bad-timeout",
 	}})
-	if !configured {
-		t.Fatal("expected configured result for partial AI config")
+	if configured {
+		t.Fatal("expected an invalid configuration to report AI as not enabled")
 	}
 	if err == nil {
 		t.Fatal("expected invalid timeout error, got nil")
@@ -788,8 +731,8 @@ func TestConfigFromSDKConfig_RejectsNonPositiveLimits(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, configured, err := ConfigFromSDKConfig(sdkconfig.Config{Vars: tt.vars})
-			if !configured {
-				t.Fatal("expected configured AI")
+			if configured {
+				t.Fatal("expected an invalid configuration to report AI as not enabled")
 			}
 			if err == nil || !strings.Contains(err.Error(), tt.wantErrText) {
 				t.Fatalf("error = %v, want substring %q", err, tt.wantErrText)
@@ -898,8 +841,8 @@ func TestConfigFromSDKConfig_RejectsWrongTypedVars(t *testing.T) {
 			t.Cleanup(viper.Reset)
 
 			_, configured, err := ConfigFromSDKConfig(sdkconfig.Config{Vars: tt.vars})
-			if !configured {
-				t.Fatal("expected configured result for wrong-typed AI config")
+			if configured {
+				t.Fatal("expected an invalid configuration to report AI as not enabled")
 			}
 			if err == nil {
 				t.Fatal("expected wrong-type error, got nil")

@@ -63,11 +63,6 @@ absolute HTTP(S) API-root URL without userinfo, query parameters, or a fragment
 because each adapter appends its own request path. Use `APIKey` for endpoint
 credentials rather than embedding credentials in the URL.
 
-Azure OpenAI is not supported by setting `BaseURL` alone. Its deployment paths,
-required `api-version` query parameter, and authentication conventions need a
-dedicated adapter. Use an OpenAI-compatible gateway in front of Azure until one
-is available.
-
 `Model` may differ from the model the provider reports using when the requested
 name is an alias resolved to a pinned version (e.g. `gpt-4o-mini` ->
 `gpt-4o-mini-2024-07-18`); the resolved name comes back on
