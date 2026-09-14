@@ -11,13 +11,13 @@ require (
 	github.com/hashicorp/go-plugin v1.8.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
-	github.com/revanite-io/grc-store-protocol v0.5.2
+	github.com/revanite-io/grc-store-protocol v0.7.0
 	github.com/sigstore/sigstore-go v1.3.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/spf13/viper v1.21.0
-	golang.org/x/mod v0.40.0
-	golang.org/x/sync v0.22.0
+	golang.org/x/mod v0.41.0
+	golang.org/x/sync v0.23.0
 	gopkg.in/yaml.v3 v3.0.1
 	oras.land/oras-go/v2 v2.6.2
 )
