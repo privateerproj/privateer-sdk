@@ -18,29 +18,108 @@ The SDK provides two things:
 
 ## Configuration
 
-AI is opt-in. When none of the `ai_*` keys are set, `ai.NewClient` returns
-`(nil, nil)` and a plugin should simply skip its AI-assisted paths. Keys set at
-the top level of the config file are inherited into every service.
+**AI is enabled when `ai_provider` is set, unless `ai_skip` is `true`.** When
+`ai_provider` is unset, `ai.NewClient` returns `(nil, nil)` and a plugin should
+simply skip its AI-assisted paths; no other recognized `ai_*` key turns AI on
+or causes an error while dormant. Keys set at the top level of the config file
+are inherited into every service.
 
 <!-- markdownlint-disable MD013 -->
 
 | Config key | Env var | Default | Purpose |
 | --- | --- | --- | --- |
-| `ai_provider` | `PVTR_AI_PROVIDER` | -- | Backend adapter. Currently `openai` or `anthropic`. |
-| `ai_model` | `PVTR_AI_MODEL` | -- | Provider model id (e.g. `gpt-4o-mini`). |
-| `ai_api_key` | `PVTR_AI_API_KEY` | -- | Provider credential. |
-| `ai_base_url` | `PVTR_AI_BASE_URL` | adapter default | Override endpoint (proxy, gateway, self-hosted). |
-| `ai_timeout` | `PVTR_AI_TIMEOUT` | `30s` | Per-call timeout (Go duration string). |
-| `ai_max_tokens` | `PVTR_AI_MAX_TOKENS` | `1024` | Response length cap. |
+| `ai_provider` | `PVTR_AI_PROVIDER` | -- | Backend adapter. Currently `openai` or `anthropic`. Enables AI. |
+| `ai_model` | `PVTR_AI_MODEL` | -- | Provider model id (e.g. `gpt-4o-mini`). Required when `ai_provider` is set. |
+| `ai_api_key` | `PVTR_AI_API_KEY` | -- | Provider credential. A config-file value is accepted with a warning; prefer the environment or `ai_api_key_env`. |
+| `ai_api_key_env` | -- | -- | Name of the environment variable holding the credential. Config-file only, so a target can point at its own variable. |
+| `ai_base_url` | `PVTR_AI_BASE_URL` | adapter default | Absolute HTTP(S) API-root URL for a proxy, gateway, or self-hosted endpoint; no userinfo, query, or fragment. Stands in for the credential when the endpoint needs none. |
+| `ai_timeout` | `PVTR_AI_TIMEOUT` | `30s` | Per-call timeout (Go duration string). Must be positive. |
+| `ai_max_tokens` | `PVTR_AI_MAX_TOKENS` | `1024` | Response length cap. Must be positive. |
+| `ai_skip` | `PVTR_AI_SKIP` | `false` | Turn AI off without removing the rest of the config. True at any level wins. When AI is enabled, a non-boolean config-file value is a startup error; the environment accepts Go `strconv.ParseBool` spellings, including `true`, `false`, `1`, and `0`. |
 
 <!-- markdownlint-enable MD013 -->
+
+For settings other than credentials and `ai_skip`, precedence is
+`PVTR_AI_*` environment variable, target `vars`, top-level `vars:` compatibility
+value, flat top-level config value, then the built-in default. `ai_skip` is true
+if it is true at any of those levels, even when another level is false or
+malformed. Empty environment overrides are ignored. `ai_api_key_env` is
+config-file only: the variable name belongs in the configuration rather than
+another environment override, so `PVTR_AI_API_KEY_ENV` is not supported.
+
+A credential is selected highest-priority first:
+
+1. The target's `ai_api_key_env`.
+2. `PVTR_AI_API_KEY`.
+3. The top-level `ai_api_key_env`.
+4. The target's `ai_api_key` literal.
+5. The top-level `ai_api_key` literal.
+
+This deliberately differs from non-credential precedence: named/environment
+sources outrank literals, while an explicit per-target variable still outranks
+the shared credential. When a named source is selected, an empty variable name
+or an unset/empty named variable is an error, not a signal to try a lower source.
+Top-level sources may use flat keys or the compatibility `vars:` map; when both
+spellings define the same key, `vars:` wins. An empty target literal falls
+through to the top-level literal.
+
+`config.NewConfig` selects sources once and materializes the result in `Vars`.
+The AI client reads only those `Vars`, not global Viper settings or ambient
+`PVTR_AI_*` variables. Hand-built configurations are therefore authoritative,
+even inside a Privateer command. A hand-built `ai_api_key_env` explicitly opts
+into reading its named variable and takes precedence over a hand-built literal.
+
+Privateer accepts `ai_api_key` in the config file for compatibility and for
+ephemeral secret-mounted configurations, but warns whenever the flat top level,
+global `vars:`, or selected target declares the key (including an empty value),
+even when a higher-priority credential is selected. A key under an unselected target warns
+when that target is evaluated. Avoid committing credentials; prefer
+`PVTR_AI_API_KEY` for one shared credential or a target's `ai_api_key_env` for
+per-target credentials. Neither the warning nor config tracing includes the
+credential value.
+
+A run fails at startup when AI is enabled but misconfigured, rather than at the
+first AI call.
+
+### Upgrade notes
+
+Enabled but invalid AI configuration now fails mobilization with `BAD_CONFIG`
+(`BadUsage`) before evidence loading; it no longer silently completes with
+`NeedsReview` from misconfigured AI steps. Fix the configuration or deliberately
+disable AI with `ai_skip: true`. Stray non-provider settings no longer enable AI.
+
+`NewConfig` applies environment overrides to non-credential target settings.
+Credential selection follows the ladder above: a named credential or shared
+environment key can now override a target literal. Remove stale credentials
+and environment overrides before upgrading.
+
+`provider.Config.Validate` allows an empty API key only with a valid custom
+HTTP(S) API root, and URL validation applies to direct clients as well as
+preflight. Custom endpoints that require authentication still need a key;
+preflight does not probe the endpoint, verify model availability, or validate
+credential correctness. Authentication errors, timeouts, rate limits, and other
+runtime failures retain the existing per-step handling.
+
+SDK callers that previously relied on the AI client reading Viper directly must
+pass `config.NewConfig(...)` or populate `Config.Vars` explicitly instead.
+When loading files or readers outside Privateer's commands, use
+`config.ReadInConfig()` or `config.ReadConfig(reader)` in place of the Viper
+equivalents. These retain raw file settings during the original decode, so
+`NewConfig` never reopens the file and an environment override cannot hide a file
+opt-out or replace a configured credential-variable name. Loading and reloading
+must finish before concurrent configuration consumers run.
+
+These helpers use Viper's built-in codecs and replace any custom decoder registry.
+Use replacement reads, not Viper's merge APIs, for reloads. Plain Viper callers
+remain supported when raw provenance is unnecessary, but a masked file
+`ai_skip` or `ai_api_key_env` without captured source settings returns a
+configuration error rather than silently using the wrong source.
 
 Example `config.yml`:
 
 ```yaml
 ai_provider: openai
 ai_model: gpt-4o-mini
-# Prefer the env var PVTR_AI_API_KEY for the credential rather than the file.
 services:
   my-service:
     plugin: ossf/pvtr-github-repo-scanner
