@@ -69,16 +69,17 @@ func AddEvaluationSuiteTyped[S ~func(T) (gemara.Result, string, gemara.Confidenc
 }
 
 // AddEvaluationSuiteTypedForAllCatalogs is AddEvaluationSuiteTyped applied to
-// every reference catalog loaded via AddReferenceCatalogs, mirroring
-// AddEvaluationSuiteForAllCatalogs.
+// every catalog declared with AddCatalogs or loaded via AddReferenceCatalogs,
+// mirroring AddEvaluationSuiteForAllCatalogs.
 func AddEvaluationSuiteTypedForAllCatalogs[S ~func(T) (gemara.Result, string, gemara.ConfidenceLevel), T any](
 	v *EvaluationOrchestrator, loader DataLoader, steps map[string][]S,
 ) error {
-	if len(v.referenceCatalogs) == 0 {
+	ids := v.allCatalogIDs()
+	if len(ids) == 0 {
 		return BAD_CATALOG(v.PluginName, "no reference catalogs loaded", "aac10")
 	}
 	adapted := adaptTypedSteps[S, T](steps)
-	for catalogId := range v.referenceCatalogs {
+	for _, catalogId := range ids {
 		if err := v.AddEvaluationSuite(catalogId, loader, adapted); err != nil {
 			return err
 		}

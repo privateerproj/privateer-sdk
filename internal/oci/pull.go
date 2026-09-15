@@ -14,6 +14,7 @@ import (
 	"oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content"
 	"oras.land/oras-go/v2/registry"
+	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
 	"oras.land/oras-go/v2/registry/remote/retry"
 )
@@ -37,7 +38,9 @@ const maxBlobBytes int64 = 16 << 20 // 16 MiB
 // must not be able to silently mask a valid signature as absent).
 const maxSignatureReferrers = 32
 
-// FetchedIndex is the raw, NOT-yet-verified result of pulling a plugin index:
+// FetchedIndex is the raw, NOT-yet-verified result of pulling a plugin index
+// (or, via PullManifest, a catalog's single image manifest — the shape is the
+// same: a signed root descriptor, its bytes, and its signature referrers):
 // the index descriptor (its digest), the index bytes, and the signature bundles
 // discovered as referrers (nil when the index carries no signature referrer —
 // that is "unsigned", a verify-time concern, not a fetch error; multiple entries
@@ -90,9 +93,9 @@ type PullOptions struct {
 	PlainHTTP    bool
 }
 
-// ErrNotIndex is returned when a plugin tag resolves to something other than an
-// OCI image index. The grc.store contract requires the tag to be an index even
-// for a single platform.
+// ErrNotIndex is returned when a tag resolves to something other than the
+// expected root: an OCI image index for a plugin (the grc.store contract
+// requires an index even for a single platform), an image manifest for a catalog.
 var ErrNotIndex = errors.New("plugin tag did not resolve to an OCI image index")
 
 // registryHTTPClient bounds the registry transport: a stalled registry must
@@ -121,6 +124,27 @@ func PullIndex(ctx context.Context, coordinate, version string, opts PullOptions
 	if err != nil {
 		return nil, err
 	}
+	return pull(ctx, repo, coordinate, version, ocispec.MediaTypeImageIndex)
+}
+
+// PullManifest resolves <host>/<repository>:<tag> — a Gemara catalog's single
+// image manifest — and discovers its signature bundle referrers. Like
+// PullIndex it performs NO verification; the caller passes the result to
+// verify.Catalog.
+func PullManifest(ctx context.Context, repository, tag string, opts PullOptions) (*FetchedIndex, error) {
+	repo, err := newRepository(PushOptions{
+		RegistryHost: opts.RegistryHost,
+		PlainHTTP:    opts.PlainHTTP,
+	}, repository)
+	if err != nil {
+		return nil, err
+	}
+	return pull(ctx, repo, repository, tag, ocispec.MediaTypeImageManifest)
+}
+
+// pull is the shared anonymous pull: resolve the tag, require the expected
+// root media type, fetch the root bytes, discover signature referrers.
+func pull(ctx context.Context, repo *remote.Repository, coordinate, version, wantMediaType string) (*FetchedIndex, error) {
 	// Anonymous pull with bounded transport: the default client has no timeout,
 	// so a stalled registry hangs pvtr install forever. registryHTTPClient adds
 	// TLS-handshake and response-header deadlines without capping binary-layer
@@ -131,8 +155,8 @@ func PullIndex(ctx context.Context, coordinate, version string, opts PullOptions
 	if err != nil {
 		return nil, fmt.Errorf("resolving %s:%s: %w", coordinate, version, err)
 	}
-	if indexDesc.MediaType != ocispec.MediaTypeImageIndex {
-		return nil, fmt.Errorf("%w: tag %s resolved to media type %q", ErrNotIndex, version, indexDesc.MediaType)
+	if indexDesc.MediaType != wantMediaType {
+		return nil, fmt.Errorf("%w: tag %s resolved to media type %q, want %q", ErrNotIndex, version, indexDesc.MediaType, wantMediaType)
 	}
 	indexBytes, err := FetchBytes(ctx, repo, indexDesc, maxBlobBytes)
 	if err != nil {

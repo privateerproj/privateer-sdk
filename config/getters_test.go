@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -223,8 +224,8 @@ func TestGetBinariesPath(t *testing.T) {
 	}
 
 	viper.Set("binaries-path", "")
-	if got := GetBinariesPath(); got != "" {
-		t.Errorf("GetBinariesPath() = %q, want empty", got)
+	if got := GetBinariesPath(); !strings.HasSuffix(got, filepath.Join(".privateer", "bin")) {
+		t.Errorf("GetBinariesPath() = %q, want the ~/.privateer/bin default", got)
 	}
 }
 

@@ -1,12 +1,14 @@
 package pluginkit
 
 import (
-	"embed"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -48,11 +50,22 @@ type EvaluationOrchestrator struct {
 	possibleSuites    []*EvaluationSuite
 	possibleControls  map[string][]*gemara.Control
 	referenceCatalogs map[string]*gemara.ControlCatalog
-	requiredVars      []string
-	config            *config.Config
-	loader            DataLoader
-	targetBuilder     TargetBuilder
-	benchmark         *BenchmarkReport
+	// catalogCoordinates are the grc.store catalogs declared with AddCatalogs, in
+	// declaration order. They are read from the install cache at Mobilize (the
+	// cache location comes from config) and keyed in referenceCatalogs by their
+	// full coordinate, so two versions of one catalog coexist.
+	catalogCoordinates []CatalogCoordinate
+	// pendingSuites are suites registered against a declared coordinate before
+	// its catalog is loaded; Mobilize materializes them after loading.
+	pendingSuites []pendingSuite
+	// embeddedCatalogs records ids loaded via the deprecated AddReferenceCatalogs,
+	// so Mobilize can warn that their text was never verified against grc.store.
+	embeddedCatalogs map[string]bool
+	requiredVars     []string
+	config           *config.Config
+	loader           DataLoader
+	targetBuilder    TargetBuilder
+	benchmark        *BenchmarkReport
 }
 
 // DataLoader is a function type for loading plugin data from configuration.
@@ -82,10 +95,21 @@ func (v *EvaluationOrchestrator) AddRequiredVars(vars []string) {
 	v.requiredVars = vars
 }
 
-// AddReferenceCatalogs loads reference catalogs from the embedded file system.
-func (v *EvaluationOrchestrator) AddReferenceCatalogs(dataDir string, files embed.FS) error {
+// AddReferenceCatalogs loads reference catalogs from a file system the plugin
+// carries itself (typically an embed.FS).
+//
+// Deprecated: an embedded copy is not authoritative; it can drift from the
+// published catalog and the plugin author can edit it, and Mobilize warns on
+// every run that uses one. Declare the catalog's grc.store coordinate with
+// AddCatalogs instead; `pvtr install` then fetches and verifies it. Keep this
+// only for a catalog that is not published on grc.store. It will be removed in
+// the next minor release.
+func (v *EvaluationOrchestrator) AddReferenceCatalogs(dataDir string, files fs.FS) error {
 	if v.referenceCatalogs == nil {
 		v.referenceCatalogs = make(map[string]*gemara.ControlCatalog)
+	}
+	if v.embeddedCatalogs == nil {
+		v.embeddedCatalogs = make(map[string]bool)
 	}
 	if dataDir == "" {
 		return errors.New("data directory name cannot be empty")
@@ -102,8 +126,89 @@ func (v *EvaluationOrchestrator) AddReferenceCatalogs(dataDir string, files embe
 			return fmt.Errorf("duplicate catalog id found: %s", catalog.Metadata.Id)
 		}
 		v.referenceCatalogs[catalog.Metadata.Id] = catalog
+		v.embeddedCatalogs[catalog.Metadata.Id] = true
 		v.addPossibleControls(catalog)
 	}
+	return nil
+}
+
+// AddCatalogs declares the grc.store catalogs this plugin evaluates, as
+// "<namespace>/<id>@<version>" coordinates (the version is required: a plugin
+// pins what it was written against). Nothing is read here; `pvtr install`
+// fetches and verifies each catalog into the install cache, and Mobilize loads
+// it from there, so `pvtr run` stays offline. In policy.catalogs a user names
+// a suite by the full coordinate, or by the bare "<namespace>/<id>" (or the
+// catalog's own metadata id) to get the newest declared version.
+func (v *EvaluationOrchestrator) AddCatalogs(coordinates ...string) error {
+	for _, raw := range coordinates {
+		c, err := ParseCatalogCoordinate(raw)
+		if err != nil {
+			return err
+		}
+		if c.Version == "" {
+			return fmt.Errorf("catalog coordinate %q has no version; declare <namespace>/<id>@<version>", raw)
+		}
+		if v.declaredCatalog(c.String()) != nil {
+			return fmt.Errorf("duplicate catalog coordinate: %s", c)
+		}
+		v.catalogCoordinates = append(v.catalogCoordinates, c)
+	}
+	return nil
+}
+
+// declaredCatalog returns the declared coordinate whose canonical form is s.
+func (v *EvaluationOrchestrator) declaredCatalog(s string) *CatalogCoordinate {
+	for i := range v.catalogCoordinates {
+		if v.catalogCoordinates[i].String() == s {
+			return &v.catalogCoordinates[i]
+		}
+	}
+	return nil
+}
+
+type pendingSuite struct {
+	coordinate CatalogCoordinate
+	loader     DataLoader
+	steps      map[string][]gemara.AssessmentStep
+}
+
+// loadDeclaredCatalogs reads every AddCatalogs coordinate from the install
+// cache and materializes the suites registered against them. It runs inside
+// Mobilize because the cache location comes from config. A missing file is an
+// error naming the fix (run `pvtr install`); nothing is fetched here.
+func (v *EvaluationOrchestrator) loadDeclaredCatalogs() error {
+	if len(v.catalogCoordinates) == 0 {
+		return nil
+	}
+	if v.referenceCatalogs == nil {
+		v.referenceCatalogs = make(map[string]*gemara.ControlCatalog)
+	}
+	binariesDir := config.GetBinariesPath()
+	for _, c := range v.catalogCoordinates {
+		key := c.String()
+		if _, loaded := v.referenceCatalogs[key]; loaded {
+			continue
+		}
+		path := CatalogCachePath(binariesDir, c)
+		data, err := os.ReadFile(path)
+		if os.IsNotExist(err) {
+			return CATALOG_NOT_INSTALLED(key, "mob15")
+		}
+		if err != nil {
+			return BAD_CATALOG(v.PluginName, fmt.Sprintf("reading %s: %s", path, err), "mob16")
+		}
+		catalog, err := ParseCatalog(data)
+		if err != nil {
+			return BAD_CATALOG(v.PluginName, fmt.Sprintf("parsing %s: %s", path, err), "mob17")
+		}
+		v.referenceCatalogs[key] = catalog
+		v.addPossibleControls(catalog)
+	}
+	for _, p := range v.pendingSuites {
+		key := p.coordinate.String()
+		v.addEvaluationSuite(key, v.referenceCatalogs[key], p.loader, p.steps)
+	}
+	v.pendingSuites = nil
 	return nil
 }
 
@@ -138,21 +243,33 @@ func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader Dat
 		if catalog.Metadata.Id == "" {
 			return BAD_CATALOG(v.PluginName, "no id found in catalog metadata", "aos30")
 		}
-		v.addEvaluationSuite(catalog, loader, steps)
+		v.addEvaluationSuite(catalogId, catalog, loader, steps)
+		return nil
+	}
+	// A declared grc.store coordinate is not loaded until Mobilize; queue the
+	// suite and validate the catalog then.
+	if c := v.declaredCatalog(catalogId); c != nil {
+		for _, p := range v.pendingSuites {
+			if p.coordinate == *c {
+				return nil
+			}
+		}
+		v.pendingSuites = append(v.pendingSuites, pendingSuite{coordinate: *c, loader: loader, steps: steps})
 		return nil
 	}
 	return BAD_CATALOG(v.PluginName, fmt.Sprintf("no reference catalog found with id '%s'", catalogId), "aos40")
 }
 
 // AddEvaluationSuiteForAllCatalogs registers the provided steps for every
-// reference catalog that has been loaded via AddReferenceCatalogs.
+// catalog declared with AddCatalogs or loaded via AddReferenceCatalogs.
 // This allows plugin developers to define their step implementations once and
 // have them automatically applied to all catalog versions.
 func (v *EvaluationOrchestrator) AddEvaluationSuiteForAllCatalogs(loader DataLoader, steps map[string][]gemara.AssessmentStep) error {
-	if len(v.referenceCatalogs) == 0 {
+	ids := v.allCatalogIDs()
+	if len(ids) == 0 {
 		return BAD_CATALOG(v.PluginName, "no reference catalogs loaded", "aac10")
 	}
-	for catalogId := range v.referenceCatalogs {
+	for _, catalogId := range ids {
 		if err := v.AddEvaluationSuite(catalogId, loader, steps); err != nil {
 			return err
 		}
@@ -160,9 +277,28 @@ func (v *EvaluationOrchestrator) AddEvaluationSuiteForAllCatalogs(loader DataLoa
 	return nil
 }
 
-func (v *EvaluationOrchestrator) addEvaluationSuite(catalog *gemara.ControlCatalog, loader DataLoader, steps map[string][]gemara.AssessmentStep) {
+// allCatalogIDs lists every suite key a plugin can register against: loaded
+// reference catalog ids, then declared coordinates in declaration order.
+func (v *EvaluationOrchestrator) allCatalogIDs() []string {
+	ids := make([]string, 0, len(v.referenceCatalogs)+len(v.catalogCoordinates))
+	for id := range v.referenceCatalogs {
+		ids = append(ids, id)
+	}
+	for _, c := range v.catalogCoordinates {
+		if _, loaded := v.referenceCatalogs[c.String()]; !loaded {
+			ids = append(ids, c.String())
+		}
+	}
+	return ids
+}
+
+// addEvaluationSuite registers a suite under suiteId: the catalog's metadata
+// id for an embedded catalog, or the full coordinate for a declared one (two
+// versions of the same catalog share a metadata id, so the id alone cannot
+// key them).
+func (v *EvaluationOrchestrator) addEvaluationSuite(suiteId string, catalog *gemara.ControlCatalog, loader DataLoader, steps map[string][]gemara.AssessmentStep) {
 	for _, existing := range v.possibleSuites {
-		if existing.CatalogId == catalog.Metadata.Id {
+		if existing.CatalogId == suiteId {
 			return
 		}
 	}
@@ -180,7 +316,7 @@ func (v *EvaluationOrchestrator) addEvaluationSuite(catalog *gemara.ControlCatal
 	}
 
 	suite := EvaluationSuite{
-		CatalogId: catalog.Metadata.Id,
+		CatalogId: suiteId,
 		catalog:   suiteCatalog,
 		steps:     steps,
 		config:    v.config,
@@ -230,6 +366,10 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 		return BAD_CONFIG(v.config.Error, "mob20")
 	}
 
+	if err := v.loadDeclaredCatalogs(); err != nil {
+		return err
+	}
+
 	// Init before loadPayload so retrieval is timed; nil when off.
 	var benchmarkStart time.Time
 	if v.config.Benchmark {
@@ -268,22 +408,20 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 	}
 
 	for _, catalog := range v.config.Policy.ControlCatalogs {
-		matched := false
-		for _, suite := range v.possibleSuites {
-			if suite.CatalogId == catalog {
-				matched = true
-				err := suite.Evaluate(v.ServiceName)
-				if err != nil {
-					v.config.Logger.Error(err.Error())
-				}
-				v.stampEvaluationLog(suite)
-				v.Evaluation_Suites = append(v.Evaluation_Suites, suite)
-				break
-			}
-		}
-		if !matched {
+		suite := v.matchSuite(catalog)
+		if suite == nil {
 			v.config.Logger.Warn("requested catalog did not match any available suite", "requested", catalog, "available", availableCatalogIDs)
+			continue
 		}
+		if v.embeddedCatalogs[suite.CatalogId] {
+			v.config.Logger.Warn("catalog is an embedded copy and was not verified against grc.store; declare it with AddCatalogs instead", "catalog", suite.CatalogId)
+		}
+		err := suite.Evaluate(v.ServiceName)
+		if err != nil {
+			v.config.Logger.Error(err.Error())
+		}
+		v.stampEvaluationLog(suite)
+		v.Evaluation_Suites = append(v.Evaluation_Suites, suite)
 	}
 
 	if len(v.Evaluation_Suites) == 0 {
@@ -302,6 +440,58 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 		return err
 	}
 	return benchErr
+}
+
+// matchSuite resolves a policy.catalogs entry to a registered suite. An exact
+// suite id wins (a catalog id, or a full <namespace>/<id>@<version>
+// coordinate); otherwise a bare <namespace>/<id> coordinate or a catalog's own
+// metadata id resolves to the newest declared version of that catalog.
+func (v *EvaluationOrchestrator) matchSuite(requested string) *EvaluationSuite {
+	for _, suite := range v.possibleSuites {
+		if suite.CatalogId == requested {
+			return suite
+		}
+	}
+	var newest *EvaluationSuite
+	for _, suite := range v.possibleSuites {
+		if !strings.HasPrefix(suite.CatalogId, requested+"@") && (suite.catalog == nil || suite.catalog.Metadata.Id != requested) {
+			continue
+		}
+		if newest == nil || compareCatalogVersions(suiteVersion(suite), suiteVersion(newest)) > 0 {
+			newest = suite
+		}
+	}
+	return newest
+}
+
+// suiteVersion is the version part of a coordinate-keyed suite id ("" for an
+// embedded catalog, whose id carries no version).
+func suiteVersion(suite *EvaluationSuite) string {
+	_, version, _ := strings.Cut(suite.CatalogId, "@")
+	return version
+}
+
+// compareCatalogVersions orders two catalog tags, newest last. Dot-separated
+// numeric segments compare numerically (a leading "v" is ignored) and anything
+// else lexically, because hub tags such as v2026.08.26 carry leading zeros and
+// are not valid semver.
+func compareCatalogVersions(a, b string) int {
+	as := strings.Split(strings.TrimPrefix(a, "v"), ".")
+	bs := strings.Split(strings.TrimPrefix(b, "v"), ".")
+	for i := 0; i < len(as) && i < len(bs); i++ {
+		ai, aerr := strconv.Atoi(as[i])
+		bi, berr := strconv.Atoi(bs[i])
+		if aerr == nil && berr == nil {
+			if ai != bi {
+				return cmp.Compare(ai, bi)
+			}
+			continue
+		}
+		if c := strings.Compare(as[i], bs[i]); c != 0 {
+			return c
+		}
+	}
+	return cmp.Compare(len(as), len(bs))
 }
 
 // stampEvaluationLog populates identity, provenance, and outcome on a suite's

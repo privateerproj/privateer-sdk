@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/gemaraproj/go-gemara"
 )
 
 // PublishManifestCommand is the plugin subcommand that emits the grc.store
@@ -16,12 +18,14 @@ const PublishManifestCommand = "publish-manifest"
 
 // PublishManifest is the machine-readable descriptor `pvtr publish` reads from a
 // built plugin (via the publish-manifest subcommand) in place of CLI flags. The
-// plugin coordinate is Publisher + PluginName. Each evaluated catalog's
-// coordinate is the catalog's OWN owner — metadata.author.id — plus its id, so a
-// plugin that evaluates someone else's catalog links to the real owner instead
-// of falsely claiming it under the plugin's own namespace. A CatalogNamespaces
-// override is available for the rare case where a catalog's author.id does not
-// match the namespace it is published under on grc.store.
+// plugin coordinate is Publisher + PluginName. Catalogs declared with
+// AddCatalogs are emitted as coordinates plus the plugin's step keys, and pvtr
+// publish fetches each catalog from grc.store to build the linkage. Catalogs
+// embedded with the deprecated AddReferenceCatalogs are emitted as a ready
+// linkage under the catalog's OWN owner (metadata.author.id), so a plugin that
+// evaluates someone else's catalog links to the real owner instead of falsely
+// claiming it under the plugin's own namespace; CatalogNamespaces overrides
+// that owner when author.id does not match the grc.store namespace.
 type PublishManifest struct {
 	// Coordinate is the plugin's grc.store coordinate "<publisher>/<plugin_id>".
 	Coordinate string `json:"coordinate"`
@@ -30,7 +34,15 @@ type PublishManifest struct {
 	// validates and canonicalizes it at publish time (grc-store-protocol/spdx is
 	// not imported into the plugin binary).
 	License string `json:"license"`
-	// Evaluates is the control-catalog linkage, deterministically ordered.
+	// Catalogs are the grc.store coordinates declared with AddCatalogs, in
+	// declaration order. pvtr publish fetches and verifies each one and
+	// intersects its assessment-requirement ids with Steps.
+	Catalogs []string `json:"catalogs,omitempty"`
+	// Steps are the assessment-requirement ids the plugin registered steps for,
+	// sorted and deduplicated across suites.
+	Steps []string `json:"steps,omitempty"`
+	// Evaluates is the control-catalog linkage for embedded catalogs,
+	// deterministically ordered. Empty for a plugin that only declares Catalogs.
 	Evaluates []EvaluatesDeclaration `json:"evaluates"`
 }
 
@@ -70,12 +82,24 @@ func (v *EvaluationOrchestrator) PublishManifest() (PublishManifest, error) {
 	if license == "" {
 		return PublishManifest{}, fmt.Errorf("plugin declares no License (grc.store requires one on every publication); set orchestrator.License to an SPDX expression (e.g. \"Apache-2.0\") before it can be published")
 	}
-	if len(v.referenceCatalogs) == 0 {
-		return PublishManifest{}, fmt.Errorf("plugin has no reference catalogs, so it evaluates nothing and cannot be published; load catalogs with AddReferenceCatalogs first")
+	if len(v.referenceCatalogs) == 0 && len(v.catalogCoordinates) == 0 {
+		return PublishManifest{}, fmt.Errorf("plugin has no catalogs, so it evaluates nothing and cannot be published; declare them with AddCatalogs first")
+	}
+
+	var catalogs []string
+	for _, c := range v.catalogCoordinates {
+		catalogs = append(catalogs, c.String())
+	}
+	steps := v.stepKeys()
+	if len(catalogs) > 0 && len(steps) == 0 {
+		return PublishManifest{}, fmt.Errorf("plugin declares catalogs but registers no evaluation steps; add a suite with AddEvaluationSuite first")
 	}
 
 	evals := make([]EvaluatesDeclaration, 0, len(v.referenceCatalogs))
 	for id, catalog := range v.referenceCatalogs {
+		if v.declaredCatalog(id) != nil {
+			continue // a declared coordinate is linked by pvtr publish, not here
+		}
 		version := strings.TrimSpace(catalog.Metadata.Version)
 		if version == "" {
 			return PublishManifest{}, fmt.Errorf("evaluated catalog %q has no metadata.version", id)
@@ -130,5 +154,28 @@ func (v *EvaluationOrchestrator) PublishManifest() (PublishManifest, error) {
 	// (and the downstream signed config blob) is byte-deterministic.
 	slices.SortFunc(evals, func(a, b EvaluatesDeclaration) int { return strings.Compare(a.Catalog, b.Catalog) })
 
-	return PublishManifest{Coordinate: publisher + "/" + pluginID, License: license, Evaluates: evals}, nil
+	return PublishManifest{Coordinate: publisher + "/" + pluginID, License: license, Catalogs: catalogs, Steps: steps, Evaluates: evals}, nil
+}
+
+// stepKeys returns the sorted, deduplicated assessment-requirement ids across
+// every registered and pending suite.
+func (v *EvaluationOrchestrator) stepKeys() []string {
+	seen := map[string]bool{}
+	var keys []string
+	add := func(steps map[string][]gemara.AssessmentStep) {
+		for k := range steps {
+			if !seen[k] {
+				seen[k] = true
+				keys = append(keys, k)
+			}
+		}
+	}
+	for _, s := range v.possibleSuites {
+		add(s.steps)
+	}
+	for _, p := range v.pendingSuites {
+		add(p.steps)
+	}
+	slices.Sort(keys)
+	return keys
 }

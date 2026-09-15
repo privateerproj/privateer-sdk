@@ -68,6 +68,9 @@ var (
 	NO_MATCHING_CATALOGS = func(requested []string, available []string, mod string) error {
 		return wrap(ErrDevBug, fmt.Sprintf("no requested catalogs matched available suites. requested=%v available=%v", requested, available), mod)
 	}
+	CATALOG_NOT_INSTALLED = func(coordinate string, mod string) error {
+		return wrap(ErrRuntime, fmt.Sprintf("catalog %s is not installed; run `pvtr install` for this plugin", coordinate), mod)
+	}
 	BENCHMARK_WRITE_FAILED = func(err error, mod string) error {
 		return wrap(ErrRuntime, fmt.Sprintf("failed to write benchmark report: %s", err), mod)
 	}

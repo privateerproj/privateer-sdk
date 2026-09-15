@@ -33,7 +33,7 @@ func GetInstallCmd(writerFn func() Writer) *cobra.Command {
 			w := writerFn()
 			defer func() { _ = w.Flush() }()
 			if localPath != "" {
-				return install.Local(w, localPath)
+				return install.Local(cmd.Context(), w, localPath)
 			}
 			if fromConfig {
 				return install.FromConfig(cmd.Context(), w, "")
