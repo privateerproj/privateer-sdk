@@ -7,7 +7,6 @@ import (
 	"time"
 
 	sdkconfig "github.com/privateerproj/privateer-sdk/config"
-	"github.com/spf13/viper"
 )
 
 // ConfigFromSDKConfig extracts enabled ai_* settings into a provider-neutral
@@ -15,11 +14,10 @@ import (
 // when AI is disabled and when the configuration is invalid, so callers must
 // check the error before treating false as "AI disabled".
 func ConfigFromSDKConfig(config sdkconfig.Config) (Config, bool, error) {
-	skip, err := resolveAISkip(config)
-	if err != nil {
-		return Config{}, false, err
+	if config.Error != nil {
+		return Config{}, false, config.Error
 	}
-	if skip {
+	if config.GetBool("ai_skip") {
 		return Config{}, false, nil
 	}
 
@@ -31,6 +29,9 @@ func ConfigFromSDKConfig(config sdkconfig.Config) (Config, bool, error) {
 	}
 	if providerText == "" {
 		return Config{}, false, nil
+	}
+	if _, valType := config.GetVar("ai_skip"); valType != "missing" && valType != "bool" {
+		return Config{}, false, fmt.Errorf("ai_skip must be a bool, got %s", valType)
 	}
 
 	provider := Provider(providerText)
@@ -80,60 +81,16 @@ func ConfigFromSDKConfig(config sdkconfig.Config) (Config, bool, error) {
 	return aiConfig.Normalized(), true, nil
 }
 
-// resolveAPIKey applies the credential precedence, highest first: target
-// ai_api_key, target ai_api_key_env, PVTR_AI_API_KEY, top-level ai_api_key,
-// then top-level ai_api_key_env. A hand-built Config has no target entry in
-// Viper, so its Vars stand in for the target tier and outrank the environment,
-// matching how every other ai_* key treats hand-built Vars.
+// NewConfig selects the credential source. Hand-built Vars may also explicitly
+// name an environment variable; no ambient environment or Viper settings apply.
 func resolveAPIKey(config sdkconfig.Config) (string, error) {
-	targetVars, targetConfigured := sdkconfig.GetTargetVars(config.ServiceName)
-	if !targetConfigured {
-		targetVars = config.Vars
-	}
-	if len(targetVars) > 0 {
-		if apiKey, found, err := stringValue(targetVars, "ai_api_key"); err != nil {
+	if envName, found, err := stringValue(config.Vars, "ai_api_key_env"); found || err != nil {
+		if err != nil {
 			return "", err
-		} else if found && apiKey != "" {
-			return apiKey, nil
 		}
-		if envName, found, err := stringValue(targetVars, "ai_api_key_env"); found || err != nil {
-			if err != nil {
-				return "", err
-			}
-			return apiKeyFromEnv(envName)
-		}
+		return apiKeyFromEnv(envName)
 	}
-
-	// The process environment is consulted only when Viper's env binding is
-	// active, so a hand-built Config in a process that never called
-	// command.SetBase does not inherit an ambient PVTR_AI_API_KEY.
-	if viper.IsSet("ai_api_key") {
-		if apiKey := strings.TrimSpace(os.Getenv("PVTR_AI_API_KEY")); apiKey != "" {
-			return apiKey, nil
-		}
-	}
-	// The top-level pass is skipped when the target tier already collapsed onto
-	// config.Vars above, since it would repeat those lookups on the same map.
-	if targetConfigured {
-		if apiKey, found, err := stringValue(config.Vars, "ai_api_key"); err != nil {
-			return "", err
-		} else if found && apiKey != "" {
-			return apiKey, nil
-		}
-	}
-	if apiKey := strings.TrimSpace(viper.GetString("ai_api_key")); apiKey != "" {
-		return apiKey, nil
-	}
-	if targetConfigured {
-		if envName, found, err := stringValue(config.Vars, "ai_api_key_env"); found || err != nil {
-			if err != nil {
-				return "", err
-			}
-			return apiKeyFromEnv(envName)
-		}
-	}
-
-	return "", nil
+	return getSDKConfigString(config, "ai_api_key")
 }
 
 func stringValue(vars map[string]interface{}, key string) (string, bool, error) {
@@ -159,13 +116,12 @@ func apiKeyFromEnv(envName string) (string, error) {
 	return apiKey, nil
 }
 
-// getSDKConfigString resolves on key presence, not value, so an explicit empty
-// string in per-service Vars is honored over viper. A non-string value is an error.
+// getSDKConfigString reads the resolved Vars without consulting global state.
 func getSDKConfigString(config sdkconfig.Config, key string) (string, error) {
 	value, valType := config.GetVar(key)
 	switch valType {
 	case "missing":
-		return strings.TrimSpace(viper.GetString(key)), nil
+		return "", nil
 	case "string":
 		return strings.TrimSpace(value.(string)), nil
 	default:
@@ -173,15 +129,11 @@ func getSDKConfigString(config sdkconfig.Config, key string) (string, error) {
 	}
 }
 
-// getSDKConfigInt resolves on key presence, not value, so an explicit 0 in
-// per-service Vars is honored over viper. A non-int value is an error.
+// getSDKConfigInt preserves explicit zero values for validation by the caller.
 func getSDKConfigInt(config sdkconfig.Config, key string) (int, error) {
 	value, valType := config.GetVar(key)
 	switch valType {
 	case "missing":
-		if viper.IsSet(key) {
-			return viper.GetInt(key), nil
-		}
 		return 0, nil
 	case "int":
 		return value.(int), nil
@@ -190,36 +142,7 @@ func getSDKConfigInt(config sdkconfig.Config, key string) (int, error) {
 	}
 }
 
-// resolveAISkip applies the true-wins rule across the sources this package can
-// see. NewConfig has already folded the environment, target and top-level file
-// values into Vars, so Viper is consulted only for callers that configure it
-// directly, and an explicit false in either source cannot mask a true.
-func resolveAISkip(config sdkconfig.Config) (bool, error) {
-	var invalidType string
-	if value, valType := config.GetVar("ai_skip"); valType == "bool" {
-		if value.(bool) {
-			return true, nil
-		}
-	} else if valType != "missing" {
-		invalidType = fmt.Sprintf("ai_skip must be a bool, got %s", valType)
-	}
-	if viper.IsSet("ai_skip") {
-		value := viper.Get("ai_skip")
-		if skip, ok := value.(bool); ok {
-			if skip {
-				return true, nil
-			}
-		} else if invalidType == "" {
-			invalidType = fmt.Sprintf("ai_skip must be a bool, got %T", value)
-		}
-	}
-	if invalidType != "" {
-		return false, fmt.Errorf("%s", invalidType)
-	}
-	return false, nil
-}
-
 func isSDKConfigKeySet(config sdkconfig.Config, key string) bool {
 	_, valType := config.GetVar(key)
-	return valType != "missing" || viper.IsSet(key)
+	return valType != "missing"
 }

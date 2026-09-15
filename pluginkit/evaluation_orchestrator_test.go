@@ -3,6 +3,8 @@ package pluginkit
 import (
 	"embed"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/gemaraproj/go-gemara"
 	"github.com/goccy/go-yaml"
+	"github.com/privateerproj/privateer-sdk/ai"
 	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/spf13/viper"
 )
@@ -36,7 +39,7 @@ func TestValidateAIConfig(t *testing.T) {
 				"ai_provider": "openai",
 				"ai_api_key":  "key",
 			},
-			wantErrText: "ai_model",
+			wantErrText: "ai model is required",
 		},
 		{
 			name: "missing credential for default endpoint",
@@ -44,7 +47,7 @@ func TestValidateAIConfig(t *testing.T) {
 				"ai_provider": "openai",
 				"ai_model":    "gpt-4o-mini",
 			},
-			wantErrText: "an AI credential is required",
+			wantErrText: "ai api key is required unless ai base url is set",
 		},
 		{
 			name: "unset credential environment variable",
@@ -56,58 +59,13 @@ func TestValidateAIConfig(t *testing.T) {
 			wantErrText: "ai_api_key_env",
 		},
 		{
-			name: "invalid base URL",
-			vars: map[string]interface{}{
-				"ai_provider": "openai",
-				"ai_model":    "gpt-4o-mini",
-				"ai_base_url": "://bad",
-			},
-			wantErrText: "ai_base_url",
-		},
-		{
-			name: "base URL without a host",
-			vars: map[string]interface{}{
-				"ai_provider": "openai",
-				"ai_model":    "gpt-4o-mini",
-				"ai_base_url": "localhost:8000",
-			},
-			wantErrText: "ai_base_url",
-		},
-		{
-			name: "base URL with query parameters",
-			vars: map[string]interface{}{
-				"ai_provider": "openai",
-				"ai_model":    "gpt-4o-mini",
-				"ai_base_url": "https://gateway.example/v1?tenant=repo-one",
-			},
-			wantErrText: "ai_base_url",
-		},
-		{
-			name: "base URL with fragment",
-			vars: map[string]interface{}{
-				"ai_provider": "openai",
-				"ai_model":    "gpt-4o-mini",
-				"ai_base_url": "https://gateway.example/v1#models",
-			},
-			wantErrText: "ai_base_url",
-		},
-		{
-			name: "base URL with unsupported scheme",
-			vars: map[string]interface{}{
-				"ai_provider": "openai",
-				"ai_model":    "gpt-4o-mini",
-				"ai_base_url": "ftp://gateway.example/v1",
-			},
-			wantErrText: "ai_base_url",
-		},
-		{
 			name: "base URL with userinfo",
 			vars: map[string]interface{}{
 				"ai_provider": "openai",
 				"ai_model":    "gpt-4o-mini",
 				"ai_base_url": "https://user:password@gateway.example/v1",
 			},
-			wantErrText: "ai_base_url",
+			wantErrText: "ai base url",
 		},
 		{
 			name: "non-positive timeout",
@@ -171,34 +129,106 @@ func TestValidateAIConfig(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), tt.wantErrText) {
 				t.Fatalf("error = %v, want substring %q", err, tt.wantErrText)
 			}
+			if !strings.HasPrefix(err.Error(), `target "repo-one": invalid AI configuration: `) {
+				t.Errorf("error = %v, want target-qualified AI configuration error", err)
+			}
+			if errors.Unwrap(err) == nil {
+				t.Errorf("error = %v, want wrapped validation error", err)
+			}
+		})
+	}
+}
+
+func TestAIConfigValidation_MatchesDirectClients(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	for _, provider := range []ai.Provider{ai.ProviderOpenAI, ai.ProviderAnthropic} {
+		t.Run(string(provider), func(t *testing.T) {
+			aiConfig := ai.Config{Provider: provider, Model: "model", BaseURL: "http://localhost:8000/v1#"}
+			wantErr := aiConfig.Validate()
+			if wantErr == nil {
+				t.Fatal("expected invalid base URL error")
+			}
+			cfg := config.Config{
+				ServiceName: "repo-one",
+				Vars: map[string]interface{}{
+					"ai_provider": string(aiConfig.Provider),
+					"ai_model":    aiConfig.Model,
+					"ai_base_url": aiConfig.BaseURL,
+				},
+			}
+			for name, constructor := range map[string]func() (ai.Client, error){
+				"explicit config": func() (ai.Client, error) { return ai.NewClientWithAIConfig(aiConfig) },
+				"SDK config":      func() (ai.Client, error) { return ai.NewClient(cfg) },
+			} {
+				client, err := constructor()
+				if client != nil || err == nil || err.Error() != wantErr.Error() {
+					t.Errorf("%s: client = %v, error = %v, want nil client and %v", name, client, err, wantErr)
+				}
+			}
+			wantPreflightErr := fmt.Sprintf("target %q: invalid AI configuration: %s", cfg.ServiceName, wantErr)
+			if err := validateAIConfig(&cfg); err == nil || err.Error() != wantPreflightErr {
+				t.Errorf("preflight error = %v, want %q", err, wantPreflightErr)
+			}
 		})
 	}
 }
 
 func TestMobilize_AIConfigPreflightRunsBeforeLoader(t *testing.T) {
-	viper.Reset()
-	t.Cleanup(viper.Reset)
-	cfg := setBasicConfig()
-	cfg.Vars = map[string]interface{}{
-		"ai_provider": "openai",
-		"ai_model":    "gpt-4o-mini",
-	}
-	loaderCalled := false
-	orchestrator := &EvaluationOrchestrator{
-		PluginName: "test-plugin",
-		config:     cfg,
-		loader: func(*config.Config) (any, error) {
-			loaderCalled = true
-			return nil, nil
+	tests := []struct {
+		name string
+		vars map[string]interface{}
+	}{
+		{
+			name: "missing credential",
+			vars: map[string]interface{}{"ai_provider": "openai", "ai_model": "gpt-4o-mini"},
+		},
+		{
+			name: "missing model",
+			vars: map[string]interface{}{"ai_provider": "openai", "ai_api_key": "key"},
+		},
+		{
+			name: "unsupported provider",
+			vars: map[string]interface{}{"ai_provider": "unknown", "ai_model": "model", "ai_api_key": "key"},
+		},
+		{
+			name: "invalid base URL",
+			vars: map[string]interface{}{"ai_provider": "openai", "ai_model": "gpt-4o-mini", "ai_base_url": "http://localhost:8000/v1#"},
+		},
+		{
+			name: "invalid timeout",
+			vars: map[string]interface{}{"ai_provider": "openai", "ai_timeout": "-1s"},
 		},
 	}
 
-	err := orchestrator.Mobilize()
-	if err == nil || !strings.Contains(err.Error(), "mob15") {
-		t.Fatalf("expected mob15 bad config error, got %v", err)
-	}
-	if loaderCalled {
-		t.Fatal("loader ran before AI configuration preflight")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+			t.Cleanup(viper.Reset)
+			cfg := setBasicConfig()
+			cfg.Vars = tt.vars
+			wantErr := validateAIConfig(cfg)
+			if wantErr == nil {
+				t.Fatal("expected invalid AI configuration")
+			}
+			loaderCalled := false
+			orchestrator := &EvaluationOrchestrator{
+				PluginName: "test-plugin",
+				config:     cfg,
+				loader: func(*config.Config) (any, error) {
+					loaderCalled = true
+					return nil, nil
+				},
+			}
+
+			err := orchestrator.Mobilize()
+			if err == nil || err.Error() != BAD_CONFIG(wantErr, "mob15").Error() {
+				t.Fatalf("expected mob15 bad config error, got %v", err)
+			}
+			if loaderCalled || orchestrator.Payload != nil {
+				t.Fatal("payload loaded before AI configuration preflight")
+			}
+		})
 	}
 }
 

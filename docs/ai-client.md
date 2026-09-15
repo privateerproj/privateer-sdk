@@ -23,6 +23,14 @@ client, not just the error: a nil client means AI is disabled. This is
 deliberate — the provider, model, and credentials are the *operator's* choice,
 made in config, not something a plugin hardcodes.
 
+Pass the `Config` produced by `config.NewConfig`: it resolves operator settings
+into `Vars`. AI clients do not re-read global Viper or ambient `PVTR_AI_*`
+settings. Hand-built `Vars` are self-contained, except that `ai_api_key_env`
+explicitly reads the variable named there.
+For standalone file loading, use `config.ReadInConfig` or `config.ReadConfig`
+before `NewConfig` to preserve file provenance; see the
+[upgrade notes](ai-assist.md#upgrade-notes).
+
 `ai.NewClientWithAIConfig(ai.Config)` is the lower-level primitive that `NewClient`
 builds on. Reach for it directly only when you already hold a hand-built
 `ai.Config` rather than an SDK config — for example in tests, when injecting a
@@ -58,10 +66,14 @@ responsibility.
 Routing and authentication are independent for a custom `BaseURL`: when
 `APIKey` is present the adapter sends it to that endpoint, and when it is empty
 the adapter omits provider authentication headers. The provider's default
-endpoint always requires a credential. SDK configuration preflight requires an
+endpoint always requires a credential. `provider.Config.Validate` requires an
 absolute HTTP(S) API-root URL without userinfo, query parameters, or a fragment
 because each adapter appends its own request path. Use `APIKey` for endpoint
 credentials rather than embedding credentials in the URL.
+
+Preflight cannot determine whether a custom endpoint requires authentication:
+provide a credential when it does. A missing or rejected credential at that
+endpoint remains a runtime failure, not a configuration error detected locally.
 
 `Model` may differ from the model the provider reports using when the requested
 name is an alias resolved to a pinned version (e.g. `gpt-4o-mini` ->

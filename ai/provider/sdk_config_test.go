@@ -2,7 +2,6 @@ package provider
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,7 +21,7 @@ func configFromFileForTarget(t *testing.T, content, target string) sdkconfig.Con
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 	viper.SetConfigFile(configFile)
-	if err := viper.ReadInConfig(); err != nil {
+	if err := sdkconfig.ReadInConfig(); err != nil {
 		t.Fatalf("ReadInConfig() error = %v", err)
 	}
 	viper.SetEnvPrefix("PVTR")
@@ -63,7 +62,7 @@ func TestConfigFromSDKConfig_AISkip(t *testing.T) {
 	tests := []struct {
 		name string
 		// config drives the file pipeline; vars builds the Config by hand.
-		// viperSkip seeds ai_skip directly in Viper for the hand-built cases.
+		// viperSkip exercises NewConfig's handling of programmatic settings.
 		config    string
 		vars      map[string]interface{}
 		viperSkip interface{}
@@ -189,8 +188,13 @@ services:
 				t.Cleanup(viper.Reset)
 				if tt.viperSkip != nil {
 					viper.Set("ai_skip", tt.viperSkip)
+					for key, value := range tt.vars {
+						viper.Set("vars."+key, value)
+					}
+					cfg = sdkconfig.NewConfig(nil)
+				} else {
+					cfg = sdkconfig.Config{Vars: tt.vars}
 				}
-				cfg = sdkconfig.Config{Vars: tt.vars}
 			}
 
 			aiConfig, configured, err := ConfigFromSDKConfig(cfg)
@@ -236,12 +240,12 @@ services:
 	}
 }
 
-// Environment values reach a hand-built Config only through Viper or
-// config.NewConfig, so a stray PVTR_AI_* export cannot enable or redirect AI in
-// a process that never configured either.
+// Neither the process environment nor Viper can enable or redirect hand-built Vars.
 func TestConfigFromSDKConfig_ProcessEnvironmentDoesNotReachHandBuiltVars(t *testing.T) {
 	viper.Reset()
 	t.Cleanup(viper.Reset)
+	viper.SetEnvPrefix("PVTR")
+	viper.AutomaticEnv()
 	t.Setenv("PVTR_AI_BASE_URL", "http://localhost:11434/v1")
 	t.Setenv("PVTR_AI_MODEL", "env-model")
 	t.Setenv("PVTR_AI_MAX_TOKENS", "4096")
@@ -266,12 +270,12 @@ func TestConfigFromSDKConfig_ProcessEnvironmentDoesNotReachHandBuiltVars(t *test
 	}
 }
 
-// Without Viper's env binding an ambient credential must not stand in for a
-// missing one, so a hand-built Config cannot be silently completed from the
-// shell of whatever process happens to be running.
+// An ambient credential must not complete a hand-built Config, even with Viper bound.
 func TestConfigFromSDKConfig_AmbientCredentialDoesNotCompleteHandBuiltVars(t *testing.T) {
 	viper.Reset()
 	t.Cleanup(viper.Reset)
+	viper.SetEnvPrefix("PVTR")
+	viper.AutomaticEnv()
 	t.Setenv("PVTR_AI_API_KEY", "sk-ambient-credential")
 
 	aiConfig, configured, err := ConfigFromSDKConfig(sdkconfig.Config{Vars: map[string]interface{}{
@@ -516,98 +520,6 @@ func TestConfigFromSDKConfig_HandBuiltTargetCredentialsPrecedeProcessEnvironment
 	}
 }
 
-func TestConfigFromSDKConfig_APIKeyPrecedence(t *testing.T) {
-	const baseConfig = `
-ai_provider: openai
-ai_model: gpt-4o-mini
-%s
-services:
-  repo-one:
-    policy:
-      catalogs: [catalog]
-      applicability: [all]
-%s
-`
-
-	tests := []struct {
-		name       string
-		topLevel   string
-		target     string
-		processKey string
-		namedKey   string
-		want       string
-	}{
-		{
-			name:       "target direct beats target environment and process environment",
-			target:     "    vars:\n      ai_api_key: target-direct\n      ai_api_key_env: PRIVATEER_TEST_NAMED_AI_KEY",
-			processKey: "process-key",
-			namedKey:   "named-key",
-			want:       "target-direct",
-		},
-		{
-			name:       "target environment beats process environment",
-			target:     "    vars:\n      ai_api_key_env: PRIVATEER_TEST_NAMED_AI_KEY",
-			processKey: "process-key",
-			namedKey:   "named-key",
-			want:       "named-key",
-		},
-		{
-			name:       "process environment beats top-level sources",
-			topLevel:   "ai_api_key: top-level-direct\nai_api_key_env: PRIVATEER_TEST_NAMED_AI_KEY",
-			processKey: "process-key",
-			namedKey:   "named-key",
-			want:       "process-key",
-		},
-		{
-			name:     "top-level direct beats top-level environment",
-			topLevel: "ai_api_key: top-level-direct\nai_api_key_env: PRIVATEER_TEST_NAMED_AI_KEY",
-			namedKey: "named-key",
-			want:     "top-level-direct",
-		},
-		{
-			name:     "top-level environment is final configured source",
-			topLevel: "ai_api_key_env: PRIVATEER_TEST_NAMED_AI_KEY",
-			namedKey: "named-key",
-			want:     "named-key",
-		},
-		{
-			name:       "empty target direct falls through",
-			target:     "    vars:\n      ai_api_key: \"\"\n      ai_api_key_env: PRIVATEER_TEST_NAMED_AI_KEY",
-			processKey: "process-key",
-			namedKey:   "named-key",
-			want:       "named-key",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			viper.Reset()
-			t.Cleanup(viper.Reset)
-			viper.SetEnvPrefix("PVTR")
-			viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
-			viper.AutomaticEnv()
-			t.Setenv("PVTR_AI_API_KEY", tt.processKey)
-			t.Setenv("PRIVATEER_TEST_NAMED_AI_KEY", tt.namedKey)
-			viper.SetConfigType("yaml")
-			if err := viper.ReadConfig(bytes.NewBufferString(fmt.Sprintf(baseConfig, tt.topLevel, tt.target))); err != nil {
-				t.Fatalf("ReadConfig() error = %v", err)
-			}
-			viper.Set("service", "repo-one")
-
-			aiConfig, configured, err := ConfigFromSDKConfig(sdkconfig.NewConfig(nil))
-			if err != nil {
-				t.Fatalf("ConfigFromSDKConfig() error = %v", err)
-			}
-			if !configured {
-				t.Fatal("expected configured AI")
-			}
-			if aiConfig.APIKey != tt.want {
-				t.Fatalf("APIKey = %q, want %q", aiConfig.APIKey, tt.want)
-			}
-		})
-	}
-}
-
 func TestConfigFromSDKConfig_TargetAPIKeyEnvDoesNotFallThrough(t *testing.T) {
 	viper.Reset()
 	t.Cleanup(viper.Reset)
@@ -617,7 +529,7 @@ func TestConfigFromSDKConfig_TargetAPIKeyEnvDoesNotFallThrough(t *testing.T) {
 	t.Setenv("PVTR_AI_API_KEY", "process-fallback")
 	t.Setenv("PRIVATEER_TEST_MISSING_AI_KEY", "")
 	viper.SetConfigType("yaml")
-	if err := viper.ReadConfig(bytes.NewBufferString(`
+	if err := sdkconfig.ReadConfig(bytes.NewBufferString(`
 ai_provider: openai
 ai_model: gpt-4o-mini
 ai_api_key: top-level-fallback
@@ -653,8 +565,8 @@ func TestConfigFromSDKConfig_DoesNotResolveAPIKeyEnvThroughViper(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !configured {
-		t.Fatal("expected configured AI")
+	if configured {
+		t.Fatal("Viper must not enable a hand-built empty config")
 	}
 	if aiConfig.APIKey != "" {
 		t.Fatalf("expected ai_api_key_env viper value to be ignored, got %q", aiConfig.APIKey)
@@ -741,7 +653,7 @@ func TestConfigFromSDKConfig_RejectsNonPositiveLimits(t *testing.T) {
 	}
 }
 
-func TestConfigFromSDKConfig_UsesViperFallback(t *testing.T) {
+func TestConfigFromSDKConfig_UsesNewConfigForViperSettings(t *testing.T) {
 	viper.Reset()
 	t.Cleanup(viper.Reset)
 
@@ -751,7 +663,7 @@ func TestConfigFromSDKConfig_UsesViperFallback(t *testing.T) {
 	viper.Set("ai_timeout", "45s")
 	viper.Set("ai_max_tokens", 512)
 
-	aiConfig, configured, err := ConfigFromSDKConfig(sdkconfig.Config{Vars: map[string]interface{}{}})
+	aiConfig, configured, err := ConfigFromSDKConfig(sdkconfig.NewConfig(nil))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -870,7 +782,7 @@ func TestGetSDKConfigString_ResolvesOnPresence(t *testing.T) {
 		}
 	})
 
-	t.Run("falls through to viper when absent from config Vars", func(t *testing.T) {
+	t.Run("ignores viper when absent from config Vars", func(t *testing.T) {
 		viper.Reset()
 		t.Cleanup(viper.Reset)
 		viper.Set("ai_base_url", "http://127.0.0.1:8000/v1")
@@ -880,8 +792,8 @@ func TestGetSDKConfigString_ResolvesOnPresence(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if got != "http://127.0.0.1:8000/v1" {
-			t.Fatalf("expected viper fallback base URL, got %q", got)
+		if got != "" {
+			t.Fatalf("expected no base URL from global state, got %q", got)
 		}
 	})
 }
@@ -902,7 +814,7 @@ func TestGetSDKConfigInt_ResolvesOnPresence(t *testing.T) {
 		}
 	})
 
-	t.Run("falls through to viper when absent from config Vars", func(t *testing.T) {
+	t.Run("ignores viper when absent from config Vars", func(t *testing.T) {
 		viper.Reset()
 		t.Cleanup(viper.Reset)
 		viper.Set("ai_retries", 5)
@@ -912,8 +824,8 @@ func TestGetSDKConfigInt_ResolvesOnPresence(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if got != 5 {
-			t.Fatalf("expected viper fallback 5, got %d", got)
+		if got != 0 {
+			t.Fatalf("expected no limit from global state, got %d", got)
 		}
 	})
 

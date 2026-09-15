@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"path"
 	"strings"
@@ -242,29 +241,9 @@ func validateAIConfig(cfg *config.Config) error {
 		return nil
 	}
 
-	// aiConfig is already normalized, so every string field is trimmed here.
-	if aiConfig.Model == "" {
-		return fmt.Errorf("target %q: ai_model is required when ai_provider is set", cfg.ServiceName)
-	}
-	if aiConfig.APIKey == "" && aiConfig.BaseURL == "" {
-		return fmt.Errorf(
-			"target %q: an AI credential is required for provider %q. Set PVTR_AI_API_KEY, or set ai_base_url if the endpoint needs no credential",
-			cfg.ServiceName,
-			aiConfig.Provider,
-		)
-	}
-	if aiConfig.BaseURL != "" {
-		parsed, parseErr := url.Parse(aiConfig.BaseURL)
-		validScheme := parseErr == nil && (strings.EqualFold(parsed.Scheme, "http") || strings.EqualFold(parsed.Scheme, "https"))
-		if !validScheme || parsed.Host == "" || parsed.User != nil || parsed.ForceQuery || parsed.RawQuery != "" || parsed.Fragment != "" {
-			return fmt.Errorf("target %q: ai_base_url must be an absolute HTTP(S) API root URL without userinfo, query, or fragment", cfg.ServiceName)
-		}
-	}
-	// The checks above exist to give operators a message naming the offending
-	// key; this is the authoritative one, and the only check for whether the
-	// provider is registered. The discarded adapter costs one struct per run.
+	// Use the same validation and provider registry as direct client callers.
 	if _, err := ai.NewClientWithAIConfig(aiConfig); err != nil {
-		return fmt.Errorf("target %q: invalid ai_provider %q: %w", cfg.ServiceName, aiConfig.Provider, err)
+		return fmt.Errorf("target %q: invalid AI configuration: %w", cfg.ServiceName, err)
 	}
 	return nil
 }

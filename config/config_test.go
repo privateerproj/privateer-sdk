@@ -731,9 +731,10 @@ func TestNewConfig_WarnsForConfigFileAIAPIKey(t *testing.T) {
 			wantWarn: true,
 		},
 		{
-			name:   "empty top-level file key does not warn",
-			config: "ai_api_key: \"\"\n",
-			envKey: "fixture-credential",
+			name:     "empty top-level file key declaration warns",
+			config:   "ai_api_key: \"\"\n",
+			envKey:   "fixture-credential",
+			wantWarn: true,
 		},
 		{
 			name:     "target file key overrides environment key",
@@ -778,7 +779,7 @@ func TestNewConfig_WarnsForConfigFileAIAPIKey(t *testing.T) {
 				t.Fatalf("WriteFile() error = %v", err)
 			}
 			viper.SetConfigFile(configFile)
-			if err := viper.ReadInConfig(); err != nil {
+			if err := ReadInConfig(); err != nil {
 				t.Fatalf("ReadInConfig() error = %v", err)
 			}
 			viper.Set("service", "my-service-1")
@@ -808,7 +809,7 @@ func TestNewConfig_WarnsForConfigFileAIAPIKey(t *testing.T) {
 	}
 }
 
-func TestNewConfig_ReportsConfigFileSnapshotReadFailure(t *testing.T) {
+func TestNewConfig_DoesNotReopenLoadedFile(t *testing.T) {
 	viper.Reset()
 	t.Cleanup(viper.Reset)
 
@@ -823,7 +824,7 @@ func TestNewConfig_ReportsConfigFileSnapshotReadFailure(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 	viper.SetConfigFile(configFile)
-	if err := viper.ReadInConfig(); err != nil {
+	if err := ReadInConfig(); err != nil {
 		t.Fatalf("ReadInConfig() error = %v", err)
 	}
 	if err := os.Remove(configFile); err != nil {
@@ -832,8 +833,8 @@ func TestNewConfig_ReportsConfigFileSnapshotReadFailure(t *testing.T) {
 	viper.Set("service", "my-service-1")
 
 	cfg := NewConfig(nil)
-	if cfg.Error == nil || !strings.Contains(cfg.Error.Error(), "read raw config file") {
-		t.Fatalf("NewConfig() error = %v, want raw config file read error", cfg.Error)
+	if cfg.Error != nil {
+		t.Fatalf("NewConfig() reopened the loaded file: %v", cfg.Error)
 	}
 }
 
