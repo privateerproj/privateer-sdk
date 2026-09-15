@@ -1,21 +1,28 @@
 package install
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 
 	"github.com/privateerproj/privateer-sdk/config"
+	"github.com/privateerproj/privateer-sdk/internal/catalog"
 	"github.com/privateerproj/privateer-sdk/internal/manifest"
+	"github.com/privateerproj/privateer-sdk/internal/oci"
+	"github.com/privateerproj/privateer-sdk/pluginkit"
 	"github.com/privateerproj/privateer-sdk/utils"
 )
 
 // Local installs a plugin from a local binary path: it copies the binary into
-// the SDK's binaries dir (atomically) and registers it in the manifest as
-// local/<name> at version "local". Progress is written to w; the caller owns
-// flushing w.
-func Local(w io.Writer, binaryPath string) error {
+// the SDK's binaries dir (atomically), registers it in the manifest as
+// local/<name> at version "local", then caches the grc.store catalogs it
+// declares. A local binary has no signed config to read those from, so it is
+// asked directly via its publish-manifest subcommand — it is the user's own
+// build, the same trust `pvtr publish` extends. Progress is written to w; the
+// caller owns flushing w.
+func Local(ctx context.Context, w io.Writer, binaryPath string) error {
 	binaryName, err := getSourceName(binaryPath)
 	if err != nil {
 		return err
@@ -35,10 +42,27 @@ func Local(w io.Writer, binaryPath string) error {
 	}
 
 	err = saveManifestInMem(binDirPath, binaryName)
-	if err == nil {
-		_, _ = fmt.Fprintf(w, "Installed local plugin %s\n", binaryName)
+	if err != nil {
+		return err
 	}
-	return err
+	_, _ = fmt.Fprintf(w, "Installed local plugin %s\n", binaryName)
+
+	m, err := RunPublishManifest(ctx, filepath.Join(destDir, binaryName))
+	if err != nil {
+		// A binary built against an older SDK has no publish-manifest command;
+		// it embeds its catalogs and needs nothing cached.
+		_, _ = fmt.Fprintf(w, "Warning: could not read the plugin's catalogs (%v); skipping catalog install\n", err)
+		return nil
+	}
+	coords := make([]pluginkit.CatalogCoordinate, 0, len(m.Catalogs))
+	for _, raw := range m.Catalogs {
+		c, err := pluginkit.ParseCatalogCoordinate(raw)
+		if err != nil {
+			return fmt.Errorf("plugin declares an invalid catalog: %w", err)
+		}
+		coords = append(coords, c)
+	}
+	return catalog.Install(ctx, w, oci.NewClient(), binDirPath, coords)
 }
 
 func getSourceName(binaryPath string) (string, error) {

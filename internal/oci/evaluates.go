@@ -44,7 +44,7 @@ func ValidateForPublish(p AssembleParams) error {
 	// orchestrator.Publisher), so an empty list means the plugin loaded no
 	// reference catalogs.
 	if len(p.Evaluates) == 0 {
-		return fmt.Errorf("a plugin must declare what it evaluates (the hub rejects an empty evaluates list): load reference catalogs with AddReferenceCatalogs and set orchestrator.Publisher")
+		return fmt.Errorf("a plugin must declare what it evaluates (the hub rejects an empty evaluates list): declare catalogs with AddCatalogs and set orchestrator.Publisher")
 	}
 	for i, e := range p.Evaluates {
 		if !strings.Contains(strings.TrimSuffix(e.Catalog, "/"), "/") || strings.HasPrefix(e.Catalog, "/") {

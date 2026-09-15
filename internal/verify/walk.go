@@ -56,6 +56,9 @@ type VerifiedPlugin struct {
 	OS             string
 	Arch           string
 	Binary         []byte // the verified binary bytes to write +x under Entrypoint
+	// Evaluates is the catalog linkage from the signed config: what the plugin
+	// declared it evaluates, which is also what `pvtr install` caches for it.
+	Evaluates []pluginspec.Evaluate
 }
 
 // Index runs the full §6 contract over a fetched (untrusted) index and returns
@@ -76,13 +79,25 @@ func (v *Verifier) Index(ctx context.Context, fetched *oci.FetchedIndex, policy 
 	}
 	// 1. Verify the index signature against the index digest (keyless: Fulcio
 	//    chain + SCT + Rekor inclusion, offline against the pinned root).
-	//    Re-signing accumulates bundles without removing prior ones, so we
-	//    iterate all bundles and proceed with the first that passes both
-	//    cryptographic verification and the identity policy.
+	signerIdentity, err := v.signer(ctx, fetched, policy)
+	if err != nil {
+		return nil, err
+	}
+	// walkVerifiedIndex re-checks the identity (step 2) so the test entrypoint
+	// that calls it directly is gated identically.
+	return v.walkVerifiedIndex(ctx, fetched, signerIdentity, policy)
+}
+
+// signer verifies the fetched root's signature bundles against its digest and
+// returns the identity of the first bundle that passes both cryptographic
+// verification and the identity policy. Re-signing accumulates bundles without
+// removing prior ones, so every bundle is tried: a root carrying multiple
+// signatures is accepted as long as one matches the pinned identity.
+func (v *Verifier) signer(ctx context.Context, fetched *oci.FetchedIndex, policy IdentityPolicy) (string, error) {
 	indexDigest := fetched.IndexDescriptor.Digest.String()
 
 	if len(fetched.SignatureBundles) == 0 {
-		return nil, ErrUnsigned
+		return "", ErrUnsigned
 	}
 
 	var bundleErrs []error
@@ -96,13 +111,7 @@ func (v *Verifier) Index(ctx context.Context, fetched *oci.FetchedIndex, policy 
 			bundleErrs = append(bundleErrs, err)
 			continue
 		}
-		// This bundle passed both crypto verification and the identity policy —
-		// proceed to the walk. The identity check here is load-bearing, not just a
-		// pre-filter: on a mismatch the loop `continue`s to the NEXT bundle, so a
-		// plugin carrying multiple signatures is accepted as long as one matches the
-		// pinned identity. walkVerifiedIndex re-checks (step 2) so the test entrypoint
-		// that calls it directly is gated identically.
-		return v.walkVerifiedIndex(ctx, fetched, signerIdentity, policy)
+		return signerIdentity, nil
 	}
 
 	// No bundle passed. If the index carried more signature referrers than were
@@ -110,7 +119,7 @@ func (v *Verifier) Index(ctx context.Context, fetched *oci.FetchedIndex, policy 
 	// not be able to mask a real signature as a plain verification failure or
 	// (worse) as "unsigned". This is diagnosable and fails closed.
 	if fetched.SignaturesTruncated {
-		return nil, fmt.Errorf("%w: no valid signature among the first %d referrers, but the index carries more (a valid signature may exist beyond the inspection limit; the registry may be flooding referrers)",
+		return "", fmt.Errorf("%w: no valid signature among the first %d referrers, but the index carries more (a valid signature may exist beyond the inspection limit; the registry may be flooding referrers)",
 			ErrSignatureInvalid, len(bundleErrs))
 	}
 	// For a single bundle the error is returned directly so
@@ -118,9 +127,9 @@ func (v *Verifier) Index(ctx context.Context, fetched *oci.FetchedIndex, policy 
 	// For multiple bundles, errors.Join wraps all of them — errors.Is still
 	// walks the joined tree so sentinels remain detectable.
 	if len(bundleErrs) == 1 {
-		return nil, bundleErrs[0]
+		return "", bundleErrs[0]
 	}
-	return nil, fmt.Errorf("no valid signature bundle found (tried %d): %w", len(bundleErrs), errors.Join(bundleErrs...))
+	return "", fmt.Errorf("no valid signature bundle found (tried %d): %w", len(bundleErrs), errors.Join(bundleErrs...))
 }
 
 // walkVerifiedIndex runs steps 2-8 after the signature has been verified and the
@@ -228,6 +237,7 @@ func (v *Verifier) walkVerifiedIndex(ctx context.Context, fetched *oci.FetchedIn
 		OS:             osName,
 		Arch:           arch,
 		Binary:         binBytes,
+		Evaluates:      cfg.Evaluates,
 	}, nil
 }
 

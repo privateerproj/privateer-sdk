@@ -96,9 +96,6 @@ func pushBlobTo(ctx context.Context, target oras.Target, b blob) error {
 // catalog repos under the same namespace (`plugins` is also a
 // reserved org slug, so the first segment can never collide with it).
 func newPluginRepository(opts PushOptions, coordinate string) (*remote.Repository, error) {
-	if opts.RegistryHost == "" {
-		return nil, fmt.Errorf("registry host is required")
-	}
 	ns, id, ok := SplitCoordinate(coordinate)
 	if !ok {
 		return nil, fmt.Errorf("invalid coordinate %q: want <namespace>/<plugin_id>", coordinate)
@@ -108,7 +105,16 @@ func newPluginRepository(opts PushOptions, coordinate string) (*remote.Repositor
 	// the earlier _plugins segment forced that workaround, which the maintainers
 	// changed away from precisely because a leading-underscore segment is
 	// illegal and oras-go re-validates the name inside Resolve/Fetch/Referrers).
-	ref := opts.RegistryHost + "/" + pluginRepoPath(ns, id)
+	return newRepository(opts, pluginRepoPath(ns, id))
+}
+
+// newRepository builds the oras repository client for any registry repo path
+// (a plugin's "<ns>/plugins/<id>" or a catalog's "<ns>/<id>").
+func newRepository(opts PushOptions, repoPath string) (*remote.Repository, error) {
+	if opts.RegistryHost == "" {
+		return nil, fmt.Errorf("registry host is required")
+	}
+	ref := opts.RegistryHost + "/" + repoPath
 	repo, err := remote.NewRepository(ref)
 	if err != nil {
 		return nil, fmt.Errorf("building repository client for %s: %w", ref, err)
