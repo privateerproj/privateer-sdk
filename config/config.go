@@ -11,7 +11,6 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -23,17 +22,7 @@ import (
 
 const defaultServiceName = "overview"
 
-const aiAPIKeyConfigWarning = "ai_api_key is declared in configuration; remove plaintext credentials and use ai_api_key_env for per-target credentials or PVTR_AI_API_KEY for a shared credential"
-
 var allowedOutputTypes = []string{"json", "yaml", "sarif", "gemara"}
-
-var inheritedTopLevelVarKeys = []string{
-	"ai_provider",
-	"ai_model",
-	"ai_base_url",
-	"ai_timeout",
-	"ai_max_tokens",
-}
 
 // Config holds the configuration for a plugin execution.
 type Config struct {
@@ -65,9 +54,9 @@ func NewConfig(requiredVars []string) Config {
 	var errString string
 
 	serviceName := TargetName() // the currently running target; if empty, we're probably running from core
-	svcKey := targetsKey()      // "targets" or its legacy "services" alias, whichever the config uses
-	fileConfig := rawFileSettings()
-	aiAPIKeyInConfigFile := hasConfigFileAIAPIKey(serviceName, svcKey)
+	targetsSectionKey := targetsKey()
+	fileSettings := rawFileSettings()
+	aiAPIKeyInConfigFile := hasConfigFileAIAPIKey(serviceName, targetsSectionKey)
 
 	write := viper.GetBool("write")                                         // defaults to true, but allow the user to disable file writing
 	output := strings.ToLower(strings.TrimSpace(viper.GetString("output"))) // defaults to yaml; can be set to json, sarif, or gemara
@@ -75,43 +64,23 @@ func NewConfig(requiredVars []string) Config {
 	benchmark := viper.GetBool("benchmark")                                 // defaults to false
 	benchmarkPayloadOnly := viper.GetBool("benchmark-payload-only")         // defaults to false; loader only, skip steps
 
-	globalVars := viper.GetStringMap("vars")
-	vars := make(map[string]interface{}, len(globalVars))
-	maps.Copy(vars, globalVars)
-	localVars := viper.GetStringMap(fmt.Sprintf("%s.%s.vars", svcKey, serviceName))
-	for key, value := range localVars {
-		// Overwrite or add local vars onto the global vars
-		vars[key] = value
-	}
-	// AI settings are materialized into Vars so SDK consumers see one resolved
-	// view. Non-credential environment values outrank target and top-level vars.
-	// Skip uses true-wins; credentials prefer named/environment sources to literals.
-	for _, key := range inheritedTopLevelVarKeys {
-		if value, found := aiEnvironmentValue(key); found {
-			vars[key] = value
-			continue
-		}
-		if _, exists := vars[key]; exists {
-			continue
-		}
-		if value, found := topLevelConfigValue(fileConfig, key); found {
-			vars[key] = value
-		}
-	}
-	if value, found := resolvedAISkip(fileConfig, globalVars, localVars); found {
-		vars["ai_skip"] = value
-	}
-	credentialErr := materializeAICredential(vars, globalVars, localVars, fileConfig)
-	var aiSourceErr error
-	provider, providerSet := vars["ai_provider"]
-	providerText, providerIsString := provider.(string)
-	skip, _ := vars["ai_skip"].(bool)
-	if !skip && providerSet && (!providerIsString || strings.TrimSpace(providerText) != "") {
-		aiSourceErr = errors.Join(requireUnshadowedFileSetting(fileConfig, "ai_skip"), credentialErr)
-	}
+	// A target inherits the shared vars block and may override any of it.
+	sharedVars := viper.GetStringMap("vars")
+	targetVars := viper.GetStringMap(fmt.Sprintf("%s.%s.vars", targetsSectionKey, serviceName))
+	vars := make(map[string]interface{}, len(sharedVars)+len(targetVars))
+	maps.Copy(vars, sharedVars)
+	maps.Copy(vars, targetVars)
+
+	// AI settings follow their own precedence rules, applied here so that SDK
+	// consumers read one settled value per key. See applyAIPrecedenceRules.
+	aiSettingsErr := applyAIPrecedenceRules(vars, aiSettingSources{
+		target: targetVars,
+		shared: sharedVars,
+		file:   fileSettings,
+	})
 
 	topLoglevel := viper.GetString("loglevel")
-	loglevel := viper.GetString(fmt.Sprintf("%s.%s.loglevel", svcKey, serviceName))
+	loglevel := viper.GetString(fmt.Sprintf("%s.%s.loglevel", targetsSectionKey, serviceName))
 	if loglevel == "" && topLoglevel != "" {
 		loglevel = topLoglevel
 	} else if loglevel == "" {
@@ -124,19 +93,19 @@ func NewConfig(requiredVars []string) Config {
 	}
 
 	topInvasive := viper.GetBool("invasive") // make sure we're actually using this to block changes
-	invasive := viper.GetBool(fmt.Sprintf("%s.%s.invasive", svcKey, serviceName))
+	invasive := viper.GetBool(fmt.Sprintf("%s.%s.invasive", targetsSectionKey, serviceName))
 	if !invasive && topInvasive {
 		invasive = topInvasive
 	}
 
 	topCatalogs := viper.GetStringSlice("policy.catalogs")
-	catalogs := viper.GetStringSlice(fmt.Sprintf("%s.%s.policy.catalogs", svcKey, serviceName))
+	catalogs := viper.GetStringSlice(fmt.Sprintf("%s.%s.policy.catalogs", targetsSectionKey, serviceName))
 	if len(catalogs) == 0 {
 		catalogs = topCatalogs
 	}
 
 	topApplicability := viper.GetStringSlice("policy.applicability")
-	applicability := viper.GetStringSlice(fmt.Sprintf("%s.%s.policy.applicability", svcKey, serviceName))
+	applicability := viper.GetStringSlice(fmt.Sprintf("%s.%s.policy.applicability", targetsSectionKey, serviceName))
 	if len(applicability) == 0 {
 		applicability = topApplicability
 	}
@@ -144,7 +113,7 @@ func NewConfig(requiredVars []string) Config {
 	if serviceName != "" && (len(applicability) == 0 || len(catalogs) == 0) {
 		errString = fmt.Sprintf("invalid policy for service %s. applicability=%v catalogs=%v",
 			serviceName, len(applicability), len(catalogs))
-		if svcKey == "targets" && viper.IsSet("services."+serviceName) {
+		if targetsSectionKey == "targets" && viper.IsSet("services."+serviceName) {
 			errString += fmt.Sprintf("; %q is defined under the legacy services key, which is ignored because a targets key is present", serviceName)
 		}
 	}
@@ -169,7 +138,7 @@ func NewConfig(requiredVars []string) Config {
 	if errString != "" {
 		err = errors.New(errString)
 	}
-	err = errors.Join(err, aiSourceErr)
+	err = errors.Join(err, aiSettingsErr)
 
 	config := Config{
 		ServiceName:          serviceName,
@@ -207,148 +176,6 @@ func NewConfig(requiredVars []string) Config {
 		"output", output,
 	)
 	return config
-}
-
-func configFileValue(fileConfig *viper.Viper, key string) (interface{}, bool) {
-	if fileConfig != nil {
-		// InConfig treats explicit null as absent; AllKeys retains its presence.
-		if !slices.Contains(fileConfig.AllKeys(), key) {
-			return nil, false
-		}
-		return fileConfig.Get(key), true
-	}
-	if !viper.InConfig(key) {
-		return nil, false
-	}
-	return viper.Get(key), true
-}
-
-func hasConfigFileAIAPIKey(serviceName, svcKey string) bool {
-	for _, key := range []string{"ai_api_key", "vars.ai_api_key"} {
-		if viper.InConfig(key) {
-			return true
-		}
-	}
-	if serviceName != "" {
-		key := fmt.Sprintf("%s.%s.vars.ai_api_key", svcKey, serviceName)
-		return viper.InConfig(key)
-	}
-	return false
-}
-
-func resolvedAISkip(fileConfig *viper.Viper, globalVars, localVars map[string]interface{}) (interface{}, bool) {
-	candidates := make([]interface{}, 0, 4)
-	if value, found := aiEnvironmentValue("ai_skip"); found {
-		candidates = append(candidates, value)
-	}
-	if value, found := localVars["ai_skip"]; found {
-		candidates = append(candidates, value)
-	}
-	if value, found := globalVars["ai_skip"]; found {
-		candidates = append(candidates, value)
-	}
-	if value, found := topLevelConfigValue(fileConfig, "ai_skip"); found {
-		candidates = append(candidates, value)
-	}
-	// Preserve file true even when a programmatic override is false.
-	if value, found := configFileValue(fileConfig, "ai_skip"); found {
-		candidates = append(candidates, value)
-	}
-	for _, value := range candidates {
-		if skip, ok := value.(bool); ok && skip {
-			return true, true
-		}
-	}
-	for _, value := range candidates {
-		if _, ok := value.(bool); !ok {
-			return value, true
-		}
-	}
-	if len(candidates) > 0 {
-		return false, true
-	}
-	return nil, false
-}
-
-// Keep only the selected source so consumers never need to reconstruct tiers.
-// A selected named variable is validated by the AI client, without falling back
-// to another credential if that variable is missing.
-func materializeAICredential(vars, globalVars, localVars map[string]interface{}, fileConfig *viper.Viper) error {
-	delete(vars, "ai_api_key")
-	delete(vars, "ai_api_key_env")
-	if value, found := localVars["ai_api_key_env"]; found {
-		vars["ai_api_key_env"] = value
-		return nil
-	}
-	if value, found := aiEnvironmentValue("ai_api_key"); found {
-		vars["ai_api_key"] = value
-		return nil
-	}
-	if value, found := globalVars["ai_api_key_env"]; found {
-		vars["ai_api_key_env"] = value
-		return nil
-	}
-	if err := requireUnshadowedFileSetting(fileConfig, "ai_api_key_env"); err != nil {
-		return err
-	}
-	if value, found := topLevelConfigValue(fileConfig, "ai_api_key_env"); found {
-		vars["ai_api_key_env"] = value
-		return nil
-	}
-	if value, found := localVars["ai_api_key"]; found {
-		if text, ok := value.(string); !ok || strings.TrimSpace(text) != "" {
-			vars["ai_api_key"] = value
-			return nil
-		}
-	}
-	if value, found := globalVars["ai_api_key"]; found {
-		vars["ai_api_key"] = value
-		return nil
-	}
-	if value, found := topLevelConfigValue(fileConfig, "ai_api_key"); found {
-		vars["ai_api_key"] = value
-	}
-	return nil
-}
-
-func aiEnvironmentValue(key string) (interface{}, bool) {
-	text, found := os.LookupEnv("PVTR_" + strings.ToUpper(key))
-	text = strings.TrimSpace(text)
-	if !found || text == "" {
-		return nil, false
-	}
-	switch key {
-	case "ai_max_tokens":
-		value, err := strconv.Atoi(text)
-		if err == nil {
-			return value, true
-		}
-	case "ai_skip":
-		value, err := strconv.ParseBool(text)
-		if err == nil {
-			return value, true
-		}
-	}
-	return text, true
-}
-
-func topLevelConfigValue(fileConfig *viper.Viper, key string) (interface{}, bool) {
-	if viper.IsSet(key) {
-		value := viper.Get(key)
-		if !isAIEnvironmentValue(key, value) {
-			return value, true
-		}
-		// Environment values are folded in explicitly elsewhere. In particular,
-		// ai_api_key_env's name is configuration, not an environment override,
-		// and whitespace-only environment strings must not reappear via Viper.
-	}
-	return configFileValue(fileConfig, key)
-}
-
-func isAIEnvironmentValue(key string, value interface{}) bool {
-	text, ok := value.(string)
-	environment, present := os.LookupEnv("PVTR_" + strings.ToUpper(key))
-	return ok && present && text == environment
 }
 
 func printSanitizedVars(logger hclog.Logger, vars map[string]interface{}) {

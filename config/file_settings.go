@@ -107,12 +107,3 @@ func rawFileSettings() *viper.Viper {
 	}
 	return nil
 }
-
-// Reject potentially masked file values only when enabled AI needs that source.
-// Viper does not expose provenance for values equal to an environment override.
-func requireUnshadowedFileSetting(fileConfig *viper.Viper, key string) error {
-	if fileConfig == nil && viper.InConfig(key) && isAIEnvironmentValue(key, viper.Get(key)) {
-		return fmt.Errorf("load configuration with config.ReadConfig or config.ReadInConfig to preserve file %s", key)
-	}
-	return nil
-}
