@@ -239,3 +239,36 @@ func TestCompareCatalogVersions(t *testing.T) {
 		t.Error("a leading v must not matter")
 	}
 }
+
+// A signed catalog is not necessarily a usable one. Mobilize applies the same
+// checks to a cached catalog that AddEvaluationSuite applies to an embedded one.
+func TestMobilize_RejectsEmptyCachedCatalog(t *testing.T) {
+	for name, yaml := range map[string]string{
+		"no controls": "metadata:\n  id: osps-baseline\ncontrols: []\n",
+		"no id":       "metadata:\n  version: v1\ncontrols:\n  - id: C01\n    title: T\n    objective: O\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			c := CatalogCoordinate{"openssf", "osps-baseline", "v1"}
+			path := CatalogCachePath(dir, c)
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(yaml), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			catalogTestConfig(t, dir, []string{c.String()})
+			orch := &EvaluationOrchestrator{PluginName: "p"}
+			if err := orch.AddCatalogs(c.String()); err != nil {
+				t.Fatal(err)
+			}
+			err := orch.Mobilize()
+			if err == nil || !strings.Contains(err.Error(), name) {
+				t.Fatalf("expected a BAD_CATALOG error mentioning %q, got %v", name, err)
+			}
+			if got := ExitCodeFor(orch, err); got != shared.BadUsage {
+				t.Errorf("exit code = %d, want BadUsage (%d)", got, shared.BadUsage)
+			}
+		})
+	}
+}
