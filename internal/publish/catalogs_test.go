@@ -25,7 +25,7 @@ func stubCatalogs(m map[string]string) func(context.Context, pluginkit.CatalogCo
 
 func TestEvaluatesFromCatalogs_IntersectsStepsPerCatalog(t *testing.T) {
 	fetch := stubCatalogs(map[string]string{"openssf/osps-baseline@v2": catalogV2, "openssf/osps-baseline@v1": catalogV1})
-	got, err := evaluatesFromCatalogs(context.Background(), fetch, []string{"openssf/osps-baseline@v2", "openssf/osps-baseline@v1"}, []string{"R-2", "R-1"})
+	got, err := evaluatesFromCatalogs(context.Background(), fetch, []string{"openssf/osps-baseline@v2", "openssf/osps-baseline@v1"}, []string{"R-2", "R-1"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,9 +50,31 @@ func TestEvaluatesFromCatalogs_FailsClosed(t *testing.T) {
 		"bad coordinate":     {[]string{"osps-baseline"}, []string{"R-1"}, "not a grc.store catalog coordinate"},
 	}
 	for name, tc := range cases {
-		_, err := evaluatesFromCatalogs(context.Background(), fetch, tc.coords, tc.steps)
+		_, err := evaluatesFromCatalogs(context.Background(), fetch, tc.coords, tc.steps, nil)
 		if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
 			t.Errorf("%s: got %v, want %q", name, err, tc.wantErr)
 		}
+	}
+}
+
+// A plugin migrating one catalog at a time has steps that only its embedded
+// catalog covers. Those arrive as preMatched and must not be reported as
+// orphans, or a mixed plugin cannot publish at all.
+func TestEvaluatesFromCatalogs_EmbeddedStepsAreNotOrphans(t *testing.T) {
+	fetch := stubCatalogs(map[string]string{"openssf/osps-baseline@v1": catalogV1})
+	steps := []string{"R-1", "EMB-1"}
+
+	if _, err := evaluatesFromCatalogs(context.Background(), fetch, []string{"openssf/osps-baseline@v1"}, steps, nil); err == nil {
+		t.Fatal("without the embedded linkage EMB-1 must still be an orphan")
+	}
+
+	got, err := evaluatesFromCatalogs(context.Background(), fetch, []string{"openssf/osps-baseline@v1"}, steps, []string{"EMB-1"})
+	if err != nil {
+		t.Fatalf("EMB-1 is linked by the embedded catalog, so this must publish: %v", err)
+	}
+	// The embedded requirement is already in its own evaluates entry; it must not
+	// be duplicated into the declared catalog's.
+	if len(got) != 1 || strings.Join(got[0].RequirementIDs, ",") != "R-1" {
+		t.Errorf("declared entry = %+v", got)
 	}
 }

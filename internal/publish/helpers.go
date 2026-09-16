@@ -73,11 +73,17 @@ func uiBase(advertised, hubURL string) string {
 // evaluatesFromCatalogs builds one evaluates entry per declared catalog
 // coordinate: the catalog's assessment-requirement ids intersected with the
 // plugin's step keys, sorted. A catalog no step matches is an error, and so is
-// a step key that matches no declared catalog — both mean the plugin's steps
-// and its declared catalogs disagree, which must be fixed in code rather than
-// published.
-func evaluatesFromCatalogs(ctx context.Context, fetch func(context.Context, pluginkit.CatalogCoordinate) ([]byte, error), coordinates, steps []string) ([]pluginspec.Evaluate, error) {
-	matched := map[string]bool{}
+// a step key that matches no catalog at all — both mean the plugin's steps and
+// its catalogs disagree, which must be fixed in code rather than published.
+//
+// preMatched are requirement ids already linked by the deprecated embedded
+// path. They count as covered for the orphan check but produce no entry here,
+// since the embedded path emitted theirs already.
+func evaluatesFromCatalogs(ctx context.Context, fetch func(context.Context, pluginkit.CatalogCoordinate) ([]byte, error), coordinates, steps, preMatched []string) ([]pluginspec.Evaluate, error) {
+	matched := make(map[string]bool, len(preMatched))
+	for _, id := range preMatched {
+		matched[id] = true
+	}
 	out := make([]pluginspec.Evaluate, 0, len(coordinates))
 	for _, raw := range coordinates {
 		c, err := pluginkit.ParseCatalogCoordinate(raw)
@@ -118,7 +124,7 @@ func evaluatesFromCatalogs(ctx context.Context, fetch func(context.Context, plug
 		}
 	}
 	if len(orphans) > 0 {
-		return nil, fmt.Errorf("evaluation steps %v match no assessment requirement in any declared catalog", orphans)
+		return nil, fmt.Errorf("evaluation steps %v match no assessment requirement in any catalog the plugin declares or embeds", orphans)
 	}
 	return out, nil
 }

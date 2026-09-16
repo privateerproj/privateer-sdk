@@ -108,14 +108,23 @@ func Publish(ctx context.Context, w io.Writer, p Params) error {
 		if fetch == nil {
 			hub := oci.NewClient()
 			fetch = func(ctx context.Context, c pluginkit.CatalogCoordinate) ([]byte, error) {
-				v, err := catalog.Fetch(ctx, hub, c)
+				v, err := catalog.Fetch(ctx, w, hub, c)
 				if err != nil {
 					return nil, err
 				}
 				return v.YAML, nil
 			}
 		}
-		declared, err := evaluatesFromCatalogs(ctx, fetch, manifest.Catalogs, manifest.Steps)
+		// Steps are collected across every suite, embedded and declared alike, so
+		// a plugin migrating one catalog at a time has steps that only the
+		// embedded linkage above covers. Hand those over as already matched, or
+		// the orphan check would reject a mixed plugin for steps that are in fact
+		// linked — just not by a declared catalog.
+		var preMatched []string
+		for _, e := range evaluates {
+			preMatched = append(preMatched, e.RequirementIDs...)
+		}
+		declared, err := evaluatesFromCatalogs(ctx, fetch, manifest.Catalogs, manifest.Steps, preMatched)
 		if err != nil {
 			return err
 		}
