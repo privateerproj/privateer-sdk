@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -41,8 +42,14 @@ type EvaluationOrchestrator struct {
 	License string `json:"license,omitempty" yaml:"license,omitempty"`
 	// CatalogNamespaces optionally maps a reference-catalog id to the grc.store
 	// namespace that owns it, for plugins that evaluate catalogs published by
-	// someone else (e.g. a community plugin evaluating ossf/osps-baseline).
-	// Catalogs not listed here are assumed to live under Publisher.
+	// someone else (e.g. a community plugin evaluating ossf/osps-baseline). A
+	// catalog not listed here is namespaced by its own metadata.author.id;
+	// publishing fails closed when it has neither, because filing someone
+	// else's catalog under Publisher would be a false attribution.
+	//
+	// Deprecated: only the embedded AddReferenceCatalogs path needs this — a
+	// coordinate declared with AddCatalogs already carries its namespace. It is
+	// removed together with AddReferenceCatalogs in the next minor release.
 	CatalogNamespaces map[string]string  `json:"catalog-namespaces,omitempty" yaml:"catalog-namespaces,omitempty"`
 	Payload           any                `json:"payload,omitempty" yaml:"payload,omitempty"`
 	Evaluation_Suites []*EvaluationSuite `json:"evaluation-suites" yaml:"evaluation-suites"` // EvaluationSuite is a map of evaluations to their catalog names
@@ -140,6 +147,7 @@ func (v *EvaluationOrchestrator) AddReferenceCatalogs(dataDir string, files fs.F
 // a suite by the full coordinate, or by the bare "<namespace>/<id>" (or the
 // catalog's own metadata id) to get the newest declared version.
 func (v *EvaluationOrchestrator) AddCatalogs(coordinates ...string) error {
+	parsed := make([]CatalogCoordinate, 0, len(coordinates))
 	for _, raw := range coordinates {
 		c, err := ParseCatalogCoordinate(raw)
 		if err != nil {
@@ -148,11 +156,14 @@ func (v *EvaluationOrchestrator) AddCatalogs(coordinates ...string) error {
 		if c.Version == "" {
 			return fmt.Errorf("catalog coordinate %q has no version; declare <namespace>/<id>@<version>", raw)
 		}
-		if v.declaredCatalog(c.String()) != nil {
+		if v.declaredCatalog(c.String()) != nil || slices.Contains(parsed, c) {
 			return fmt.Errorf("duplicate catalog coordinate: %s", c)
 		}
-		v.catalogCoordinates = append(v.catalogCoordinates, c)
+		parsed = append(parsed, c)
 	}
+	// Append only once every coordinate has validated, so a bad one later in the
+	// call cannot leave the earlier ones half-declared.
+	v.catalogCoordinates = append(v.catalogCoordinates, parsed...)
 	return nil
 }
 
@@ -201,6 +212,12 @@ func (v *EvaluationOrchestrator) loadDeclaredCatalogs() error {
 		if err != nil {
 			return BAD_CATALOG(v.PluginName, fmt.Sprintf("parsing %s: %s", path, err), "mob17")
 		}
+		// The same check AddEvaluationSuite runs on an embedded catalog. A cached
+		// catalog is signed, not necessarily populated, and a suite with no
+		// controls evaluates nothing while still reporting an outcome.
+		if len(catalog.Controls) == 0 {
+			return BAD_CATALOG(v.PluginName, fmt.Sprintf("no controls provided in %s", key), "mob18")
+		}
 		v.referenceCatalogs[key] = catalog
 		v.addPossibleControls(catalog)
 	}
@@ -247,7 +264,7 @@ func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader Dat
 		return nil
 	}
 	// A declared grc.store coordinate is not loaded until Mobilize; queue the
-	// suite and validate the catalog then.
+	// suite, and let loadDeclaredCatalogs validate the cached catalog there.
 	if c := v.declaredCatalog(catalogId); c != nil {
 		for _, p := range v.pendingSuites {
 			if p.coordinate == *c {
@@ -267,7 +284,7 @@ func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader Dat
 func (v *EvaluationOrchestrator) AddEvaluationSuiteForAllCatalogs(loader DataLoader, steps map[string][]gemara.AssessmentStep) error {
 	ids := v.allCatalogIDs()
 	if len(ids) == 0 {
-		return BAD_CATALOG(v.PluginName, "no reference catalogs loaded", "aac10")
+		return BAD_CATALOG(v.PluginName, "no catalogs declared or loaded", "aac10")
 	}
 	for _, catalogId := range ids {
 		if err := v.AddEvaluationSuite(catalogId, loader, steps); err != nil {
@@ -278,7 +295,10 @@ func (v *EvaluationOrchestrator) AddEvaluationSuiteForAllCatalogs(loader DataLoa
 }
 
 // allCatalogIDs lists every suite key a plugin can register against: loaded
-// reference catalog ids, then declared coordinates in declaration order.
+// reference catalog ids in no particular order (they come from a map), then
+// declared coordinates in declaration order. Nothing observable depends on that
+// order — Mobilize runs suites in policy.catalogs order — except the "available"
+// list in the no-match warning and error.
 func (v *EvaluationOrchestrator) allCatalogIDs() []string {
 	ids := make([]string, 0, len(v.referenceCatalogs)+len(v.catalogCoordinates))
 	for id := range v.referenceCatalogs {
@@ -419,6 +439,14 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 		err := suite.Evaluate(v.ServiceName)
 		if err != nil {
 			v.config.Logger.Error(err.Error())
+			// A suite that could not run is not a pass. Evaluate leaves Result at
+			// NotRun when it fails before the assessment loop, and the error is
+			// logged rather than returned, so without this the whole run exits
+			// TestPass. Only fill an unset Result: a late failure (corrupted state)
+			// happens after the loop, and that aggregate is the more specific answer.
+			if suite.Result == gemara.NotRun {
+				suite.Result = gemara.Unknown
+			}
 		}
 		v.stampEvaluationLog(suite)
 		v.Evaluation_Suites = append(v.Evaluation_Suites, suite)
@@ -445,10 +473,15 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 // matchSuite resolves a policy.catalogs entry to a registered suite. An exact
 // suite id wins (a catalog id, or a full <namespace>/<id>@<version>
 // coordinate); otherwise a bare <namespace>/<id> coordinate or a catalog's own
-// metadata id resolves to the newest declared version of that catalog.
+// metadata id resolves to the newest declared version of that catalog. An
+// embedded copy never wins outright: a plugin mid-migration that declares a
+// catalog and also embeds it gets the verified copy.
 func (v *EvaluationOrchestrator) matchSuite(requested string) *EvaluationSuite {
 	for _, suite := range v.possibleSuites {
-		if suite.CatalogId == requested {
+		// An embedded suite skips this loop and is picked up below, where a
+		// declared coordinate for the same catalog outranks it (its id carries no
+		// version, which compares lowest). When it is the only match it still wins.
+		if suite.CatalogId == requested && !v.embeddedCatalogs[suite.CatalogId] {
 			return suite
 		}
 	}

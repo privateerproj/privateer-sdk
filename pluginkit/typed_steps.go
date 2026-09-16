@@ -76,7 +76,7 @@ func AddEvaluationSuiteTypedForAllCatalogs[S ~func(T) (gemara.Result, string, ge
 ) error {
 	ids := v.allCatalogIDs()
 	if len(ids) == 0 {
-		return BAD_CATALOG(v.PluginName, "no reference catalogs loaded", "aac10")
+		return BAD_CATALOG(v.PluginName, "no catalogs declared or loaded", "aac10")
 	}
 	adapted := adaptTypedSteps[S, T](steps)
 	for _, catalogId := range ids {

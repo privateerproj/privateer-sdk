@@ -5,9 +5,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/gemaraproj/go-gemara"
 	"github.com/spf13/viper"
+
+	"github.com/privateerproj/privateer-sdk/shared"
 )
 
 // cachedCatalog writes one catalog into the install cache under binariesDir
@@ -47,6 +50,105 @@ func TestAddCatalogs_Validation(t *testing.T) {
 	}
 	if err := orch.AddEvaluationSuite("openssf/osps-baseline@v9", nil, nil); err == nil {
 		t.Error("a suite for an undeclared coordinate must fail")
+	}
+}
+
+func TestAddCatalogs_RejectedBatchRegistersNothing(t *testing.T) {
+	orch := &EvaluationOrchestrator{PluginName: "p"}
+	if err := orch.AddCatalogs("openssf/good@v1", "openssf/bad"); err == nil {
+		t.Fatal("expected an error for the versionless second coordinate")
+	}
+	if len(orch.catalogCoordinates) != 0 {
+		t.Errorf("a rejected batch must leave nothing declared, got %v", orch.catalogCoordinates)
+	}
+	// The duplicate check still covers duplicates within one call, not just
+	// against what was declared before it.
+	if err := orch.AddCatalogs("openssf/a@v1", "openssf/a@v1"); err == nil || !strings.Contains(err.Error(), "duplicate") {
+		t.Errorf("duplicate within one call: %v", err)
+	}
+	if len(orch.catalogCoordinates) != 0 {
+		t.Errorf("a rejected batch must leave nothing declared, got %v", orch.catalogCoordinates)
+	}
+}
+
+// embeddedCatalogFS is a plugin's embedded copy of the catalog at c, as
+// AddReferenceCatalogs reads it: keyed by metadata id, carrying no version.
+func embeddedCatalogFS(id string) fstest.MapFS {
+	yaml := "metadata:\n  id: " + id + "\ncontrols:\n" +
+		"  - id: CCC.Core.C01\n    title: T\n    objective: O\n    assessment-requirements:\n" +
+		"      - id: CCC.Core.C01.TR01\n        text: t\n        applicability: [tlp-green]\n"
+	return fstest.MapFS{"data/" + id + ".yaml": &fstest.MapFile{Data: []byte(yaml)}}
+}
+
+// A plugin migrating incrementally declares a catalog and still embeds it. The
+// verified copy must win: the embedded one was never checked against grc.store.
+func TestMatchSuite_DeclaredCoordinateBeatsEmbeddedCopy(t *testing.T) {
+	dir := t.TempDir()
+	c := CatalogCoordinate{"openssf", "osps-baseline", "v1"}
+	cachedCatalog(t, dir, c)
+	catalogTestConfig(t, dir, []string{"osps-baseline"}) // the bare metadata id matches both
+
+	orch := &EvaluationOrchestrator{PluginName: "p"}
+	if err := orch.AddReferenceCatalogs("data", embeddedCatalogFS(c.ID)); err != nil {
+		t.Fatal(err)
+	}
+	if err := orch.AddCatalogs(c.String()); err != nil {
+		t.Fatal(err)
+	}
+	steps := map[string][]gemara.AssessmentStep{"CCC.Core.C01.TR01": {step_Pass}}
+	if err := orch.AddEvaluationSuiteForAllCatalogs(nil, steps); err != nil {
+		t.Fatal(err)
+	}
+	if err := orch.Mobilize(); err != nil {
+		t.Fatalf("Mobilize: %v", err)
+	}
+
+	// Both suites are registered; the test is about which one the bare id picks.
+	if len(orch.possibleSuites) != 2 {
+		t.Fatalf("registered %d suites, want the embedded one and the declared one", len(orch.possibleSuites))
+	}
+	if len(orch.Evaluation_Suites) != 1 || orch.Evaluation_Suites[0].CatalogId != c.String() {
+		t.Fatalf("ran %+v, want just the declared coordinate %s", orch.Evaluation_Suites, c)
+	}
+	// With nothing declared, the embedded copy is still matched.
+	plain := &EvaluationOrchestrator{PluginName: "p"}
+	if err := plain.AddReferenceCatalogs("data", embeddedCatalogFS(c.ID)); err != nil {
+		t.Fatal(err)
+	}
+	if err := plain.AddEvaluationSuiteForAllCatalogs(nil, steps); err != nil {
+		t.Fatal(err)
+	}
+	if got := plain.matchSuite(c.ID); got == nil || got.CatalogId != c.ID {
+		t.Errorf("an embedded catalog with no declared rival must still match, got %v", got)
+	}
+}
+
+// A suite that cannot run must not report a passing run. Mobilize logs the
+// error rather than returning it, so the outcome has to live on the suite.
+func TestMobilize_SuiteThatCannotRunFailsTheRun(t *testing.T) {
+	dir := t.TempDir()
+	c := CatalogCoordinate{"openssf", "osps-baseline", "v1"}
+	cachedCatalog(t, dir, c)
+	catalogTestConfig(t, dir, []string{c.String()})
+
+	orch := &EvaluationOrchestrator{PluginName: "p"}
+	if err := orch.AddCatalogs(c.String()); err != nil {
+		t.Fatal(err)
+	}
+	// No steps: Evaluate fails with NO_ASSESSMENT_STEPS_PROVIDED before it
+	// assesses anything, so the suite's own Result is never set by the run.
+	if err := orch.AddEvaluationSuite(c.String(), nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	err := orch.Mobilize()
+	if err != nil {
+		t.Fatalf("Mobilize reports a failed suite through the results, not an error: %v", err)
+	}
+	if len(orch.Evaluation_Suites) != 1 || orch.Evaluation_Suites[0].Result != gemara.Unknown {
+		t.Fatalf("suite result = %v, want Unknown", orch.Evaluation_Suites)
+	}
+	if got := ExitCodeFor(orch, err); got != shared.TestFail {
+		t.Errorf("exit code = %d, want TestFail (%d)", got, shared.TestFail)
 	}
 }
 

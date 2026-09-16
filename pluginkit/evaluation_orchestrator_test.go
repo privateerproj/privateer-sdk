@@ -205,8 +205,8 @@ func TestEvaluationOrchestrator_AddEvaluationSuiteForAllCatalogs(t *testing.T) {
 		if err == nil {
 			t.Error("Expected error when no reference catalogs are loaded")
 		}
-		if !strings.Contains(err.Error(), "no reference catalogs loaded") {
-			t.Errorf("Expected 'no reference catalogs loaded' error, got: %v", err)
+		if !strings.Contains(err.Error(), "no catalogs declared or loaded") {
+			t.Errorf("Expected 'no catalogs declared or loaded' error, got: %v", err)
 		}
 	})
 
