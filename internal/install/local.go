@@ -49,8 +49,15 @@ func Local(ctx context.Context, w io.Writer, binaryPath string) error {
 
 	m, err := RunPublishManifest(ctx, filepath.Join(destDir, binaryName))
 	if err != nil {
-		// A binary built against an older SDK has no publish-manifest command;
-		// it embeds its catalogs and needs nothing cached.
+		// Any failure to ASK the plugin is non-fatal: it may predate the
+		// publish-manifest command (older SDK, embeds its catalogs and needs
+		// nothing cached), or it may have timed out, crashed, or printed
+		// unparseable JSON. We cannot tell which, and the binary is installed and
+		// usable either way, so report and move on rather than undoing the
+		// install. Not knowing which catalogs a plugin wants is different from
+		// knowing and being unable to get one: the catalog install below is not
+		// best-effort, and a catalog the plugin names but the hub does not have
+		// fails this command.
 		_, _ = fmt.Fprintf(w, "Warning: could not read the plugin's catalogs (%v); skipping catalog install\n", err)
 		return nil
 	}
@@ -62,7 +69,10 @@ func Local(ctx context.Context, w io.Writer, binaryPath string) error {
 		}
 		coords = append(coords, c)
 	}
-	return catalog.Install(ctx, w, oci.NewClient(), binDirPath, coords)
+	// skipUnpublished is false: these coordinates come only from AddCatalogs, so
+	// each one names a catalog that is meant to be on grc.store. Skipping a
+	// missing one would exit 0 here and fail every later `pvtr run`.
+	return catalog.Install(ctx, w, oci.NewClient(), binDirPath, coords, false)
 }
 
 func getSourceName(binaryPath string) (string, error) {

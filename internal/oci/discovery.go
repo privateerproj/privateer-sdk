@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	ckhub "github.com/gemaraproj/grc-store-clientkit/hub"
 	"github.com/spf13/viper"
 )
 
@@ -55,10 +56,12 @@ func HubURL() string {
 	return strings.TrimRight(base, "/")
 }
 
-// Client issues pvtr's anonymous hub JSON calls: Browse and GetPluginDetails.
-// For the well-known discovery document use grc-store-clientkit's
-// hub.Discover(ctx, c.BaseURL()), which owns the fetch, the registry_url check
-// and the per-URL cache.
+// Client issues pvtr's anonymous hub JSON calls: Browse, GetPluginDetails and
+// GetCatalogDetails. The well-known discovery document stays owned by
+// grc-store-clientkit, which holds the fetch, the registry_url check and the
+// per-URL cache — Client never reimplements any of that. Registry only
+// delegates there and gives the two failure modes one wording, since every
+// pull path needs the registry host the hub advertises.
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
@@ -76,6 +79,23 @@ const hubTimeout = 15 * time.Second
 
 // BaseURL returns the hub base URL this client targets.
 func (c *Client) BaseURL() string { return c.baseURL }
+
+// Registry resolves the OCI registry host the hub advertises in its well-known
+// discovery document, and whether to reach it over plain HTTP. The fetch, the
+// registry_url check and the per-URL cache belong to grc-store-clientkit; this
+// delegates to it and wraps the two failures, so every caller that pulls from
+// the hub's registry reports them identically.
+func (c *Client) Registry(ctx context.Context) (host string, plainHTTP bool, err error) {
+	remote, err := ckhub.Discover(ctx, c.baseURL)
+	if err != nil {
+		return "", false, fmt.Errorf("hub discovery: %w", err)
+	}
+	host, plainHTTP, err = ckhub.Registry(remote)
+	if err != nil {
+		return "", false, fmt.Errorf("resolving registry host: %w", err)
+	}
+	return host, plainHTTP, nil
+}
 
 // httpStatusError is a non-200 response from the hub. It carries the status so
 // callers can map a specific code (e.g. 404 → ErrPluginNotFound). body holds

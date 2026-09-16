@@ -9,7 +9,6 @@ import (
 	"runtime"
 	"strings"
 
-	ckhub "github.com/gemaraproj/grc-store-clientkit/hub"
 	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/privateerproj/privateer-sdk/internal/catalog"
 	"github.com/privateerproj/privateer-sdk/internal/manifest"
@@ -169,7 +168,7 @@ func pullVerifyInstall(ctx context.Context, w io.Writer, hub *oci.Client, detail
 
 	// The signed config says which catalogs the plugin evaluates; cache them so
 	// `pvtr run` can load them offline. Nothing here executes the binary.
-	if err := catalog.Install(ctx, w, hub, destDir, catalogCoordinates(w, verified.Evaluates)); err != nil {
+	if err := catalog.Install(ctx, w, hub, destDir, catalogCoordinates(w, verified.Evaluates), true); err != nil {
 		return fmt.Errorf("installing catalogs for %s:%s: %w", coordinate, verified.Version, err)
 	}
 	return nil
@@ -193,14 +192,8 @@ func catalogCoordinates(w io.Writer, evaluates []pluginspec.Evaluate) []pluginki
 }
 
 func fetchIndex(ctx context.Context, w io.Writer, hub *oci.Client, release *oci.PluginRelease, coordinate string) (index *oci.FetchedIndex, err error) {
-	remote, err := ckhub.Discover(ctx, hub.BaseURL())
+	host, plainHTTP, err := hub.Registry(ctx)
 	if err != nil {
-		err = fmt.Errorf("hub discovery: %w", err)
-		return
-	}
-	host, plainHTTP, err := ckhub.Registry(remote)
-	if err != nil {
-		err = fmt.Errorf("resolving registry host: %w", err)
 		return
 	}
 
