@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -9,6 +10,24 @@ import (
 	sdkconfig "github.com/privateerproj/privateer-sdk/config"
 	"github.com/spf13/viper"
 )
+
+// A Config carrying an error must never reach a provider: NewConfig reports
+// unresolvable AI settings that way, and the rest of the Vars look usable.
+func TestConfigFromSDKConfig_RefusesConfigCarryingAnError(t *testing.T) {
+	cfg := sdkconfig.Config{
+		Error: errors.New("load configuration with config.ReadConfig"),
+		Vars: map[string]interface{}{
+			"ai_provider": "openai", "ai_model": "model", "ai_api_key": "key",
+		},
+	}
+	result, enabled, err := ConfigFromSDKConfig(cfg)
+	if err == nil || !strings.Contains(err.Error(), "load configuration with config.ReadConfig") {
+		t.Fatalf("err = %v, want the configuration error surfaced", err)
+	}
+	if enabled || !reflect.DeepEqual(result, Config{}) {
+		t.Fatalf("enabled=%v, config=%s; want an errored config refused outright", enabled, result)
+	}
+}
 
 func TestConfigFromSDKConfig_DormantSkipErrorsAreIgnored(t *testing.T) {
 	for _, value := range []interface{}{"true", 123, nil} {
@@ -68,8 +87,10 @@ func TestConfigFromSDKConfig_CredentialLadderAcrossTargets(t *testing.T) {
 		{"target literal before top literal", "ai_api_key: top-literal", "ai_api_key: target-literal", "", "target-literal", ""},
 		{"global named before flat named", "ai_api_key_env: TEST_TARGET_KEY\nvars: {ai_api_key_env: TEST_TOP_KEY}",
 			"ai_api_key: target-literal", "", "top-named", ""},
+		{"process before global named", "vars: {ai_api_key_env: TEST_TOP_KEY}", "", "process", "process", ""},
 		{"global literal before flat literal", "ai_api_key: top-literal\nvars: {ai_api_key: global-literal}",
 			"", "", "global-literal", ""},
+		{"target literal before global literal", "vars: {ai_api_key: global-literal}", "ai_api_key: target-literal", "", "target-literal", ""},
 		{"empty global literal masks flat spelling", "ai_api_key: top-literal\nvars: {ai_api_key: \"\"}",
 			"", "", "", ""},
 		{"missing target named does not fall through", "ai_api_key: top-literal",
