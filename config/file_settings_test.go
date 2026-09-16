@@ -208,3 +208,32 @@ func TestNewConfig_UncapturedProvenanceOnlyRequiredWhenUsed(t *testing.T) {
 		})
 	}
 }
+
+// Decoders may hand back map[interface{}]interface{} rather than string-keyed
+// maps; those have to be deep-copied too, or a later write into the decoded
+// document would silently rewrite the captured file settings.
+func TestCloneFileValue_DeepCopiesNonStringKeyedMaps(t *testing.T) {
+	source := map[string]interface{}{
+		"targets": map[interface{}]interface{}{
+			"repo": map[string]interface{}{"ai_skip": true},
+			1:      []interface{}{map[interface{}]interface{}{"ai_model": "original"}},
+		},
+	}
+
+	clone, isMap := cloneFileValue(source).(map[string]interface{})
+	if !isMap {
+		t.Fatalf("clone type = %T, want map[string]interface{}", cloneFileValue(source))
+	}
+
+	decoded := source["targets"].(map[interface{}]interface{})
+	decoded["repo"].(map[string]interface{})["ai_skip"] = false
+	decoded[1].([]interface{})[0].(map[interface{}]interface{})["ai_model"] = "mutated"
+
+	captured := clone["targets"].(map[interface{}]interface{})
+	if got := captured["repo"].(map[string]interface{})["ai_skip"]; got != true {
+		t.Errorf("ai_skip = %v, want true; the capture shares the decoded map", got)
+	}
+	if got := captured[1].([]interface{})[0].(map[interface{}]interface{})["ai_model"]; got != "original" {
+		t.Errorf("ai_model = %v, want %q; the capture shares a nested slice element", got, "original")
+	}
+}
