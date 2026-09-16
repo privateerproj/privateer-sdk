@@ -43,8 +43,8 @@ func TestCatalog_WalkHappyPath(t *testing.T) {
 	if string(vc.YAML) != testCatalogYAML {
 		t.Errorf("yaml = %q", vc.YAML)
 	}
-	if vc.ManifestDigest != desc.Digest.String() || vc.SignerIdentity != "keyless:x#y" || vc.Repository != "openssf/osps-baseline" || vc.Version != "v1" {
-		t.Errorf("provenance = %+v", vc)
+	if vc.SignerIdentity != "keyless:x#y" {
+		t.Errorf("signer = %q", vc.SignerIdentity)
 	}
 }
 

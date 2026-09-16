@@ -49,14 +49,8 @@ func Fetch(ctx context.Context, w io.Writer, hub *oci.Client, c pluginkit.Catalo
 	if err != nil {
 		return nil, fmt.Errorf("pulling catalog: %w", err)
 	}
-	// Report a missing hub digest rather than skipping the cross-check silently:
-	// the plugin path says so out loud, and the same hub state must not read as
-	// "verified" on one path and "verified plus digest-checked" on the other.
-	if release.ManifestDigest == "" {
-		_, _ = fmt.Fprintf(w, "Warning: hub recorded no manifest digest for %s; skipping registry-divergence cross-check\n", c)
-	} else if fetched.IndexDescriptor.Digest.String() != release.ManifestDigest {
-		return nil, fmt.Errorf("registry diverged from hub for %s: registry manifest digest %s != hub-recorded %s — refusing to use it",
-			c, fetched.IndexDescriptor.Digest, release.ManifestDigest)
+	if err := checkHubDigest(w, c, release.ManifestDigest, fetched.IndexDescriptor.Digest.String()); err != nil {
+		return nil, err
 	}
 
 	verifier, err := verify.NewVerifier()
@@ -73,6 +67,23 @@ func Fetch(ctx context.Context, w io.Writer, hub *oci.Client, c pluginkit.Catalo
 		return nil, fmt.Errorf("verifying %s: %w", c, err)
 	}
 	return verified, nil
+}
+
+// checkHubDigest cross-checks the manifest digest the registry served against
+// the one the hub recorded at ingest. A missing hub digest is reported on w
+// rather than skipped silently: the plugin path says so out loud, and the same
+// hub state must not read as "verified" on one path and "verified plus
+// digest-checked" on the other.
+func checkHubDigest(w io.Writer, c pluginkit.CatalogCoordinate, hubDigest, registryDigest string) error {
+	if hubDigest == "" {
+		_, _ = fmt.Fprintf(w, "Warning: hub recorded no manifest digest for %s; skipping registry-divergence cross-check\n", c)
+		return nil
+	}
+	if registryDigest != hubDigest {
+		return fmt.Errorf("registry diverged from hub for %s: registry manifest digest %s != hub-recorded %s — refusing to use it",
+			c, registryDigest, hubDigest)
+	}
+	return nil
 }
 
 // fetchFunc is how install obtains and verifies one catalog. Install supplies

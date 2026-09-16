@@ -212,11 +212,14 @@ func (v *EvaluationOrchestrator) loadDeclaredCatalogs() error {
 		if err != nil {
 			return BAD_CATALOG(v.PluginName, fmt.Sprintf("parsing %s: %s", path, err), "mob17")
 		}
-		// The same check AddEvaluationSuite runs on an embedded catalog. A cached
+		// The same checks AddEvaluationSuite runs on an embedded catalog. A cached
 		// catalog is signed, not necessarily populated, and a suite with no
 		// controls evaluates nothing while still reporting an outcome.
 		if len(catalog.Controls) == 0 {
 			return BAD_CATALOG(v.PluginName, fmt.Sprintf("no controls provided in %s", key), "mob18")
+		}
+		if catalog.Metadata.Id == "" {
+			return BAD_CATALOG(v.PluginName, fmt.Sprintf("no id found in catalog metadata in %s", key), "mob19")
 		}
 		v.referenceCatalogs[key] = catalog
 		v.addPossibleControls(catalog)

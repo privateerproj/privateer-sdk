@@ -16,12 +16,9 @@ import (
 const artifactRoleAnnotation = "org.gemara.artifact.role"
 
 // VerifiedCatalog is the trusted result of verifying a catalog pulled from
-// grc.store: the YAML bytes to cache and the provenance to report. The bytes
+// grc.store: the YAML bytes to cache and the signer to report. The bytes
 // come from the digest-checked layer of the signed manifest.
 type VerifiedCatalog struct {
-	Repository     string // <namespace>/<id>
-	Version        string // the OCI tag that was pulled
-	ManifestDigest string // sha256:... — what was signed
 	SignerIdentity string // canonical keyless identity of the signer
 	YAML           []byte
 }
@@ -67,13 +64,7 @@ func walkVerifiedCatalog(ctx context.Context, fetched *oci.FetchedIndex, signerI
 	if err := checkDigest(layer.Digest, data, "catalog layer"); err != nil {
 		return nil, err
 	}
-	return &VerifiedCatalog{
-		Repository:     fetched.Coordinate,
-		Version:        fetched.Version,
-		ManifestDigest: fetched.IndexDescriptor.Digest.String(),
-		SignerIdentity: signerIdentity,
-		YAML:           data,
-	}, nil
+	return &VerifiedCatalog{SignerIdentity: signerIdentity, YAML: data}, nil
 }
 
 // artifactLayer picks the layer carrying the catalog: the first layer annotated

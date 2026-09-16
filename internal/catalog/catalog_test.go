@@ -95,6 +95,21 @@ func TestFetch_RejectsEmptyVersion(t *testing.T) {
 	}
 }
 
+func TestCheckHubDigest(t *testing.T) {
+	c := pluginkit.CatalogCoordinate{Namespace: "openssf", ID: "osps-baseline", Version: "v1"}
+	var w bytes.Buffer
+	if err := checkHubDigest(&w, c, "sha256:aa", "sha256:aa"); err != nil || w.Len() != 0 {
+		t.Fatalf("matching digests: err=%v out=%q", err, w.String())
+	}
+	if err := checkHubDigest(&w, c, "sha256:aa", "sha256:bb"); err == nil || !strings.Contains(err.Error(), "diverged") {
+		t.Fatalf("mismatch: got %v, want a diverged error", err)
+	}
+	w.Reset()
+	if err := checkHubDigest(&w, c, "", "sha256:bb"); err != nil || !strings.Contains(w.String(), "no manifest digest") {
+		t.Fatalf("missing hub digest: err=%v out=%q, want nil and a warning", err, w.String())
+	}
+}
+
 // The cache write is driven through the fetch seam: real verification needs a
 // live signature, but everything after it is ordinary file work worth covering.
 func TestInstall_WritesVerifiedCatalogToCache(t *testing.T) {
@@ -153,5 +168,5 @@ func TestFetch_LiveHub(t *testing.T) {
 	if cat.Metadata.Id != "osps-baseline" || len(cat.Controls) == 0 {
 		t.Fatalf("unexpected catalog: id=%q controls=%d", cat.Metadata.Id, len(cat.Controls))
 	}
-	t.Logf("verified %s: digest %s, signed by %s, %d controls", c, vc.ManifestDigest, vc.SignerIdentity, len(cat.Controls))
+	t.Logf("verified %s: signed by %s, %d controls", c, vc.SignerIdentity, len(cat.Controls))
 }
