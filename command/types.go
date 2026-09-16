@@ -52,7 +52,7 @@ type PluginPkg struct {
 // multiple installed versions (each at its own coordinate/version/entrypoint
 // path) resolve unambiguously by name+version.
 func (p *PluginPkg) getBinary() (binaryPath string, err error) {
-	binariesPath := viper.GetString("binaries-path")
+	binariesPath := config.GetBinariesPath()
 	m, err := manifest.Load(binariesPath)
 	if err != nil {
 		return "", fmt.Errorf("loading plugin manifest: %w", err)

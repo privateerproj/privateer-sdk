@@ -38,9 +38,7 @@ const maxBlobBytes int64 = 16 << 20 // 16 MiB
 // must not be able to silently mask a valid signature as absent).
 const maxSignatureReferrers = 32
 
-// FetchedIndex is the raw, NOT-yet-verified result of pulling a plugin index
-// (or, via PullManifest, a catalog's single image manifest — the shape is the
-// same: a signed root descriptor, its bytes, and its signature referrers):
+// FetchedIndex is the raw, NOT-yet-verified result of pulling a plugin index:
 // the index descriptor (its digest), the index bytes, and the signature bundles
 // discovered as referrers (nil when the index carries no signature referrer —
 // that is "unsigned", a verify-time concern, not a fetch error; multiple entries
@@ -96,7 +94,7 @@ type PullOptions struct {
 // ErrNotIndex is returned when a tag resolves to something other than the
 // expected root: an OCI image index for a plugin (the grc.store contract
 // requires an index even for a single platform), an image manifest for a catalog.
-var ErrNotIndex = errors.New("plugin tag did not resolve to an OCI image index")
+var ErrNotIndex = errors.New("tag did not resolve to the expected OCI root")
 
 // registryHTTPClient bounds the registry transport: a stalled registry must
 // fail, not hang `pvtr install` forever. No overall request timeout — binary

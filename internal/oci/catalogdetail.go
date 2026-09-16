@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 )
 
 // CatalogDetail is the hub's catalog-level record (GET /v1/catalogs/<ns>/<id>):
@@ -23,19 +22,18 @@ type CatalogDetail struct {
 type CatalogRelease struct {
 	Version        string `json:"version"`
 	ManifestDigest string `json:"manifest_digest"`
-	Signed         bool   `json:"signed"`
 }
 
 // ErrCatalogNotFound is returned when the hub has no such catalog, or no such
 // version of it.
 var ErrCatalogNotFound = errors.New("catalog not found on grc.store")
 
-// Release returns the release tagged version, or the latest one when version
-// is empty. The tag is matched verbatim: it is the OCI tag to pull.
+// Release returns the release tagged version. The tag is matched verbatim: it
+// is the OCI tag to pull. There is no "latest" fallback — a catalog is always
+// fetched at a pinned version, and Fetch rejects an empty one before it gets
+// here, so resolving a blank version would only produce a cache entry at a path
+// nothing reads.
 func (d *CatalogDetail) Release(version string) (*CatalogRelease, error) {
-	if version == "" {
-		version = d.LatestVersion
-	}
 	for i := range d.Releases {
 		if d.Releases[i].Version == version {
 			return &d.Releases[i], nil
@@ -48,12 +46,8 @@ func (d *CatalogDetail) Release(version string) (*CatalogRelease, error) {
 // (anonymous). A 404 yields ErrCatalogNotFound.
 func (c *Client) GetCatalogDetails(ctx context.Context, namespace, catalogID string) (*CatalogDetail, error) {
 	var d CatalogDetail
-	err := c.getJSON(ctx, fmt.Sprintf("/v1/catalogs/%s/%s", namespace, catalogID), &d)
-	if err != nil {
-		var statusErr *httpStatusError
-		if errors.As(err, &statusErr) && statusErr.status == http.StatusNotFound {
-			return nil, fmt.Errorf("%w: %s/%s", ErrCatalogNotFound, namespace, catalogID)
-		}
+	notFound := fmt.Errorf("%w: %s/%s", ErrCatalogNotFound, namespace, catalogID)
+	if err := c.getJSONOr404(ctx, fmt.Sprintf("/v1/catalogs/%s/%s", namespace, catalogID), &d, notFound); err != nil {
 		return nil, err
 	}
 	return &d, nil

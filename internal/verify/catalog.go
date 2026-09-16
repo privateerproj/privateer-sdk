@@ -76,8 +76,10 @@ func walkVerifiedCatalog(ctx context.Context, fetched *oci.FetchedIndex, signerI
 	}, nil
 }
 
-// artifactLayer picks the layer carrying the catalog: the one annotated with
-// the artifact role, else the only Gemara artifact layer. Ambiguity is an error.
+// artifactLayer picks the layer carrying the catalog: the first layer annotated
+// with the artifact role, else — when none is annotated — the only Gemara
+// artifact layer. Ambiguity is an error among unannotated layers only; an
+// annotation is taken as the manifest saying which layer it means.
 func artifactLayer(layers []ocispec.Descriptor) (ocispec.Descriptor, error) {
 	var candidates []ocispec.Descriptor
 	for _, l := range layers {

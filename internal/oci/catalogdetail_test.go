@@ -9,8 +9,9 @@ func TestCatalogDetail_Release(t *testing.T) {
 	d := &CatalogDetail{Namespace: "openssf", CatalogID: "osps-baseline", LatestVersion: "v2", Releases: []CatalogRelease{
 		{Version: "v1", ManifestDigest: "sha256:1"}, {Version: "v2", ManifestDigest: "sha256:2"},
 	}}
-	if r, err := d.Release(""); err != nil || r.Version != "v2" {
-		t.Errorf("latest: %v %v", r, err)
+	// No "latest" fallback: a blank version is not a release.
+	if _, err := d.Release(""); !errors.Is(err, ErrCatalogNotFound) {
+		t.Errorf("blank version: %v", err)
 	}
 	if r, err := d.Release("v1"); err != nil || r.ManifestDigest != "sha256:1" {
 		t.Errorf("exact: %v %v", r, err)
