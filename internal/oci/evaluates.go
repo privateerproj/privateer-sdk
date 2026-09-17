@@ -43,7 +43,7 @@ func ValidateForPublish(p AssembleParams) error {
 	// here from two sources, both owned by the plugin: coordinates declared with
 	// AddCatalogs, namespaced by the coordinate itself and linked against the
 	// fetched catalog in internal/publish; and catalogs loaded through the
-	// deprecated AddReferenceCatalogs, namespaced by their own
+	// AddReferenceCatalogs, namespaced by their own
 	// metadata.author.id. Never by orchestrator.Publisher — claiming a catalog
 	// we do not own under our own namespace is a false attribution. An empty
 	// list means the plugin declared and loaded nothing.

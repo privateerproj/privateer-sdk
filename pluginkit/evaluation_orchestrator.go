@@ -1,7 +1,6 @@
 package pluginkit
 
 import (
-	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,7 +8,6 @@ import (
 	"os"
 	"path"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -45,11 +43,9 @@ type EvaluationOrchestrator struct {
 	// someone else (e.g. a community plugin evaluating ossf/osps-baseline). A
 	// catalog not listed here is namespaced by its own metadata.author.id;
 	// publishing fails closed when it has neither, because filing someone
-	// else's catalog under Publisher would be a false attribution.
-	//
-	// Deprecated: only the embedded AddReferenceCatalogs path needs this — a
-	// coordinate declared with AddCatalogs already carries its namespace. It is
-	// removed together with AddReferenceCatalogs in the next minor release.
+	// else's catalog under Publisher would be a false attribution. Only the
+	// AddReferenceCatalogs path needs this; a coordinate declared with
+	// AddCatalogs already carries its namespace.
 	CatalogNamespaces map[string]string  `json:"catalog-namespaces,omitempty" yaml:"catalog-namespaces,omitempty"`
 	Payload           any                `json:"payload,omitempty" yaml:"payload,omitempty"`
 	Evaluation_Suites []*EvaluationSuite `json:"evaluation-suites" yaml:"evaluation-suites"` // EvaluationSuite is a map of evaluations to their catalog names
@@ -65,14 +61,11 @@ type EvaluationOrchestrator struct {
 	// pendingSuites are suites registered against a declared coordinate before
 	// its catalog is loaded; Mobilize materializes them after loading.
 	pendingSuites []pendingSuite
-	// embeddedCatalogs records ids loaded via the deprecated AddReferenceCatalogs,
-	// so Mobilize can warn that their text was never verified against grc.store.
-	embeddedCatalogs map[string]bool
-	requiredVars     []string
-	config           *config.Config
-	loader           DataLoader
-	targetBuilder    TargetBuilder
-	benchmark        *BenchmarkReport
+	requiredVars  []string
+	config        *config.Config
+	loader        DataLoader
+	targetBuilder TargetBuilder
+	benchmark     *BenchmarkReport
 }
 
 // DataLoader is a function type for loading plugin data from configuration.
@@ -103,20 +96,12 @@ func (v *EvaluationOrchestrator) AddRequiredVars(vars []string) {
 }
 
 // AddReferenceCatalogs loads reference catalogs from a file system the plugin
-// carries itself (typically an embed.FS).
-//
-// Deprecated: an embedded copy is not authoritative; it can drift from the
-// published catalog and the plugin author can edit it, and Mobilize warns on
-// every run that uses one. Declare the catalog's grc.store coordinate with
-// AddCatalogs instead; `pvtr install` then fetches and verifies it. Keep this
-// only for a catalog that is not published on grc.store. It will be removed in
-// the next minor release.
+// carries itself (typically an embed.FS). For a catalog published on
+// grc.store, prefer AddCatalogs: `pvtr install` then fetches and verifies it
+// instead of trusting the embedded copy.
 func (v *EvaluationOrchestrator) AddReferenceCatalogs(dataDir string, files fs.FS) error {
 	if v.referenceCatalogs == nil {
 		v.referenceCatalogs = make(map[string]*gemara.ControlCatalog)
-	}
-	if v.embeddedCatalogs == nil {
-		v.embeddedCatalogs = make(map[string]bool)
 	}
 	if dataDir == "" {
 		return errors.New("data directory name cannot be empty")
@@ -133,7 +118,6 @@ func (v *EvaluationOrchestrator) AddReferenceCatalogs(dataDir string, files fs.F
 			return fmt.Errorf("duplicate catalog id found: %s", catalog.Metadata.Id)
 		}
 		v.referenceCatalogs[catalog.Metadata.Id] = catalog
-		v.embeddedCatalogs[catalog.Metadata.Id] = true
 		v.addPossibleControls(catalog)
 	}
 	return nil
@@ -145,7 +129,7 @@ func (v *EvaluationOrchestrator) AddReferenceCatalogs(dataDir string, files fs.F
 // fetches and verifies each catalog into the install cache, and Mobilize loads
 // it from there, so `pvtr run` stays offline. In policy.catalogs a user names
 // a suite by the full coordinate, or by the bare "<namespace>/<id>" (or the
-// catalog's own metadata id) to get the newest declared version.
+// catalog's own metadata id) when the plugin declares one version of it.
 func (v *EvaluationOrchestrator) AddCatalogs(coordinates ...string) error {
 	parsed := make([]CatalogCoordinate, 0, len(coordinates))
 	for _, raw := range coordinates {
@@ -431,25 +415,23 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 	}
 
 	for _, catalog := range v.config.Policy.ControlCatalogs {
-		suite := v.matchSuite(catalog)
-		if suite == nil {
+		matches := v.matchSuites(catalog)
+		if len(matches) == 0 {
 			v.config.Logger.Warn("requested catalog did not match any available suite", "requested", catalog, "available", availableCatalogIDs)
 			continue
 		}
-		if v.embeddedCatalogs[suite.CatalogId] {
-			v.config.Logger.Warn("catalog is an embedded copy and was not verified against grc.store; declare it with AddCatalogs instead", "catalog", suite.CatalogId)
+		if len(matches) > 1 {
+			ids := make([]string, len(matches))
+			for i, s := range matches {
+				ids[i] = s.CatalogId
+			}
+			v.config.Logger.Warn("requested catalog is ambiguous; name the full <namespace>/<id>@<version> coordinate", "requested", catalog, "matched", ids)
+			continue
 		}
+		suite := matches[0]
 		err := suite.Evaluate(v.ServiceName)
 		if err != nil {
 			v.config.Logger.Error(err.Error())
-			// A suite that could not run is not a pass. Evaluate leaves Result at
-			// NotRun when it fails before the assessment loop, and the error is
-			// logged rather than returned, so without this the whole run exits
-			// TestPass. Only fill an unset Result: a late failure (corrupted state)
-			// happens after the loop, and that aggregate is the more specific answer.
-			if suite.Result == gemara.NotRun {
-				suite.Result = gemara.Unknown
-			}
 		}
 		v.stampEvaluationLog(suite)
 		v.Evaluation_Suites = append(v.Evaluation_Suites, suite)
@@ -473,61 +455,22 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 	return benchErr
 }
 
-// matchSuite resolves a policy.catalogs entry to a registered suite. An exact
-// suite id wins (a catalog id, or a full <namespace>/<id>@<version>
-// coordinate); otherwise a bare <namespace>/<id> coordinate or a catalog's own
-// metadata id resolves to the newest declared version of that catalog. An
-// embedded copy never wins outright: a plugin mid-migration that declares a
-// catalog and also embeds it gets the verified copy.
-func (v *EvaluationOrchestrator) matchSuite(requested string) *EvaluationSuite {
+// matchSuites resolves a policy.catalogs entry to registered suites. An exact
+// suite id (a catalog id, or a full <namespace>/<id>@<version> coordinate) is
+// the single match. Otherwise a bare <namespace>/<id> coordinate or a
+// catalog's own metadata id matches every declared version of that catalog,
+// and Mobilize treats more than one as ambiguous.
+func (v *EvaluationOrchestrator) matchSuites(requested string) []*EvaluationSuite {
+	var matches []*EvaluationSuite
 	for _, suite := range v.possibleSuites {
-		// An embedded suite skips this loop and is picked up below, where a
-		// declared coordinate for the same catalog outranks it (its id carries no
-		// version, which compares lowest). When it is the only match it still wins.
-		if suite.CatalogId == requested && !v.embeddedCatalogs[suite.CatalogId] {
-			return suite
+		if suite.CatalogId == requested {
+			return []*EvaluationSuite{suite}
+		}
+		if strings.HasPrefix(suite.CatalogId, requested+"@") || (suite.catalog != nil && suite.catalog.Metadata.Id == requested) {
+			matches = append(matches, suite)
 		}
 	}
-	var newest *EvaluationSuite
-	for _, suite := range v.possibleSuites {
-		if !strings.HasPrefix(suite.CatalogId, requested+"@") && (suite.catalog == nil || suite.catalog.Metadata.Id != requested) {
-			continue
-		}
-		if newest == nil || compareCatalogVersions(suiteVersion(suite), suiteVersion(newest)) > 0 {
-			newest = suite
-		}
-	}
-	return newest
-}
-
-// suiteVersion is the version part of a coordinate-keyed suite id ("" for an
-// embedded catalog, whose id carries no version).
-func suiteVersion(suite *EvaluationSuite) string {
-	_, version, _ := strings.Cut(suite.CatalogId, "@")
-	return version
-}
-
-// compareCatalogVersions orders two catalog tags, newest last. Dot-separated
-// numeric segments compare numerically (a leading "v" is ignored) and anything
-// else lexically, because hub tags such as v2026.08.26 carry leading zeros and
-// are not valid semver.
-func compareCatalogVersions(a, b string) int {
-	as := strings.Split(strings.TrimPrefix(a, "v"), ".")
-	bs := strings.Split(strings.TrimPrefix(b, "v"), ".")
-	for i := 0; i < len(as) && i < len(bs); i++ {
-		ai, aerr := strconv.Atoi(as[i])
-		bi, berr := strconv.Atoi(bs[i])
-		if aerr == nil && berr == nil {
-			if ai != bi {
-				return cmp.Compare(ai, bi)
-			}
-			continue
-		}
-		if c := strings.Compare(as[i], bs[i]); c != 0 {
-			return c
-		}
-	}
-	return cmp.Compare(len(as), len(bs))
+	return matches
 }
 
 // stampEvaluationLog populates identity, provenance, and outcome on a suite's

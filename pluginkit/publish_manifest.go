@@ -21,7 +21,7 @@ const PublishManifestCommand = "publish-manifest"
 // plugin coordinate is Publisher + PluginName. Catalogs declared with
 // AddCatalogs are emitted as coordinates plus the plugin's step keys, and pvtr
 // publish fetches each catalog from grc.store to build the linkage. Catalogs
-// embedded with the deprecated AddReferenceCatalogs are emitted as a ready
+// embedded with AddReferenceCatalogs are emitted as a ready
 // linkage under the catalog's OWN owner (metadata.author.id), so a plugin that
 // evaluates someone else's catalog links to the real owner instead of falsely
 // claiming it under the plugin's own namespace; CatalogNamespaces overrides
@@ -105,25 +105,20 @@ func (v *EvaluationOrchestrator) PublishManifest() (PublishManifest, error) {
 			return PublishManifest{}, fmt.Errorf("evaluated catalog %q has no metadata.version", id)
 		}
 
-		// requirement_ids is assessment-requirement ids, per the wire contract in
-		// grc-store-protocol/pluginspec — the same id space evaluation steps are
-		// keyed by, and the same one the declared-coordinate path emits. Read them
-		// from the catalog's OWN controls: addEvaluationSuite no longer mutates the
-		// shared catalog (copy-on-import), so referenceCatalogs entries carry only
-		// the catalog's own controls here. Deduplicated as cheap hardening against
-		// any future source of duplicate ids.
+		// Requirement ids are the catalog's OWN control ids. Deduplicated as cheap
+		// hardening against any future source of duplicate ids. addEvaluationSuite
+		// no longer mutates the shared catalog (copy-on-import), so referenceCatalogs
+		// entries always contain only the catalog's own controls here.
 		seen := map[string]bool{}
 		reqs := make([]string, 0, len(catalog.Controls))
 		for _, c := range catalog.Controls {
-			for _, r := range c.AssessmentRequirements {
-				if r.Id != "" && !seen[r.Id] {
-					seen[r.Id] = true
-					reqs = append(reqs, r.Id)
-				}
+			if c.Id != "" && !seen[c.Id] {
+				seen[c.Id] = true
+				reqs = append(reqs, c.Id)
 			}
 		}
 		if len(reqs) == 0 {
-			return PublishManifest{}, fmt.Errorf("evaluated catalog %q declares no assessment requirements", id)
+			return PublishManifest{}, fmt.Errorf("evaluated catalog %q declares no controls", id)
 		}
 		slices.Sort(reqs)
 

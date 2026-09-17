@@ -115,16 +115,7 @@ func Publish(ctx context.Context, w io.Writer, p Params) error {
 				return v.YAML, nil
 			}
 		}
-		// Steps are collected across every suite, embedded and declared alike, so
-		// a plugin migrating one catalog at a time has steps that only the
-		// embedded linkage above covers. Hand those over as already matched, or
-		// the orphan check would reject a mixed plugin for steps that are in fact
-		// linked — just not by a declared catalog.
-		var preMatched []string
-		for _, e := range evaluates {
-			preMatched = append(preMatched, e.RequirementIDs...)
-		}
-		declared, err := evaluatesFromCatalogs(ctx, fetch, manifest.Catalogs, manifest.Steps, preMatched)
+		declared, err := evaluatesFromCatalogs(ctx, fetch, manifest.Catalogs, manifest.Steps)
 		if err != nil {
 			return err
 		}

@@ -72,18 +72,10 @@ func uiBase(advertised, hubURL string) string {
 
 // evaluatesFromCatalogs builds one evaluates entry per declared catalog
 // coordinate: the catalog's assessment-requirement ids intersected with the
-// plugin's step keys, sorted. A catalog no step matches is an error, and so is
-// a step key that matches no catalog at all — both mean the plugin's steps and
-// its catalogs disagree, which must be fixed in code rather than published.
-//
-// preMatched are requirement ids already linked by the deprecated embedded
-// path. They count as covered for the orphan check but produce no entry here,
-// since the embedded path emitted theirs already.
-func evaluatesFromCatalogs(ctx context.Context, fetch func(context.Context, pluginkit.CatalogCoordinate) ([]byte, error), coordinates, steps, preMatched []string) ([]pluginspec.Evaluate, error) {
-	matched := make(map[string]bool, len(preMatched))
-	for _, id := range preMatched {
-		matched[id] = true
-	}
+// plugin's step keys, sorted. A catalog no step matches is an error: the
+// plugin's steps and its catalogs disagree, which must be fixed in code rather
+// than published.
+func evaluatesFromCatalogs(ctx context.Context, fetch func(context.Context, pluginkit.CatalogCoordinate) ([]byte, error), coordinates, steps []string) ([]pluginspec.Evaluate, error) {
 	out := make([]pluginspec.Evaluate, 0, len(coordinates))
 	for _, raw := range coordinates {
 		c, err := pluginkit.ParseCatalogCoordinate(raw)
@@ -108,7 +100,6 @@ func evaluatesFromCatalogs(ctx context.Context, fetch func(context.Context, plug
 		for _, s := range steps {
 			if inCatalog[s] {
 				reqs = append(reqs, s)
-				matched[s] = true
 			}
 		}
 		if len(reqs) == 0 {
@@ -116,15 +107,6 @@ func evaluatesFromCatalogs(ctx context.Context, fetch func(context.Context, plug
 		}
 		slices.Sort(reqs)
 		out = append(out, pluginspec.Evaluate{Catalog: c.Repository(), CatalogVersion: c.Version, RequirementIDs: reqs})
-	}
-	var orphans []string
-	for _, s := range steps {
-		if !matched[s] {
-			orphans = append(orphans, s)
-		}
-	}
-	if len(orphans) > 0 {
-		return nil, fmt.Errorf("evaluation steps %v match no assessment requirement in any catalog the plugin declares or embeds", orphans)
 	}
 	return out, nil
 }
