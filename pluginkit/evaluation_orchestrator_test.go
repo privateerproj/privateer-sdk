@@ -535,7 +535,7 @@ func BenchmarkGetImportedControls(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = getImportedControls(primary, refs)
+		_, _ = getImportedControls(primary, refs)
 	}
 }
 

@@ -294,9 +294,10 @@ func TestPublishManifest_CatalogNamespaces(t *testing.T) {
 // TestAddEvaluationSuite_ImportedControlsStillEvaluated verifies that the
 // copy-on-import change does not change evaluation behavior: a suite for a
 // catalog that imports controls from another catalog still evaluates the
-// imported controls.
+// imported controls once Mobilize has resolved them.
 func TestAddEvaluationSuite_ImportedControlsStillEvaluated(t *testing.T) {
 	orch := orchestratorWithImportingCatalog()
+	orch.config = setBasicConfig()
 
 	// Register steps covering both the own control and the imported one.
 	steps := map[string][]gemara.AssessmentStep{
@@ -311,6 +312,7 @@ func TestAddEvaluationSuite_ImportedControlsStillEvaluated(t *testing.T) {
 		t.Fatalf("expected 1 suite, got %d", len(orch.possibleSuites))
 	}
 	suite := orch.possibleSuites[0]
+	orch.resolveImports(suite)
 
 	// The suite's catalog must contain both the own control and the imported one.
 	controlIDs := make(map[string]bool)

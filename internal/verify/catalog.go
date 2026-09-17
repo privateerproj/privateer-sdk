@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/gemaraproj/go-gemara/bundle"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/privateerproj/privateer-sdk/internal/oci"
+	"github.com/privateerproj/privateer-sdk/pluginkit"
 )
 
 // artifactRoleAnnotation marks the layer that carries the catalog itself in a
@@ -64,29 +66,47 @@ func walkVerifiedCatalog(ctx context.Context, fetched *oci.FetchedIndex, signerI
 	if err := checkDigest(layer.Digest, data, "catalog layer"); err != nil {
 		return nil, err
 	}
+	// Bind the verified bytes to the requested coordinate, as the plugin walk
+	// does with its config blob. A grc.store catalog coordinate is
+	// <author>/<metadata.id>, so a validly signed catalog for some other id
+	// must not install under this one, whether or not the hub recorded a
+	// manifest digest to cross-check.
+	parsed, err := pluginkit.ParseCatalog(data)
+	if err != nil {
+		return nil, fmt.Errorf("%w: parse catalog layer: %v", ErrMalformedIndex, err)
+	}
+	if _, wantId, _ := strings.Cut(fetched.Coordinate, "/"); parsed.Metadata.Id != wantId {
+		return nil, fmt.Errorf("%w: catalog metadata id %q != requested coordinate %q", ErrMalformedIndex, parsed.Metadata.Id, fetched.Coordinate)
+	}
 	return &VerifiedCatalog{SignerIdentity: signerIdentity, YAML: data}, nil
 }
 
-// artifactLayer picks the layer carrying the catalog: the first layer annotated
-// with the artifact role, else — when none is annotated — the only Gemara
-// artifact layer. Ambiguity is an error among unannotated layers only; an
-// annotation is taken as the manifest saying which layer it means.
+// artifactLayer picks the layer carrying the catalog, with the same rules as
+// go-gemara's bundle.Unpack: only Gemara artifact layers count, and among
+// those the one annotated with the artifact role, else the only one. More than
+// one annotated layer, or several unannotated ones, is an error; a layer of
+// any other media type is ignored whatever its annotations say.
 func artifactLayer(layers []ocispec.Descriptor) (ocispec.Descriptor, error) {
-	var candidates []ocispec.Descriptor
+	var marked, artifacts []ocispec.Descriptor
 	for _, l := range layers {
-		if l.Annotations[artifactRoleAnnotation] == "artifact" {
-			return l, nil
+		if l.MediaType != bundle.MediaTypeArtifact {
+			continue
 		}
-		if l.MediaType == bundle.MediaTypeArtifact {
-			candidates = append(candidates, l)
+		artifacts = append(artifacts, l)
+		if l.Annotations[artifactRoleAnnotation] == "artifact" {
+			marked = append(marked, l)
 		}
 	}
-	switch len(candidates) {
-	case 1:
-		return candidates[0], nil
-	case 0:
+	switch {
+	case len(marked) == 1:
+		return marked[0], nil
+	case len(marked) > 1:
+		return ocispec.Descriptor{}, fmt.Errorf("%w: %d layers marked as the catalog", ErrMalformedIndex, len(marked))
+	case len(artifacts) == 1:
+		return artifacts[0], nil
+	case len(artifacts) == 0:
 		return ocispec.Descriptor{}, fmt.Errorf("%w: no %q layer", ErrMalformedIndex, bundle.MediaTypeArtifact)
 	default:
-		return ocispec.Descriptor{}, fmt.Errorf("%w: %d artifact layers and none marked as the catalog", ErrMalformedIndex, len(candidates))
+		return ocispec.Descriptor{}, fmt.Errorf("%w: %d artifact layers and none marked as the catalog", ErrMalformedIndex, len(artifacts))
 	}
 }

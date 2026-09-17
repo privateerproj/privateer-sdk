@@ -174,3 +174,98 @@ func TestMobilize_RejectsEmptyCachedCatalog(t *testing.T) {
 		})
 	}
 }
+
+// An embedded catalog may import controls from a catalog the plugin declares
+// with AddCatalogs. Imports name a catalog by metadata id and the declared one
+// is keyed by coordinate, and it is not loaded until Mobilize, so both the
+// lookup and its timing matter. The shared reference entry stays pristine.
+func TestMobilize_DeclaredCatalogSatisfiesImports(t *testing.T) {
+	dir := t.TempDir()
+	dep := CatalogCoordinate{"openssf", "osps-baseline", "v1"}
+	cachedCatalog(t, dir, dep)
+	catalogTestConfig(t, dir, []string{"primary"})
+
+	primary, err := ParseCatalog([]byte("metadata:\n  id: primary\n  version: v1\ncontrols:\n" +
+		"  - id: P01\n    title: T\n    objective: O\n    assessment-requirements:\n" +
+		"      - id: P01.TR01\n        text: t\n        applicability: [tlp-green]\n" +
+		"imports:\n  - reference-id: osps-baseline\n    entries:\n      - reference-id: CCC.Core.C01\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	orch := &EvaluationOrchestrator{PluginName: "p", referenceCatalogs: map[string]*gemara.ControlCatalog{"primary": primary}}
+	if err := orch.AddCatalogs(dep.String()); err != nil {
+		t.Fatal(err)
+	}
+	steps := map[string][]gemara.AssessmentStep{"P01.TR01": {step_Pass}, "CCC.Core.C01.TR01": {step_Pass}}
+	if err := orch.AddEvaluationSuite("primary", nil, steps); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ { // twice: resolution must not stack imports
+		if err := orch.Mobilize(); err != nil {
+			t.Fatalf("Mobilize: %v", err)
+		}
+		if got := len(orch.Evaluation_Suites[0].EvaluationLog.Evaluations); got != 2 {
+			t.Fatalf("run %d: evaluated %d controls, want 2 (own + imported)", i, got)
+		}
+	}
+	if len(primary.Controls) != 1 {
+		t.Errorf("reference catalog was mutated: %d controls", len(primary.Controls))
+	}
+}
+
+// Two policy entries that alias one suite run it once.
+func TestMobilize_AliasedEntriesRunSuiteOnce(t *testing.T) {
+	dir := t.TempDir()
+	c := CatalogCoordinate{"openssf", "osps-baseline", "v1"}
+	cachedCatalog(t, dir, c)
+	catalogTestConfig(t, dir, []string{c.String(), "osps-baseline", "openssf/osps-baseline"})
+
+	orch := &EvaluationOrchestrator{PluginName: "p"}
+	if err := orch.AddCatalogs(c.String()); err != nil {
+		t.Fatal(err)
+	}
+	if err := orch.AddEvaluationSuite(c.String(), nil, map[string][]gemara.AssessmentStep{"CCC.Core.C01.TR01": {step_Pass}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := orch.Mobilize(); err != nil {
+		t.Fatalf("Mobilize: %v", err)
+	}
+	if len(orch.Evaluation_Suites) != 1 {
+		t.Fatalf("ran %d suites, want 1", len(orch.Evaluation_Suites))
+	}
+	if got := len(orch.Evaluation_Suites[0].EvaluationLog.Evaluations); got != 1 {
+		t.Errorf("evaluated %d controls, want 1 (not re-run)", got)
+	}
+}
+
+// A cache entry that cannot be read or parsed is a BAD_CATALOG, not a crash.
+func TestMobilize_RejectsUnreadableCachedCatalog(t *testing.T) {
+	for name, setup := range map[string]func(path string) error{
+		"reading": func(path string) error { return os.MkdirAll(path, 0o755) }, // a directory, so ReadFile fails without IsNotExist
+		"parsing": func(path string) error { return os.WriteFile(path, []byte("metadata: ["), 0o644) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			c := CatalogCoordinate{"openssf", "osps-baseline", "v1"}
+			path := CatalogCachePath(dir, c)
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := setup(path); err != nil {
+				t.Fatal(err)
+			}
+			catalogTestConfig(t, dir, []string{c.String()})
+			orch := &EvaluationOrchestrator{PluginName: "p"}
+			if err := orch.AddCatalogs(c.String()); err != nil {
+				t.Fatal(err)
+			}
+			err := orch.Mobilize()
+			if err == nil || !strings.Contains(err.Error(), name) {
+				t.Fatalf("expected a BAD_CATALOG error mentioning %q, got %v", name, err)
+			}
+			if got := ExitCodeFor(orch, err); got != shared.BadUsage {
+				t.Errorf("exit code = %d, want BadUsage (%d)", got, shared.BadUsage)
+			}
+		})
+	}
+}

@@ -31,6 +31,14 @@ func parseCoordinate(arg string) (namespace, pluginId, version string, err error
 		err = fmt.Errorf("invalid namespace %q", namespace)
 		return
 	}
+	// The install tree is shared: "local" is where --local installs go and
+	// "catalogs" is the verified-catalog cache. A hub plugin in either
+	// namespace would write into those trees, and install's stat-skip would
+	// then treat its files as already verified.
+	if namespace == "local" || namespace == "catalogs" {
+		err = fmt.Errorf("namespace %q is reserved", namespace)
+		return
+	}
 	if !validNameSegmentRegex.MatchString(pluginId) {
 		err = fmt.Errorf("invalid plugin id %q", pluginId)
 		return

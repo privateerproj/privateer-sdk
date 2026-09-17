@@ -310,21 +310,13 @@ func (v *EvaluationOrchestrator) addEvaluationSuite(suiteId string, catalog *gem
 		}
 	}
 
-	importedControls := getImportedControls(catalog, v.referenceCatalogs)
-	suiteCatalog := catalog
-	if len(importedControls) > 0 {
-		// Copy-on-import: the suite evaluates its own + imported controls, but the
-		// shared referenceCatalogs entry must stay pristine — PublishManifest reads
-		// it, and the published requirement_ids must list only the catalog's OWN
-		// control ids, deterministically, regardless of suite registration order.
-		combined := *catalog
-		combined.Controls = append(append([]gemara.Control{}, catalog.Controls...), importedControls...)
-		suiteCatalog = &combined
-	}
-
+	// Imports are resolved in Mobilize (resolveImports), not here: a declared
+	// catalog is not loaded until then, and an embedded catalog may import from
+	// one.
 	suite := EvaluationSuite{
 		CatalogId: suiteId,
-		catalog:   suiteCatalog,
+		catalog:   catalog,
+		source:    catalog,
 		steps:     steps,
 		config:    v.config,
 	}
@@ -337,15 +329,42 @@ func (v *EvaluationOrchestrator) addEvaluationSuite(suiteId string, catalog *gem
 	v.possibleSuites = append(v.possibleSuites, &suite)
 }
 
-// getImportedControls returns controls from imported catalogs that are listed in the primary catalog's imports.
-func getImportedControls(catalog *gemara.ControlCatalog, referenceCatalogs map[string]*gemara.ControlCatalog) []gemara.Control {
-	if len(catalog.Imports) == 0 {
-		return nil
+// resolveImports rebuilds the suite's catalog from its registered source plus
+// the controls it imports. Copy-on-import: the shared referenceCatalogs entry
+// stays pristine, because PublishManifest reads it and the published
+// requirement_ids must list only the catalog's OWN ids. Rebuilding from
+// source keeps repeated Mobilize calls from stacking imports.
+func (v *EvaluationOrchestrator) resolveImports(suite *EvaluationSuite) {
+	if suite.source == nil {
+		return
 	}
-	var result []gemara.Control
+	imported, unmatched := getImportedControls(suite.source, v.referenceCatalogs)
+	if len(unmatched) > 0 {
+		v.config.Logger.Warn("catalog imports reference no loaded catalog; those controls will not be evaluated", "catalog", suite.CatalogId, "unmatched", unmatched)
+	}
+	suite.catalog = suite.source
+	if len(imported) > 0 {
+		combined := *suite.source
+		combined.Controls = append(append([]gemara.Control{}, suite.source.Controls...), imported...)
+		suite.catalog = &combined
+	}
+}
+
+// getImportedControls returns controls from imported catalogs that are listed
+// in the primary catalog's imports, plus the reference ids that matched no
+// loaded catalog. An import names a catalog by its metadata id; embedded
+// catalogs are keyed by that id, declared ones by their coordinate, so a
+// declared catalog is found by scanning values. Two declared versions of the
+// same catalog share a metadata id and cannot be told apart, so that import
+// counts as unmatched rather than silently picking one.
+func getImportedControls(catalog *gemara.ControlCatalog, referenceCatalogs map[string]*gemara.ControlCatalog) (result []gemara.Control, unmatched []string) {
+	if len(catalog.Imports) == 0 {
+		return nil, nil
+	}
 	for _, importEntry := range catalog.Imports {
-		refCatalog, ok := referenceCatalogs[importEntry.ReferenceId]
-		if !ok {
+		refCatalog := findReferenceCatalog(referenceCatalogs, importEntry.ReferenceId)
+		if refCatalog == nil {
+			unmatched = append(unmatched, importEntry.ReferenceId)
 			continue
 		}
 		for _, mapping := range importEntry.Entries {
@@ -358,7 +377,24 @@ func getImportedControls(catalog *gemara.ControlCatalog, referenceCatalogs map[s
 			}
 		}
 	}
-	return result
+	return result, unmatched
+}
+
+func findReferenceCatalog(referenceCatalogs map[string]*gemara.ControlCatalog, id string) *gemara.ControlCatalog {
+	if c, ok := referenceCatalogs[id]; ok {
+		return c
+	}
+	var found *gemara.ControlCatalog
+	for _, c := range referenceCatalogs {
+		if c.Metadata.Id != id {
+			continue
+		}
+		if found != nil {
+			return nil // ambiguous
+		}
+		found = c
+	}
+	return found
 }
 
 // Mobilize initializes the orchestrator and executes all evaluation suites.
@@ -375,6 +411,9 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 
 	if err := v.loadDeclaredCatalogs(); err != nil {
 		return err
+	}
+	for _, suite := range v.possibleSuites {
+		v.resolveImports(suite)
 	}
 
 	// Init before loadPayload so retrieval is timed; nil when off.
@@ -414,6 +453,7 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 		availableCatalogIDs = append(availableCatalogIDs, suite.CatalogId)
 	}
 
+	ran := map[*EvaluationSuite]bool{}
 	for _, catalog := range v.config.Policy.ControlCatalogs {
 		matches := v.matchSuites(catalog)
 		if len(matches) == 0 {
@@ -429,6 +469,11 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 			continue
 		}
 		suite := matches[0]
+		if ran[suite] {
+			v.config.Logger.Warn("requested catalog names a suite that already ran under another entry; skipping", "requested", catalog, "suite", suite.CatalogId)
+			continue
+		}
+		ran[suite] = true
 		err := suite.Evaluate(v.ServiceName)
 		if err != nil {
 			v.config.Logger.Error(err.Error())

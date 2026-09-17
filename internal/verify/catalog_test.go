@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/gemaraproj/go-gemara/bundle"
@@ -90,5 +91,25 @@ func TestArtifactLayer(t *testing.T) {
 	}
 	if _, err := artifactLayer([]ocispec.Descriptor{other}); !errors.Is(err, ErrMalformedIndex) {
 		t.Errorf("no artifact layer: %v", err)
+	}
+	// The annotation does not override the media type, and only one layer may
+	// claim the role — the same rules as go-gemara's bundle.Unpack.
+	badMarked := ocispec.Descriptor{MediaType: "application/octet-stream", Digest: "sha256:d", Annotations: map[string]string{artifactRoleAnnotation: "artifact"}}
+	if got, err := artifactLayer([]ocispec.Descriptor{badMarked, art}); err != nil || got.Digest != "sha256:a" {
+		t.Errorf("annotated layer of the wrong media type must be ignored: %v %v", got.Digest, err)
+	}
+	if _, err := artifactLayer([]ocispec.Descriptor{marked, marked}); !errors.Is(err, ErrMalformedIndex) {
+		t.Errorf("two marked layers: %v", err)
+	}
+}
+
+// A validly signed catalog for some other id must not verify under this
+// coordinate, whether or not the hub recorded a manifest digest.
+func TestCatalog_WrongCoordinateRejected(t *testing.T) {
+	store, desc, data := packCatalog(t)
+	fetched := oci.NewFetchedIndex("openssf/other-catalog", "v1", desc, data, nil, store)
+	_, err := walkVerifiedCatalog(context.Background(), fetched, "id")
+	if !errors.Is(err, ErrMalformedIndex) || !strings.Contains(err.Error(), "osps-baseline") {
+		t.Fatalf("expected a coordinate mismatch, got %v", err)
 	}
 }
