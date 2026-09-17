@@ -275,6 +275,14 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 				err := suite.Evaluate(v.ServiceName)
 				if err != nil {
 					v.config.Logger.Error(err.Error())
+					// A suite that could not run is not a pass. Evaluate leaves Result at
+					// NotRun when it fails before the assessment loop, and the error is
+					// logged rather than returned, so without this the whole run exits
+					// TestPass. Only fill an unset Result: a late failure (corrupted state)
+					// happens after the loop, and that aggregate is the more specific answer.
+					if suite.Result == gemara.NotRun {
+						suite.Result = gemara.Unknown
+					}
 				}
 				v.stampEvaluationLog(suite)
 				v.Evaluation_Suites = append(v.Evaluation_Suites, suite)
