@@ -15,6 +15,12 @@ func ValidateForPublish(p AssembleParams) error {
 	if strings.TrimSpace(p.Coordinate) == "" {
 		return fmt.Errorf("coordinate is required")
 	}
+	// Shape-check here, not just at push: the coordinate also scopes the
+	// registry token, so a malformed one must fail before the two browser
+	// sign-ins rather than surfacing later as a namespace-ownership error.
+	if _, _, ok := SplitCoordinate(p.Coordinate); !ok {
+		return fmt.Errorf("invalid coordinate %q: want <namespace>/<plugin_id>", p.Coordinate)
+	}
 	if strings.TrimSpace(p.Version) == "" {
 		return fmt.Errorf("version is required")
 	}

@@ -55,6 +55,31 @@ func TestValidateForPublish_RejectsMissingLicense(t *testing.T) {
 	}
 }
 
+// A malformed coordinate must fail at preflight, not after the two browser
+// sign-ins: it also scopes the registry token, where the hub's pull-only grant
+// would otherwise surface as a namespace-ownership error.
+func TestValidateForPublish_RejectsMalformedCoordinate(t *testing.T) {
+	base := AssembleParams{
+		Version:   "0.1.0",
+		License:   "Apache-2.0",
+		Binaries:  []PlatformBinary{{OS: "linux", Arch: "amd64", Path: "/x", Entrypoint: "hello"}},
+		Evaluates: []pluginspec.Evaluate{{Catalog: "sandbox/example", CatalogVersion: "2026.01", RequirementIDs: []string{"SBX.1"}}},
+	}
+	for _, coord := range []string{"hello", "sandbox/hello/extra", "/hello", "sandbox/"} {
+		t.Run(coord, func(t *testing.T) {
+			p := base
+			p.Coordinate = coord
+			err := ValidateForPublish(p)
+			if err == nil {
+				t.Fatalf("expected preflight to reject coordinate %q", coord)
+			}
+			if !strings.Contains(err.Error(), "coordinate") {
+				t.Errorf("error should name the coordinate: %v", err)
+			}
+		})
+	}
+}
+
 func TestValidateForPublish_RejectsBadFields(t *testing.T) {
 	base := func() AssembleParams {
 		return AssembleParams{

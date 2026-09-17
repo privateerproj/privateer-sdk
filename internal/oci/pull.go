@@ -20,7 +20,7 @@ import (
 
 // BundleMediaType is the artifactType/mediaType of the Sigstore v0.3 bundle
 // stored as an OCI 1.1 referrer of the plugin index — re-exported from the
-// shared protocol contract (single source of truth; ADR-0035).
+// shared protocol contract (single source of truth).
 const BundleMediaType = mediatype.SigstoreBundle
 
 // maxBlobBytes caps any single fetched blob (manifest, config, bundle). The
@@ -41,7 +41,7 @@ const maxSignatureReferrers = 32
 // the index descriptor (its digest), the index bytes, and the signature bundles
 // discovered as referrers (nil when the index carries no signature referrer —
 // that is "unsigned", a verify-time concern, not a fetch error; multiple entries
-// when the index has been re-signed, since AttachSignature never removes prior
+// when the index has been re-signed, since SignAndAttach never removes prior
 // referrers and pushes are content-addressed/idempotent). Everything here is
 // untrusted until verify runs.
 type FetchedIndex struct {
@@ -163,7 +163,7 @@ func PullIndex(ctx context.Context, coordinate, version string, opts PullOptions
 // present; the verify walk tries each and proceeds with the first that passes.
 // Exported so a caller that already has an index descriptor + target (e.g.
 // re-verification, tests) can run the same discovery PullIndex does. It is the
-// exact inverse of AttachSignature. The truncation flag is internal to the pull
+// exact inverse of SignAndAttach. The truncation flag is internal to the pull
 // path, so this re-verification helper drops it.
 func FetchSignature(ctx context.Context, target oras.ReadOnlyTarget, indexDesc ocispec.Descriptor) ([][]byte, error) {
 	bundles, _, err := fetchSignatureBundle(ctx, target, indexDesc)
@@ -172,7 +172,7 @@ func FetchSignature(ctx context.Context, target oras.ReadOnlyTarget, indexDesc o
 
 // fetchSignatureBundle discovers all Sigstore v0.3 bundles attached to the
 // index as OCI referrers and returns their raw JSON bytes, or (nil, false, nil)
-// when none exist. Re-signing is additive — AttachSignature never removes prior
+// when none exist. Re-signing is additive — SignAndAttach never removes prior
 // referrers, so a re-signed index accumulates bundles across signing runs.
 // The verify walk iterates all bundles, trying each against the identity policy;
 // the first that passes both signature verification and the policy proceeds.

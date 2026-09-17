@@ -73,5 +73,17 @@ config regardless of any target setting.
 
 ## Publishing from CI
 
-See [ci-publishing.md](./ci-publishing.md) for the `PVTR_TOKEN` (hub bearer) and
-`SIGSTORE_ID_TOKEN` (signing identity) tokens that `pvtr publish` needs in CI.
+`pvtr publish` needs two independent tokens:
+
+1. **Hub/registry bearer** — authenticates the push and `/sync`. Supplied via
+   `PVTR_TOKEN` (or `pvtr login` for an interactive human). The hub decides
+   which tokens it accepts.
+2. **Sigstore signing identity** — the keyless Fulcio cert. Supplied via an OIDC
+   token with audience `sigstore` in `SIGSTORE_ID_TOKEN`, or auto-detected in
+   GitHub Actions. Resolved by clientkit's `keyless.Identity`.
+
+GitHub Actions needs no extra config beyond `permissions: id-token: write` and
+a `PVTR_TOKEN` secret. CircleCI is unsupported for keyless signing: its OIDC
+audience is locked to the org and cannot be `sigstore`. Provider-specific
+guidance for GitLab, Buildkite and GCP is tracked in
+[privateer-sdk#291](https://github.com/privateerproj/privateer-sdk/issues/291).

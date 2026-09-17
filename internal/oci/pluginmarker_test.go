@@ -3,6 +3,7 @@ package oci
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/privateerproj/privateer-sdk/shared"
@@ -87,7 +88,7 @@ func TestValidatePluginBinaries(t *testing.T) {
 	if err == nil {
 		t.Fatal("a set containing a non-plugin must be rejected")
 	}
-	if !contains(err.Error(), bad) || !contains(err.Error(), "not a Privateer plugin") {
+	if !strings.Contains(err.Error(), bad) || !strings.Contains(err.Error(), "not a Privateer plugin") {
 		t.Errorf("error should name the offending binary + cause, got: %v", err)
 	}
 }

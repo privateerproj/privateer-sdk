@@ -7,8 +7,10 @@ import (
 	"strings"
 	"testing"
 
+	ckbundle "github.com/gemaraproj/grc-store-clientkit/bundle"
 	"github.com/privateerproj/privateer-sdk/internal/oci"
 	"github.com/revanite-io/grc-store-protocol/identity"
+	"github.com/revanite-io/grc-store-protocol/mediatype"
 	"github.com/revanite-io/grc-store-protocol/pluginspec"
 	"github.com/sigstore/sigstore-go/pkg/testing/ca"
 	"github.com/sigstore/sigstore-go/pkg/tlog"
@@ -26,8 +28,8 @@ func (noTlogEntity) TlogEntries() ([]*tlog.Entry, error) { return nil, nil }
 func (noTlogEntity) HasInclusionProof() bool             { return false }
 func (noTlogEntity) HasInclusionPromise() bool           { return false }
 
-// TestProducerConsumer_AttachThenVerifyDiscoversReferrer proves the producer's
-// oci.AttachSignature is wired as the exact inverse of the consumer's verify
+// TestProducerConsumer_AttachThenVerifyDiscoversReferrer proves that clientkit's
+// AttachReferrer is wired as the exact inverse of the consumer's verify
 // path THROUGH THE OCI REFERRER GRAPH: attach a bundle to the index in a store,
 // discover it back, feed verify.Index — and confirm verify GETS THE SIGNATURE
 // (it does not see ErrUnsigned; it proceeds to signature verification). The
@@ -39,8 +41,8 @@ func TestProducerConsumer_AttachThenVerifyDiscoversReferrer(t *testing.T) {
 
 	// Producer side: attach a signature bundle as the index's OCI referrer.
 	fixture := []byte(`{"mediaType":"application/vnd.dev.sigstore.bundle.v0.3+json","fixture":true}`)
-	if err := oci.AttachSignature(ctx, b.store, b.idxDesc, oci.NewSignedBundle(fixture)); err != nil {
-		t.Fatalf("AttachSignature: %v", err)
+	if err := ckbundle.AttachReferrer(ctx, b.store, b.idxDesc, mediatype.SigstoreBundle, fixture); err != nil {
+		t.Fatalf("AttachReferrer: %v", err)
 	}
 
 	// Consumer side: discover the bundles from the same store (what PullIndex
@@ -380,7 +382,7 @@ func TestIndex_MultiBundleFirstFailsIdentitySecondPasses(t *testing.T) {
 }
 
 // TestIndex_MultiBundle_ViaAttachDiscover verifies the end-to-end multi-bundle
-// path: two bundles attached (via AttachSignature) to the same index descriptor,
+// path: two bundles attached (via oci.SignAndAttach) to the same index descriptor,
 // both discovered (via FetchSignature which now returns all bundles), then
 // passed to verify.Index. Both are fixture bytes (invalid signatures), so the
 // loop tries both and returns ErrSignatureInvalid — proving that the referrer
@@ -392,11 +394,11 @@ func TestIndex_MultiBundle_ViaAttachDiscover(t *testing.T) {
 	fixture1 := []byte(`{"mediaType":"application/vnd.dev.sigstore.bundle.v0.3+json","first":true}`)
 	fixture2 := []byte(`{"mediaType":"application/vnd.dev.sigstore.bundle.v0.3+json","second":true}`)
 
-	if err := oci.AttachSignature(ctx, b.store, b.idxDesc, oci.NewSignedBundle(fixture1)); err != nil {
-		t.Fatalf("AttachSignature (bundle 1): %v", err)
+	if err := ckbundle.AttachReferrer(ctx, b.store, b.idxDesc, mediatype.SigstoreBundle, fixture1); err != nil {
+		t.Fatalf("AttachReferrer (bundle 1): %v", err)
 	}
-	if err := oci.AttachSignature(ctx, b.store, b.idxDesc, oci.NewSignedBundle(fixture2)); err != nil {
-		t.Fatalf("AttachSignature (bundle 2): %v", err)
+	if err := ckbundle.AttachReferrer(ctx, b.store, b.idxDesc, mediatype.SigstoreBundle, fixture2); err != nil {
+		t.Fatalf("AttachReferrer (bundle 2): %v", err)
 	}
 
 	discovered, err := oci.FetchSignature(ctx, b.store, b.idxDesc)

@@ -65,7 +65,7 @@ type VerifiedPlugin struct {
 // digest. Any failure aborts; nothing degrades to an unverified copy.
 //
 // Multiple signature bundles are tried in order (they accumulate because
-// AttachSignature never removes prior referrers and re-signing is
+// oci.SignAndAttach never removes prior referrers and re-signing is
 // content-addressed/idempotent). The first bundle that passes BOTH signature
 // verification and the identity policy proceeds to the walk. If no bundle
 // passes, the errors are collected and the first error's sentinel is preserved

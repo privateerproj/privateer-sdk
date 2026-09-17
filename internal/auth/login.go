@@ -1,3 +1,9 @@
+// Package auth authenticates `pvtr publish` against grc.store. The
+// device-grant login, credential store, and token resolution come from
+// grc-store-clientkit; this package supplies pvtr's App identity and prompt
+// wording.
+//
+// The consumer (install) path is anonymous and does not use this package.
 package auth
 
 import (
@@ -6,13 +12,15 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
+
+	clientauth "github.com/gemaraproj/grc-store-clientkit/auth"
 )
 
-// tokenEnv is an explicit bearer override (CI trusted-publishing or a manually
-// minted token), checked before the device-grant store. Mirrors grcli's
-// GRCLI_TOKEN escape hatch.
-const tokenEnv = "PVTR_TOKEN"
+// pvtrApp identifies pvtr to grc-store-clientkit. It selects the credential
+// file at ${XDG_DATA_HOME:-~/.local/share}/pvtr/credentials.json, kept separate
+// from grcli's so the two tools cannot clobber each other's tokens, and names
+// pvtr in the "run `pvtr login`" hints the shared code emits.
+var pvtrApp = clientauth.App{Name: "pvtr", TokenEnv: "PVTR_TOKEN"}
 
 // Login runs the device-authorization grant against the issuer and stores the
 // resulting credentials. promptOut receives the user-facing "open this URL,
@@ -21,11 +29,11 @@ func Login(ctx context.Context, issuer, clientID string, promptOut io.Writer) (s
 	if clientID == "" {
 		return "", errors.New("the hub discovery doc did not advertise oidc_cli_client_id; cannot run device login")
 	}
-	meta, err := FetchOIDCMetadata(ctx, issuer)
+	meta, err := clientauth.FetchOIDCMetadata(ctx, issuer)
 	if err != nil {
 		return "", err
 	}
-	da, err := StartDeviceFlow(ctx, meta, clientID)
+	da, err := clientauth.StartDeviceFlow(ctx, meta, clientID)
 	if err != nil {
 		return "", err
 	}
@@ -36,11 +44,16 @@ func Login(ctx context.Context, issuer, clientID string, promptOut io.Writer) (s
 	}
 	_, _ = fmt.Fprintf(promptOut, "To authorize pvtr, open:\n  %s\nand enter code: %s\n\nWaiting for authorization...\n", target, da.UserCode)
 
-	creds, err := PollForToken(ctx, meta, clientID, da)
+	creds, err := clientauth.PollForToken(ctx, meta, clientID, da)
 	if err != nil {
+		// The shared sentinel carries no tool name, so the pvtr-specific hint
+		// is appended here.
+		if errors.Is(err, clientauth.ErrExpiredDeviceCode) {
+			return "", fmt.Errorf("%w — %s again", err, pvtrApp.LoginHint())
+		}
 		return "", err
 	}
-	store, err := NewDefaultStore()
+	store, err := clientauth.NewDefaultStore(pvtrApp)
 	if err != nil {
 		return "", err
 	}
@@ -50,9 +63,14 @@ func Login(ctx context.Context, issuer, clientID string, promptOut io.Writer) (s
 	return creds.Issuer, nil
 }
 
+// LoginHint is the "run `pvtr login`" fragment. Shared code in
+// grc-store-clientkit never names a tool, so callers wrap its sentinels with
+// this.
+func LoginHint() string { return pvtrApp.LoginHint() }
+
 // Logout forgets stored credentials for the issuer.
 func Logout(issuer string) error {
-	store, err := NewDefaultStore()
+	store, err := clientauth.NewDefaultStore(pvtrApp)
 	if err != nil {
 		return err
 	}
@@ -61,47 +79,33 @@ func Logout(issuer string) error {
 
 // BearerToken resolves an OIDC bearer to authenticate registry/hub writes.
 // Resolution order (highest first):
-//  1. PVTR_TOKEN env — an explicit token (CI trusted-publishing's GHA-OIDC
-//     token, or a manually minted one). No store interaction.
+//
+//  1. PVTR_TOKEN — an explicit token (CI trusted-publishing's GHA-OIDC token,
+//     or a manually minted one). No store interaction.
 //  2. The device-grant store for the given issuer, refreshing if near expiry.
 //
-// Returns ErrNoCredentials when neither is available — callers map that to
-// "run `pvtr login` (or set PVTR_TOKEN in CI)".
+// When neither is available the error names both sources and points at `pvtr
+// login`.
+//
+// This is not a signing identity; Fulcio trusts public OIDC issuers, not the
+// grc.store Keycloak. The signing identity comes from grc-store-clientkit's
+// keyless.Identity, resolved separately at publish time.
 func BearerToken(ctx context.Context, issuer, clientID string) (string, error) {
-	if tok := strings.TrimSpace(os.Getenv(tokenEnv)); tok != "" {
-		return tok, nil
+	in := clientauth.ResolveInput{
+		App:      pvtrApp,
+		Issuer:   issuer,
+		ClientID: clientID,
+		Warn:     os.Stderr,
 	}
-	store, err := NewDefaultStore()
-	if err != nil {
-		return "", err
+	// Store lookup is best-effort: a missing store must not mask PVTR_TOKEN,
+	// which Resolve consults first. Hand the failure to Resolve rather than
+	// dropping it, so the no-token error names this instead of guessing at a
+	// missing issuer.
+	store, storeErr := clientauth.NewDefaultStore(pvtrApp)
+	if storeErr != nil {
+		in.StoreErr = storeErr
+	} else {
+		in.Store = store
 	}
-	creds, err := store.Get(issuer)
-	if err != nil {
-		return "", err // ErrNoCredentials propagates
-	}
-	if !creds.Expired() {
-		return creds.AccessToken, nil
-	}
-	// Near/at expiry: refresh if we can, else require a fresh login.
-	if creds.RefreshToken == "" {
-		return "", fmt.Errorf("stored credentials for %s expired and carry no refresh token; run `pvtr login`", issuer)
-	}
-	meta, err := FetchOIDCMetadata(ctx, issuer)
-	if err != nil {
-		return "", err
-	}
-	if clientID == "" {
-		return "", errors.New("cannot refresh: the hub discovery doc did not advertise oidc_cli_client_id")
-	}
-	refreshed, err := refreshToken(ctx, meta, clientID, creds.RefreshToken)
-	if err != nil {
-		return "", fmt.Errorf("refreshing expired credentials (run `pvtr login` if this keeps failing): %w", err)
-	}
-	if perr := store.Put(refreshed); perr != nil {
-		// A failed cache write must not fail the operation — we still hold a valid
-		// token — but it must be VISIBLE: under refresh-token rotation the on-disk
-		// token is now consumed, so the next run will force a re-login.
-		_, _ = fmt.Fprintf(os.Stderr, "warning: failed to cache refreshed credentials (next run may require `pvtr login`): %v\n", perr)
-	}
-	return refreshed.AccessToken, nil
+	return clientauth.Resolve(ctx, in)
 }

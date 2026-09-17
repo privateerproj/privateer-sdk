@@ -8,7 +8,7 @@ import (
 )
 
 // TestPluginConfigWireFormat freezes the exact JSON bytes of the signed config
-// blob. Adopting pluginspec.Config (ADR-0035) dropped the ,omitempty our old
+// blob. Adopting pluginspec.Config dropped the ,omitempty our old
 // oci.PluginConfig carried on Evaluates — this must NOT change the published wire
 // format. Real plugins always carry non-empty evaluates (ValidateForPublish
 // rejects empty; see evaluates_test.go), so the omitempty difference can never

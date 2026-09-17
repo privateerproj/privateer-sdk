@@ -76,11 +76,15 @@ func parseRegistryOverride(raw string) (host string, plainHTTP bool, err error) 
 	return host, plainHTTP, nil
 }
 
-// uiBaseFromHub derives the web-UI base from the hub's self-reported URL by
-// dropping a leading "hub." label (grc.store convention: hub.<env>.grc.store →
-// <env>.grc.store / hub.grc.store → grc.store). Best-effort — it's only used to
-// point a user at where to claim a namespace; falls back to the hub URL itself.
-func uiBaseFromHub(hubURL string) string {
+// uiBase returns the hub's web-UI base: the advertised ui_url when the
+// discovery doc carries one (the protocol tells clients to prefer it), else
+// derived from the hub's self-reported URL by dropping a leading "hub." label
+// (grc.store convention: hub.<env>.grc.store → <env>.grc.store). Best-effort —
+// it only points a user at where to claim a namespace.
+func uiBase(advertised, hubURL string) string {
+	if u := strings.TrimRight(strings.TrimSpace(advertised), "/"); u != "" {
+		return u
+	}
 	if hubURL == "" {
 		return ""
 	}

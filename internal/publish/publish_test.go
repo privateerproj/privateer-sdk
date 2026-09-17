@@ -345,7 +345,18 @@ func mockHub(t *testing.T, tokenActions []string, pushHit *bool) *httptest.Serve
 		// stray push would be observable), api_version + oidc fields present.
 		_, _ = fmt.Fprintf(w, `{"registry_url":%q,"hub_url":%q,"api_version":"v1","oidc_issuer":"https://issuer","oidc_cli_client_id":"grcli"}`, srv.URL, srv.URL)
 	})
-	mux.HandleFunc("/v2/token", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/v2/token", func(w http.ResponseWriter, r *http.Request) {
+		// The mint request itself is the contract with the hub, and it is now
+		// assembled in clientkit rather than here. Assert it: the scope must carry
+		// the reserved "plugins" segment pvtr composes into the repository path,
+		// and the upstream bearer must be forwarded. A clientkit bump that changed
+		// either would otherwise pass every test here and fail at the real hub.
+		if got, want := r.URL.Query().Get("scope"), "repository:acme/plugins/hello:pull,push"; got != want {
+			t.Errorf("mint scope = %q, want %q", got, want)
+		}
+		if got, want := r.Header.Get("Authorization"), "Bearer stub-upstream-bearer"; got != want {
+			t.Errorf("mint Authorization = %q, want %q", got, want)
+		}
 		_, _ = fmt.Fprintf(w, `{"token":%q}`, jwtWithAccess("acme/plugins/hello", tokenActions))
 	})
 	// Any /v2/<repo>/blobs/uploads/ means a push was attempted — must NOT happen

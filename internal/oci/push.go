@@ -13,7 +13,7 @@ import (
 
 // ReservedPluginSegment is the reserved repo path segment distinguishing a
 // plugin OCI repository (<ns>/plugins/<plugin_id>) from a Gemara catalog repo
-// under the same namespace (grc.store ADR-0034 decision 5). Mirrors the hub's
+// under the same namespace (a grc.store hub rule). Mirrors the hub's
 // store.ReservedPluginSegment. It must stay OCI-distribution-spec-valid (a path
 // component must begin with [a-z0-9]); the earlier "_plugins" value was illegal
 // and was changed to "plugins".
@@ -22,7 +22,7 @@ const ReservedPluginSegment = "plugins"
 // PushOptions configures a push to an OCI registry.
 type PushOptions struct {
 	// RegistryHost is the scheme-stripped registry host (e.g. "localhost:5050"
-	// or "oci.grc.store"), as returned by Discovery.RegistryHost.
+	// or "oci.grc.store"), as returned by clientkit's hub.Registry.
 	RegistryHost string
 	// PlainHTTP forces http:// instead of https:// — required for the local dev
 	// zot at localhost:5050. Prod (oci.grc.store) is https, so this defaults
@@ -32,11 +32,12 @@ type PushOptions struct {
 	// (fine for a no-auth registry or anonymous pull-only checks; a push to a
 	// bearer-gated registry needs a credentialed client).
 	Client remote.Client
-	// RegistryToken is a zot registry token (from MintRegistryToken) for an
-	// authenticated push to a bearer-gated registry. When set (and Client is
-	// nil), the push client sends it directly to the registry as the access
-	// token — oras does no /v2/token exchange because we already did it. Empty
-	// keeps the anonymous default (backward-compatible).
+	// RegistryToken is a zot registry token (minted by clientkit's
+	// hub.Client.RegistryToken) for an authenticated push to a bearer-gated
+	// registry. When set (and Client is nil), the push client sends it directly
+	// to the registry as the access token — oras does no /v2/token exchange
+	// because we already did it. Empty keeps the anonymous default
+	// (backward-compatible).
 	RegistryToken string
 }
 
@@ -92,13 +93,13 @@ func pushBlobTo(ctx context.Context, target oras.Target, b blob) error {
 // newPluginRepository builds the oras repository client for a plugin
 // coordinate. The repo path is "<namespace>/plugins/<plugin_id>" — the
 // `plugins` segment is reserved by grc.store to distinguish plugin repos from
-// catalog repos under the same namespace (ADR-0034 decision 5; `plugins` is
-// also a reserved org slug, so the first segment can never collide with it).
+// catalog repos under the same namespace (`plugins` is also a
+// reserved org slug, so the first segment can never collide with it).
 func newPluginRepository(opts PushOptions, coordinate string) (*remote.Repository, error) {
 	if opts.RegistryHost == "" {
 		return nil, fmt.Errorf("registry host is required")
 	}
-	ns, id, ok := splitCoordinate(coordinate)
+	ns, id, ok := SplitCoordinate(coordinate)
 	if !ok {
 		return nil, fmt.Errorf("invalid coordinate %q: want <namespace>/<plugin_id>", coordinate)
 	}
@@ -135,14 +136,18 @@ func newPluginRepository(opts PushOptions, coordinate string) (*remote.Repositor
 }
 
 // pluginRepoPath returns the registry repository path "<namespace>/plugins/<id>"
-// the hub uses for a plugin. The hub compares this byte-for-byte, so every caller
-// (token mint, push, sync) must build it through here.
+// the hub uses for a plugin. It is the push side of that path; the token scope and
+// the sync body are built by clientkit's hub.PluginRepository. The hub compares the
+// two byte-for-byte, so TestPluginRepoPath_MatchesClientkit pins them equal.
 func pluginRepoPath(ns, id string) string {
 	return ns + "/" + ReservedPluginSegment + "/" + id
 }
 
-// splitCoordinate splits "<namespace>/<plugin_id>" into its parts.
-func splitCoordinate(coordinate string) (ns, id string, ok bool) {
+// SplitCoordinate splits "<namespace>/<plugin_id>" into its parts. It is the
+// single parse for a coordinate: the registry-token scope, the push repository
+// path and the sync route must all name the same repo, so every caller splits
+// through here instead of doing its own strings.Cut.
+func SplitCoordinate(coordinate string) (ns, id string, ok bool) {
 	parts := strings.SplitN(strings.TrimSpace(coordinate), "/", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" || strings.Contains(parts[1], "/") {
 		return "", "", false

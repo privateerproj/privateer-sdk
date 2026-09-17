@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 
+	ckhub "github.com/gemaraproj/grc-store-clientkit/hub"
 	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/privateerproj/privateer-sdk/internal/manifest"
 	"github.com/privateerproj/privateer-sdk/internal/oci"
@@ -166,12 +167,12 @@ func pullVerifyInstall(ctx context.Context, w io.Writer, hub *oci.Client, detail
 }
 
 func fetchIndex(ctx context.Context, w io.Writer, hub *oci.Client, release *oci.PluginRelease, coordinate string) (index *oci.FetchedIndex, err error) {
-	remote, err := hub.Discover(ctx)
+	remote, err := ckhub.Discover(ctx, hub.BaseURL())
 	if err != nil {
 		err = fmt.Errorf("hub discovery: %w", err)
 		return
 	}
-	host, err := remote.RegistryHost()
+	host, plainHTTP, err := ckhub.Registry(remote)
 	if err != nil {
 		err = fmt.Errorf("resolving registry host: %w", err)
 		return
@@ -180,7 +181,7 @@ func fetchIndex(ctx context.Context, w io.Writer, hub *oci.Client, release *oci.
 	_, _ = fmt.Fprintf(w, "Pulling %s:%s from %s...\n", coordinate, release.Version, host)
 	index, err = oci.PullIndex(ctx, coordinate, release.Version, oci.PullOptions{
 		RegistryHost: host,
-		PlainHTTP:    remote.PlainHTTP(),
+		PlainHTTP:    plainHTTP,
 	})
 	if err != nil {
 		err = fmt.Errorf("pulling index: %w", err)

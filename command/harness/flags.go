@@ -20,7 +20,7 @@ import (
 // first): flag > PVTR_* env > config.yml > the default shown here.
 func SetHarnessFlags(cmd *cobra.Command) {
 	// hub-url: the single configured grc.store endpoint; the OCI registry host is
-	// discovered from it (see oci.HubURL / oci.Discovery). Also settable via the
+	// discovered from it (see oci.HubURL / clientkit hub.Discover). Also settable via the
 	// hub-url config.yml key or the PVTR_HUB_URL environment variable.
 	cmd.PersistentFlags().String("hub-url", oci.DefaultHubURL, "grc.store hub base URL; the registry host is discovered from it")
 	_ = viper.BindPFlag("hub-url", cmd.PersistentFlags().Lookup("hub-url"))

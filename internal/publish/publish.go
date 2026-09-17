@@ -7,10 +7,13 @@ package publish
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 
+	"github.com/gemaraproj/grc-store-clientkit/hub"
+	"github.com/gemaraproj/grc-store-clientkit/keyless"
 	"github.com/privateerproj/privateer-sdk/internal/auth"
 	"github.com/privateerproj/privateer-sdk/internal/oci"
 	"github.com/privateerproj/privateer-sdk/pluginkit"
@@ -167,21 +170,30 @@ func Publish(ctx context.Context, w io.Writer, p Params) error {
 	// 7. Real publish: discover the hub's registry + OIDC coordinates, get an
 	//    authenticated bearer (login store or PVTR_TOKEN), mint a push-scoped
 	//    registry token, authenticated push, then sync.
-	disco, err := oci.NewClient().Discover(ctx)
+	hubURL := oci.HubURL()
+	disco, err := hub.Discover(ctx, hubURL)
 	if err != nil {
 		return fmt.Errorf("hub discovery: %w", err)
 	}
-	host, err := disco.RegistryHost()
+	host, plainHTTP, err := hub.Registry(disco)
 	if err != nil {
 		return fmt.Errorf("resolving registry host: %w", err)
 	}
-
-	bearer, err := auth.BearerToken(ctx, disco.OIDCIssuer, disco.OIDCClientID)
-	if err != nil {
-		return fmt.Errorf("authentication required to publish (run `pvtr login`, or set PVTR_TOKEN in CI): %w", err)
+	ns, pid, ok := oci.SplitCoordinate(coordinate)
+	if !ok {
+		return fmt.Errorf("invalid coordinate %q: want <namespace>/<plugin_id>", coordinate)
 	}
-	regToken, err := oci.MintRegistryToken(ctx, oci.HubURL(), coordinate, bearer)
+
+	bearer, err := auth.BearerToken(ctx, disco.OIDCIssuer, disco.OIDCCLIClientID)
 	if err != nil {
+		return fmt.Errorf("authentication required to publish: %w", err)
+	}
+	client := hub.New(hubURL, bearer)
+	regToken, err := client.RegistryToken(ctx, hub.PluginRepository(ns, pid), []string{"pull", "push"})
+	if err != nil {
+		if errors.Is(err, hub.ErrUnauthorized) {
+			return fmt.Errorf("minting registry push token: %w — %s again", err, auth.LoginHint())
+		}
 		return fmt.Errorf("minting registry push token: %w", err)
 	}
 	// Fail fast BEFORE push/sign: the hub grants pull-only (not an error) when the
@@ -189,19 +201,18 @@ func Publish(ctx context.Context, w io.Writer, p Params) error {
 	// pull-only token, prompt for a sigstore sign-in, and only then fail at the
 	// raw registry push. Detect the denied push from the minted token's scope.
 	if !regToken.GrantsPush() {
-		ns, pid, _ := strings.Cut(coordinate, "/")
 		return fmt.Errorf("publishing to %s/%s/%s requires ownership of namespace %q — create or claim it first (e.g. at %s/%s, or POST %s/v1/orgs), then re-publish",
 			ns, oci.ReservedPluginSegment, pid,
-			ns, uiBaseFromHub(disco.HubURL), ns, oci.HubURL())
+			ns, uiBase(disco.UIURL, disco.HubURL), ns, hubURL)
 	}
 
 	pushOpts := oci.PushOptions{
 		RegistryHost:  host,
-		PlainHTTP:     disco.PlainHTTP(),
+		PlainHTTP:     plainHTTP,
 		RegistryToken: regToken.Token,
 	}
 
-	_, _ = fmt.Fprintf(w, "Pushing to %s (hub %s)\n", host, oci.HubURL())
+	_, _ = fmt.Fprintf(w, "Pushing to %s (hub %s)\n", host, hubURL)
 	digest, err := oci.Push(ctx, idx, pushOpts)
 	if err != nil {
 		return fmt.Errorf("pushing index: %w", err)
@@ -221,17 +232,22 @@ func Publish(ctx context.Context, w io.Writer, p Params) error {
 	//    registry bearer above: Fulcio only trusts public OIDC issuers (GitHub
 	//    Actions / the interactive sigstore login), not the grc.store Keycloak.
 	//    In CI this is seamless; for a human it is a second browser sign-in.
-	signTok, err := auth.SigningIDToken(ctx, w)
+	signTok, err := keyless.Identity(ctx, keyless.PublicGoodAudience, w)
 	if err != nil {
 		return fmt.Errorf("acquiring signing identity (public-good Fulcio; distinct from `pvtr login`): %w", err)
 	}
 	_, _ = fmt.Fprintf(w, "Signing %s:%s (keyless, public-good Sigstore)...\n", coordinate, version)
-	if err := oci.SignAndAttach(ctx, idx, pushOpts, oci.SignerOptions{IDToken: signTok}); err != nil {
+	if err := oci.SignAndAttach(ctx, idx, pushOpts, signTok); err != nil {
 		return fmt.Errorf("signing index: %w", err)
 	}
 
 	_, _ = fmt.Fprintf(w, "Syncing %s:%s to the hub...\n", coordinate, version)
-	if err := oci.Sync(ctx, oci.HubURL(), coordinate, version, bearer); err != nil {
+	if err := client.SyncPlugin(ctx, ns, pid, version); err != nil {
+		// A bearer that was good at the mint can expire during a large push, so
+		// the 401 gets the same login hint the mint gives.
+		if errors.Is(err, hub.ErrUnauthorized) {
+			return fmt.Errorf("hub sync: %w — %s again", err, auth.LoginHint())
+		}
 		// The hub verifies the signature at ingest; it surfaces actionable codes
 		// (plugin_signer_mismatch, registry_diverged, …) — pass them verbatim.
 		return fmt.Errorf("hub sync: %w", err)

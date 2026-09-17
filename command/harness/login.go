@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gemaraproj/grc-store-clientkit/hub"
 	"github.com/privateerproj/privateer-sdk/internal/auth"
 	"github.com/privateerproj/privateer-sdk/internal/oci"
 	"github.com/spf13/cobra"
@@ -33,14 +34,14 @@ func runLogin(ctx context.Context, writer Writer) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	disco, err := oci.NewClient().Discover(ctx)
+	disco, err := hub.Discover(ctx, oci.HubURL())
 	if err != nil {
 		return fmt.Errorf("hub discovery (hub %s): %w", oci.HubURL(), err)
 	}
 	if disco.OIDCIssuer == "" {
 		return fmt.Errorf("the hub at %s does not advertise an OIDC issuer; `pvtr login` is not supported there", oci.HubURL())
 	}
-	issuer, err := auth.Login(ctx, disco.OIDCIssuer, disco.OIDCClientID, writer)
+	issuer, err := auth.Login(ctx, disco.OIDCIssuer, disco.OIDCCLIClientID, writer)
 	if err != nil {
 		return err
 	}
@@ -61,7 +62,7 @@ func logoutCmd(writerFn func() Writer) *cobra.Command {
 			if ctx == nil {
 				ctx = context.Background()
 			}
-			disco, err := oci.NewClient().Discover(ctx)
+			disco, err := hub.Discover(ctx, oci.HubURL())
 			if err != nil {
 				return fmt.Errorf("hub discovery: %w", err)
 			}
