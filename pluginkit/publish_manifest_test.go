@@ -12,10 +12,18 @@ import (
 // and a PluginName, bypassing AddReferenceCatalogs' embed.FS plumbing (this
 // package's tests can set the unexported field directly). The Publisher and the
 // catalog's author are left to the caller so fail-closed cases can omit them.
+//
+// Each control gets one assessment requirement, id "<control-id>.T01". The two
+// id spaces are kept deliberately distinct: requirement_ids is requirement ids,
+// so a test that let them coincide would pass even if the manifest emitted
+// control ids.
 func orchestratorWithCatalog(id, version string, controlIDs ...string) *EvaluationOrchestrator {
 	controls := make([]gemara.Control, 0, len(controlIDs))
 	for _, cid := range controlIDs {
-		controls = append(controls, gemara.Control{Id: cid})
+		controls = append(controls, gemara.Control{
+			Id:                     cid,
+			AssessmentRequirements: []gemara.AssessmentRequirement{{Id: cid + ".T01"}},
+		})
 	}
 	return &EvaluationOrchestrator{
 		PluginName: "hello",
@@ -61,8 +69,9 @@ func TestPublishManifest_DerivesEverythingFromFieldsAndCatalog(t *testing.T) {
 	if e.CatalogVersion != "2026.04" {
 		t.Errorf("catalog_version = %q", e.CatalogVersion)
 	}
-	// Deduplicated and sorted (deterministic for the signed config blob).
-	want := []string{"CCC.Build.C01", "CCC.Build.C02"}
+	// Assessment-requirement ids, deduplicated and sorted (deterministic for the
+	// signed config blob) — not the control ids they hang off.
+	want := []string{"CCC.Build.C01.T01", "CCC.Build.C02.T01"}
 	if len(e.RequirementIDs) != len(want) || e.RequirementIDs[0] != want[0] || e.RequirementIDs[1] != want[1] {
 		t.Errorf("requirement_ids = %v, want %v (deduped + sorted)", e.RequirementIDs, want)
 	}
@@ -99,8 +108,19 @@ func TestPublishManifest_FailsClosed(t *testing.T) {
 	t.Run("catalog with no controls", func(t *testing.T) {
 		orch := orchestratorWithCatalog("c", "1") // no controls
 		orch.Publisher = "acme"
-		if _, err := orch.PublishManifest(); err == nil || !strings.Contains(err.Error(), "no controls") {
-			t.Fatalf("expected a no-controls error, got %v", err)
+		if _, err := orch.PublishManifest(); err == nil || !strings.Contains(err.Error(), "no assessment requirements") {
+			t.Fatalf("expected a no-assessment-requirements error, got %v", err)
+		}
+	})
+	t.Run("catalog whose controls carry no assessment requirements", func(t *testing.T) {
+		orch := orchestratorWithCatalog("c", "1", "R1")
+		orch.Publisher = "acme"
+		setCatalogAuthor(orch, "c", "acme")
+		// Controls but nothing to link: requirement_ids would be empty, and the
+		// hub rejects an evaluates entry with no requirement ids.
+		orch.referenceCatalogs["c"].Controls[0].AssessmentRequirements = nil
+		if _, err := orch.PublishManifest(); err == nil || !strings.Contains(err.Error(), "no assessment requirements") {
+			t.Fatalf("expected a no-assessment-requirements error, got %v", err)
 		}
 	})
 	t.Run("catalog with no author id and no override", func(t *testing.T) {
@@ -127,7 +147,7 @@ func TestPublishManifest_FailsClosed(t *testing.T) {
 func orchestratorWithImportingCatalog() *EvaluationOrchestrator {
 	primary := &gemara.ControlCatalog{
 		Metadata: gemara.Metadata{Id: "primary", Version: "1.0", Author: gemara.Actor{Id: "acme"}},
-		Controls: []gemara.Control{{Id: "P-1"}},
+		Controls: []gemara.Control{{Id: "P-1", AssessmentRequirements: []gemara.AssessmentRequirement{{Id: "P-1.T01"}}}},
 		Imports: []gemara.MultiEntryMapping{
 			{
 				ReferenceId: "imported",
@@ -137,7 +157,10 @@ func orchestratorWithImportingCatalog() *EvaluationOrchestrator {
 	}
 	imported := &gemara.ControlCatalog{
 		Metadata: gemara.Metadata{Id: "imported", Version: "2.0", Author: gemara.Actor{Id: "acme"}},
-		Controls: []gemara.Control{{Id: "I-1"}, {Id: "I-2"}},
+		Controls: []gemara.Control{
+			{Id: "I-1", AssessmentRequirements: []gemara.AssessmentRequirement{{Id: "I-1.T01"}}},
+			{Id: "I-2", AssessmentRequirements: []gemara.AssessmentRequirement{{Id: "I-2.T01"}}},
+		},
 	}
 	return &EvaluationOrchestrator{
 		PluginName: "hello",
@@ -153,8 +176,8 @@ func orchestratorWithImportingCatalog() *EvaluationOrchestrator {
 // TestPublishManifest_CopyOnImport verifies that AddEvaluationSuite does not
 // mutate the shared referenceCatalogs entry: PublishManifest output must be
 // byte-for-byte identical whether called before or after suite registration,
-// and the importing catalog's RequirementIDs must list only its OWN control
-// ids (not the ones it imports from another catalog).
+// and the importing catalog's RequirementIDs must list only the requirement ids
+// of its OWN controls (not the ones it imports from another catalog).
 func TestPublishManifest_CopyOnImport(t *testing.T) {
 	orch := orchestratorWithImportingCatalog()
 
@@ -165,7 +188,7 @@ func TestPublishManifest_CopyOnImport(t *testing.T) {
 	}
 
 	// Register a suite for the importing catalog (this triggers getImportedControls).
-	steps := map[string][]gemara.AssessmentStep{"P-1": {step_Pass}}
+	steps := map[string][]gemara.AssessmentStep{"P-1.T01": {step_Pass}}
 	if err := orch.AddEvaluationSuite("primary", nil, steps); err != nil {
 		t.Fatalf("AddEvaluationSuite: %v", err)
 	}
@@ -181,7 +204,8 @@ func TestPublishManifest_CopyOnImport(t *testing.T) {
 		t.Errorf("PublishManifest changed after AddEvaluationSuite:\nbefore=%+v\nafter=%+v", before, after)
 	}
 
-	// The importing catalog's RequirementIDs must contain only its OWN control.
+	// The importing catalog's RequirementIDs must contain only its OWN control's
+	// requirement.
 	var primaryEntry *EvaluatesDeclaration
 	for i := range after.Evaluates {
 		if after.Evaluates[i].Catalog == "acme/primary" {
@@ -192,8 +216,8 @@ func TestPublishManifest_CopyOnImport(t *testing.T) {
 	if primaryEntry == nil {
 		t.Fatalf("no evaluates entry for acme/primary in manifest: %+v", after.Evaluates)
 	}
-	if len(primaryEntry.RequirementIDs) != 1 || primaryEntry.RequirementIDs[0] != "P-1" {
-		t.Errorf("primary catalog RequirementIDs = %v, want [P-1] (own controls only, not imports)", primaryEntry.RequirementIDs)
+	if len(primaryEntry.RequirementIDs) != 1 || primaryEntry.RequirementIDs[0] != "P-1.T01" {
+		t.Errorf("primary catalog RequirementIDs = %v, want [P-1.T01] (own controls only, not imports)", primaryEntry.RequirementIDs)
 	}
 }
 
