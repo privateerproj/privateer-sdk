@@ -40,6 +40,11 @@ type Config struct {
 
 	Benchmark            bool
 	BenchmarkPayloadOnly bool
+
+	// logWriter and logJSON retain how Logger was built so startup
+	// diagnostics can reach the same destination at their own level.
+	logWriter io.Writer
+	logJSON   bool
 }
 
 // Policy defines the control catalogs and applicability settings for a plugin.
@@ -164,15 +169,16 @@ func NewConfig(requiredVars []string) Config {
 		serviceName = defaultServiceName
 	}
 	config.SetupLogging(serviceName, output == "json")
+	diagnostics := config.configDiagnosticsLogger()
 	if aiAPIKeyInConfigFile {
-		config.Logger.Warn(aiAPIKeyConfigWarning)
+		diagnostics.Warn(aiAPIKeyConfigWarning)
 	}
 	if len(ignoredAIKeys) > 0 {
-		config.Logger.Warn("ignoring unrecognized ai_ settings; check for typos and see docs/ai-assist.md for the recognized keys",
+		diagnostics.Warn("ignoring unrecognized ai_ settings; check for typos and see docs/ai-assist.md for the recognized keys",
 			"settings", ignoredAIKeys)
 	}
 	if aiEnabledByEnvironment {
-		config.Logger.Warn(AIEnablementHint())
+		diagnostics.Warn(AIEnablementHint())
 	}
 	printSanitizedVars(config.Logger, vars)
 	config.Logger.Trace("Creating a new config instance for service",
@@ -254,6 +260,35 @@ func (c *Config) SetupLogging(name string, jsonFormat bool) {
 	})
 	log.SetOutput(logger.StandardWriter(&hclog.StandardLoggerOptions{InferLevels: false, InferLevelsWithTimestamp: false}))
 	c.Logger = logger
+	c.logWriter = writer
+	c.logJSON = jsonFormat
+}
+
+// configDiagnosticsLogger emits the startup findings that an operator has to
+// see to act on: a plaintext credential in the config file, ai_ settings that
+// were ignored, and AI switched on by nothing but an ambient environment
+// variable.
+//
+// It exists because the default log level is Error (see the loglevel flag in
+// command.SetBase), which discards Warn. Reporting a silently-wrong AI
+// configuration at a level the default configuration throws away would
+// reproduce the failure this package is meant to remove, so these findings are
+// emitted at Warn against a logger floored at Warn. An explicit `off` is still
+// honored: an operator who asked for silence gets it.
+func (c *Config) configDiagnosticsLogger() hclog.Logger {
+	level := hclog.LevelFromString(c.LogLevel)
+	if level == hclog.Off || level <= hclog.Warn {
+		return c.Logger
+	}
+	writer := c.logWriter
+	if writer == nil {
+		writer = io.Writer(os.Stderr)
+	}
+	return hclog.New(&hclog.LoggerOptions{
+		Level:      hclog.Warn,
+		JSONFormat: c.logJSON,
+		Output:     writer,
+	})
 }
 
 func (c *Config) setupLoggingFilesAndDirectories(logFilePath string) io.Writer {

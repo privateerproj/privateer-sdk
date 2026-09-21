@@ -1,6 +1,9 @@
 package config
 
 import (
+	"bytes"
+	"io"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -147,5 +150,100 @@ func TestApplyAICredential_BlankSharedLiteralFallsThroughToRootLiteral(t *testin
 	}
 	if got := resolved["ai_api_key"]; got != "root-literal" {
 		t.Fatalf("ai_api_key = %v, want %q; a blank shared placeholder masked the configured literal", got, "root-literal")
+	}
+}
+
+// captureStderr collects what NewConfig actually emits. The diagnostics are
+// only useful if they survive the default log level, so these tests assert on
+// emitted bytes rather than on the branch being taken.
+func captureStderr(t *testing.T, run func()) string {
+	t.Helper()
+	original := os.Stderr
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = writer
+	done := make(chan string, 1)
+	go func() {
+		var buffer bytes.Buffer
+		_, _ = io.Copy(&buffer, reader)
+		done <- buffer.String()
+	}()
+	run()
+	os.Stderr = original
+	_ = writer.Close()
+	output := <-done
+	_ = reader.Close()
+	return output
+}
+
+func TestNewConfig_DiagnosticsSurviveTheDefaultLogLevel(t *testing.T) {
+	tests := []struct {
+		name, document, loglevel string
+		environment              map[string]string
+		want, notWant            []string
+	}{
+		{
+			name: "default log level still shows every finding",
+			// No ai_provider in the file: the environment is what enables AI.
+			document:    "ai_model: model\nai_api_key: literal\nai_provder: typo\n",
+			environment: map[string]string{"PVTR_AI_PROVIDER": "openai"},
+			want:        []string{"remove plaintext credentials", "ai_provder", "PVTR_AI_PROVIDER"},
+		},
+		{
+			name:        "explicit off is honored",
+			document:    "ai_model: model\nai_api_key: literal\nai_provder: typo\n",
+			loglevel:    "off",
+			environment: map[string]string{"PVTR_AI_PROVIDER": "openai"},
+			notWant:     []string{"remove plaintext credentials", "ai_provder", "PVTR_AI_PROVIDER"},
+		},
+		{
+			name:     "a clean configuration stays quiet",
+			document: "ai_provider: openai\nai_model: model\n",
+			notWant:  []string{"remove plaintext credentials", "ignoring unrecognized", "PVTR_AI_PROVIDER"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			loadConfig(t, tt.document)
+			for name, value := range tt.environment {
+				t.Setenv(name, value)
+			}
+			if tt.loglevel != "" {
+				viper.Set("loglevel", tt.loglevel)
+			}
+			viper.Set("write", false)
+
+			output := captureStderr(t, func() { NewConfig(nil) })
+
+			for _, want := range tt.want {
+				if !strings.Contains(output, want) {
+					t.Errorf("diagnostics missing %q; operators would not see it.\ngot: %s", want, output)
+				}
+			}
+			for _, notWant := range tt.notWant {
+				if strings.Contains(output, notWant) {
+					t.Errorf("diagnostics unexpectedly contain %q.\ngot: %s", notWant, output)
+				}
+			}
+		})
+	}
+}
+
+// The diagnostics logger must not become a second channel that leaks the value
+// it is warning about.
+func TestNewConfig_DiagnosticsDoNotEmitTheCredential(t *testing.T) {
+	loadConfig(t, "ai_provider: openai\nai_model: model\nai_api_key: super-secret-literal\n")
+	viper.Set("write", false)
+
+	output := captureStderr(t, func() { NewConfig(nil) })
+
+	if !strings.Contains(output, "remove plaintext credentials") {
+		t.Fatalf("expected the plaintext-credential warning, got: %s", output)
+	}
+	if strings.Contains(output, "super-secret-literal") {
+		t.Errorf("diagnostics leaked the credential value: %s", output)
 	}
 }
