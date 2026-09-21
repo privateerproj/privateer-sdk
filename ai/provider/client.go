@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -126,8 +127,25 @@ func (c Config) Validate() error {
 				return fmt.Errorf("ai base url must use a port between 1 and 65535")
 			}
 		}
+		// A credential sent over plain HTTP is readable by anything on the
+		// path, and the base URL can be redirected per run by PVTR_AI_BASE_URL
+		// while the credential stays pinned in the configuration. Loopback is
+		// exempt because that is how a local model server is reached and the
+		// traffic never leaves the host; such endpoints usually need no
+		// credential at all, which Validate already permits.
+		if strings.TrimSpace(c.APIKey) != "" && strings.EqualFold(parsed.Scheme, "http") && !isLoopbackHost(parsed.Hostname()) {
+			return fmt.Errorf("ai base url must use https when an ai api key is set, unless the host is loopback")
+		}
 	}
 	return nil
+}
+
+func isLoopbackHost(hostname string) bool {
+	if strings.EqualFold(hostname, "localhost") {
+		return true
+	}
+	address := net.ParseIP(hostname)
+	return address != nil && address.IsLoopback()
 }
 
 // Normalized returns a copy with fields trimmed, the provider lowercased, and

@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"slices"
 	"strconv"
@@ -25,6 +26,26 @@ var aiTunableKeys = []string{
 	"ai_timeout",
 	"ai_max_tokens",
 }
+
+// aiRecognizedKeys is every ai_* setting this package reads. Anything else
+// carrying the prefix is ignored silently by the resolver, which is the exact
+// failure mode explicit enablement was meant to remove: `ai_provder` leaves AI
+// quietly off, and `ai_skipp` leaves it quietly on. reportIgnoredAISettings
+// turns both into a warning.
+var aiRecognizedKeys = []string{
+	"ai_provider",
+	"ai_model",
+	"ai_base_url",
+	"ai_timeout",
+	"ai_max_tokens",
+	"ai_skip",
+	"ai_api_key",
+	"ai_api_key_env",
+}
+
+// aiConfigOnlyKeys are recognized settings with no environment spelling, so a
+// PVTR_ variable naming one is silently ignored and worth the same warning.
+var aiConfigOnlyKeys = []string{"ai_api_key_env"}
 
 // aiSettingSources represents scopes in a config such as:
 //
@@ -162,6 +183,11 @@ func applyAICredential(resolved map[string]interface{}, sources aiSettingSources
 	delete(resolved, "ai_api_key")
 	delete(resolved, "ai_api_key_env")
 
+	// Unlike the ai_api_key literals below, a blank ai_api_key_env is not
+	// treated as an unfilled placeholder to skip past. Naming a variable is an
+	// explicit choice of account or tenant, so getting the name wrong has to
+	// fail loudly rather than quietly spend whatever lower-priority credential
+	// happens to be lying around. The AI client reports the empty name.
 	if value, found := sources.target["ai_api_key_env"]; found {
 		resolved["ai_api_key_env"] = value
 		return nil
@@ -192,8 +218,10 @@ func applyAICredential(resolved map[string]interface{}, sources aiSettingSources
 		}
 	}
 	if value, found := sources.shared["ai_api_key"]; found {
-		resolved["ai_api_key"] = value
-		return nil
+		if text, isString := value.(string); !isString || strings.TrimSpace(text) != "" {
+			resolved["ai_api_key"] = value
+			return nil
+		}
 	}
 	if value, found := aiRootShorthandValue(sources.file, "ai_api_key"); found {
 		resolved["ai_api_key"] = value
@@ -243,7 +271,7 @@ func hasConfigFileAIAPIKey(serviceName, targetsSectionKey string) bool {
 // routinely how CI expresses "no value supplied" for an unfilled template, and
 // letting one through would override a working file setting with nothing.
 func aiEnvironmentValue(key string) (interface{}, bool) {
-	text, found := os.LookupEnv("PVTR_" + strings.ToUpper(key))
+	text, found := os.LookupEnv(aiEnvironmentName(key))
 	text = strings.TrimSpace(text)
 	if !found || text == "" {
 		return nil, false
@@ -307,8 +335,13 @@ func aiFileSettingValue(fileSettings *viper.Viper, key string) (interface{}, boo
 // available.
 func isAIEnvironmentValue(key string, value interface{}) bool {
 	text, isString := value.(string)
-	environment, present := os.LookupEnv("PVTR_" + strings.ToUpper(key))
+	environment, present := os.LookupEnv(aiEnvironmentName(key))
 	return isString && present && text == environment
+}
+
+// aiEnvironmentName renders the environment variable that carries a setting.
+func aiEnvironmentName(key string) string {
+	return "PVTR_" + strings.ToUpper(key)
 }
 
 // requireUnambiguousFileConfig refuses to proceed when an enabled AI run
@@ -316,13 +349,115 @@ func isAIEnvironmentValue(key string, value interface{}) bool {
 // variable of the same value, and the file was not loaded through ReadConfig or
 // ReadInConfig so there is no captured copy to compare against.
 //
-// The ambiguity is unresolvable: PVTR_AI_SKIP=false looks identical whether the
-// file said false or said true and was overridden. Guessing wrong runs AI
-// against an explicit opt-out and bills a customer who asked not to be billed,
-// so the run stops and tells the caller how to load configuration instead.
+// The ambiguity is unresolvable, which is also why it cannot be waved through
+// when "the two agree": Viper reports the environment value and does not retain
+// the file's, so PVTR_AI_SKIP=false looks identical whether the file said false
+// or said true and was overridden. Guessing wrong runs AI against an explicit
+// opt-out and bills a customer who asked not to be billed, so the run stops and
+// tells the caller how to load configuration instead. The case where the
+// environment value does not matter — PVTR_AI_SKIP=true, where true wins from
+// any source — never reaches here, because applyAIPrecedenceRules returns
+// before this call once AI is off.
 func requireUnambiguousFileConfig(fileSettings *viper.Viper, key string) error {
 	if fileSettings == nil && viper.InConfig(key) && isAIEnvironmentValue(key, viper.Get(key)) {
-		return fmt.Errorf("load configuration with config.ReadConfig or config.ReadInConfig to preserve file %s", key)
+		return fmt.Errorf("%s is set in both the configuration file and %s, and the file value was not captured: unset the variable, or load configuration with config.ReadConfig or config.ReadInConfig to preserve file %s",
+			key, aiEnvironmentName(key), key)
 	}
 	return nil
+}
+
+// aiEnabledByEnvironmentOnly reports whether PVTR_AI_PROVIDER turned AI on for
+// a configuration that never asked for it. Enabled-but-invalid AI now stops a
+// run at mobilization, so a leftover variable can fail a scan (or, with a model
+// and credential also exported, bill one) that no config file mentions AI in.
+// The variable stays authoritative, as it is for the other tunables, but the
+// operator is told it is the one doing the enabling.
+func aiEnabledByEnvironmentOnly(resolved map[string]interface{}, sources aiSettingSources) bool {
+	if !aiEnabled(resolved) {
+		return false
+	}
+	if _, found := aiEnvironmentValue("ai_provider"); !found {
+		return false
+	}
+	if _, found := sources.target["ai_provider"]; found {
+		return false
+	}
+	if _, found := sources.shared["ai_provider"]; found {
+		return false
+	}
+	_, declaredInFile := aiFileSettingValue(sources.file, "ai_provider")
+	return !declaredInFile
+}
+
+// AIEnablementHint returns operator guidance when the process environment
+// selects the AI backend, and "" otherwise. Callers that report an AI
+// configuration failure append it so an operator who did not write the setting
+// can still find it.
+func AIEnablementHint() string {
+	name := aiEnvironmentName("ai_provider")
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s=%q in the environment selects the AI backend and overrides any configured ai_provider; unset it or set ai_skip: true to turn AI off", name, value)
+}
+
+// ignoredAISettings lists ai_-prefixed settings the resolver does not read, so
+// a misspelled key is reported instead of disappearing. Results are
+// source-qualified: configuration keys by their config spelling, environment
+// variables by their PVTR_ name.
+//
+// It is a warning rather than an error because the prefix is not reserved: a
+// plugin may legitimately declare its own ai_-prefixed var, and a config
+// written for a newer SDK should still run against an older one.
+func ignoredAISettings(sources aiSettingSources) []string {
+	ignored := make(map[string]struct{})
+	collect := func(key string) {
+		key = strings.ToLower(strings.TrimSpace(key))
+		if strings.HasPrefix(key, "ai_") && !slices.Contains(aiRecognizedKeys, key) {
+			ignored[key] = struct{}{}
+		}
+	}
+	for key := range sources.target {
+		collect(key)
+	}
+	for key := range sources.shared {
+		collect(key)
+	}
+	for _, key := range aiRootLevelKeys(sources.file) {
+		collect(key)
+	}
+	for _, entry := range os.Environ() {
+		name, _, _ := strings.Cut(entry, "=")
+		suffix, isPrefixed := strings.CutPrefix(name, "PVTR_")
+		key := strings.ToLower(suffix)
+		if !isPrefixed || !strings.HasPrefix(key, "ai_") {
+			continue
+		}
+		if !slices.Contains(aiRecognizedKeys, key) || slices.Contains(aiConfigOnlyKeys, key) {
+			ignored[name] = struct{}{}
+		}
+	}
+
+	keys := slices.Collect(maps.Keys(ignored))
+	slices.Sort(keys)
+	return keys
+}
+
+// aiRootLevelKeys returns the keys written at the document root, where the
+// flat AI shorthand lives. Nested keys are excluded: a typo under an
+// unselected target is that target's problem, and the selected target's own
+// vars arrive through sources.target.
+func aiRootLevelKeys(fileSettings *viper.Viper) []string {
+	settings := fileSettings
+	if settings == nil {
+		settings = viper.GetViper()
+	}
+	var keys []string
+	for _, key := range settings.AllKeys() {
+		if !strings.Contains(key, ".") {
+			keys = append(keys, key)
+		}
+	}
+	return keys
 }

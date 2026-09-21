@@ -123,3 +123,44 @@ func TestConfigString_RedactsAPIKey(t *testing.T) {
 		t.Errorf("empty config should report the api key unset: %s", got)
 	}
 }
+
+// A base URL is redirectable per run through PVTR_AI_BASE_URL while the
+// credential stays pinned in the configuration, so plain HTTP off the local
+// host would put a config-pinned key on the wire in clear text.
+func TestConfigValidate_CredentialRequiresHTTPSOffLoopback(t *testing.T) {
+	tests := []struct {
+		name       string
+		baseURL    string
+		wantKeyErr bool
+	}{
+		{name: "https remote", baseURL: "https://gateway.example/v1"},
+		{name: "http localhost", baseURL: "http://localhost:8000/v1"},
+		{name: "http loopback IPv4", baseURL: "http://127.0.0.1:8000/v1"},
+		{name: "http loopback in 127/8", baseURL: "http://127.9.9.9:8000/v1"},
+		{name: "http loopback IPv6", baseURL: "http://[::1]:8000/v1"},
+		{name: "uppercase scheme and host", baseURL: "HTTP://LOCALHOST:8000/v1"},
+		{name: "http remote host", baseURL: "http://gateway.example/v1", wantKeyErr: true},
+		{name: "http remote IP", baseURL: "http://10.0.0.5:8000/v1", wantKeyErr: true},
+		{name: "http lookalike host", baseURL: "http://localhost.example/v1", wantKeyErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			withKey := Config{Provider: "openai", Model: "model", APIKey: "key", BaseURL: tt.baseURL}
+			err := withKey.Validate()
+			if (err != nil) != tt.wantKeyErr {
+				t.Fatalf("Validate() with a key: error = %v, wantErr %t", err, tt.wantKeyErr)
+			}
+			if err != nil && !strings.Contains(err.Error(), "https") {
+				t.Errorf("Validate() error = %v, want it to name the https requirement", err)
+			}
+
+			// The rule is about the credential: the same endpoint without one
+			// is the local-model case Validate deliberately permits.
+			keyless := Config{Provider: "openai", Model: "model", BaseURL: tt.baseURL}
+			if err := keyless.Validate(); err != nil {
+				t.Errorf("Validate() without a key: error = %v, want nil", err)
+			}
+		})
+	}
+}

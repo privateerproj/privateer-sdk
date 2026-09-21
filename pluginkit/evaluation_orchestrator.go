@@ -227,7 +227,7 @@ func getImportedControls(catalog *gemara.ControlCatalog, referenceCatalogs map[s
 func validateAIConfig(cfg *config.Config) error {
 	aiConfig, configured, err := provider.ConfigFromSDKConfig(*cfg)
 	if err != nil {
-		return fmt.Errorf("target %q: invalid AI configuration: %w", cfg.ServiceName, err)
+		return aiConfigError(cfg.ServiceName, err)
 	}
 	if !configured {
 		return nil
@@ -235,9 +235,19 @@ func validateAIConfig(cfg *config.Config) error {
 
 	// Use the same validation and provider registry as direct client callers.
 	if _, err := ai.NewClientWithAIConfig(aiConfig); err != nil {
-		return fmt.Errorf("target %q: invalid AI configuration: %w", cfg.ServiceName, err)
+		return aiConfigError(cfg.ServiceName, err)
 	}
 	return nil
+}
+
+// aiConfigError names the target and, when the process environment is what
+// selected the backend, says so: this failure now stops the run, and the
+// operator seeing it may not be the person who exported the variable.
+func aiConfigError(serviceName string, err error) error {
+	if hint := config.AIEnablementHint(); hint != "" {
+		return fmt.Errorf("target %q: invalid AI configuration: %w (%s)", serviceName, err, hint)
+	}
+	return fmt.Errorf("target %q: invalid AI configuration: %w", serviceName, err)
 }
 
 // Mobilize initializes the orchestrator and executes all evaluation suites.

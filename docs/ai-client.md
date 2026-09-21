@@ -71,6 +71,12 @@ absolute HTTP(S) API-root URL without userinfo, query parameters, or a fragment
 because each adapter appends its own request path. Use `APIKey` for endpoint
 credentials rather than embedding credentials in the URL.
 
+`http` is accepted only when no credential is sent, or when the host is
+loopback (`localhost`, `127.0.0.0/8`, `::1`) — the local-model case, where the
+request never leaves the host. Sending a credential anywhere else requires
+`https`, since `ai_base_url` is redirectable per run through `PVTR_AI_BASE_URL`
+while the credential stays pinned in the configuration.
+
 Preflight cannot determine whether a custom endpoint requires authentication:
 provide a credential when it does. A missing or rejected credential at that
 endpoint remains a runtime failure, not a configuration error detected locally.

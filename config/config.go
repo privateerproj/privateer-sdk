@@ -73,11 +73,14 @@ func NewConfig(requiredVars []string) Config {
 
 	// AI settings follow their own precedence rules, applied here so that SDK
 	// consumers read one settled value per key. See applyAIPrecedenceRules.
-	aiSettingsErr := applyAIPrecedenceRules(vars, aiSettingSources{
+	aiSources := aiSettingSources{
 		target: targetVars,
 		shared: sharedVars,
 		file:   fileSettings,
-	})
+	}
+	aiSettingsErr := applyAIPrecedenceRules(vars, aiSources)
+	ignoredAIKeys := ignoredAISettings(aiSources)
+	aiEnabledByEnvironment := aiEnabledByEnvironmentOnly(vars, aiSources)
 
 	topLoglevel := viper.GetString("loglevel")
 	loglevel := viper.GetString(fmt.Sprintf("%s.%s.loglevel", targetsSectionKey, serviceName))
@@ -163,6 +166,13 @@ func NewConfig(requiredVars []string) Config {
 	config.SetupLogging(serviceName, output == "json")
 	if aiAPIKeyInConfigFile {
 		config.Logger.Warn(aiAPIKeyConfigWarning)
+	}
+	if len(ignoredAIKeys) > 0 {
+		config.Logger.Warn("ignoring unrecognized ai_ settings; check for typos and see docs/ai-assist.md for the recognized keys",
+			"settings", ignoredAIKeys)
+	}
+	if aiEnabledByEnvironment {
+		config.Logger.Warn(AIEnablementHint())
 	}
 	printSanitizedVars(config.Logger, vars)
 	config.Logger.Trace("Creating a new config instance for service",

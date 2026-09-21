@@ -1186,3 +1186,48 @@ func TestEvaluationOrchestrator_WriteResults_IncludePayload(t *testing.T) {
 		}
 	})
 }
+
+// A leftover PVTR_AI_PROVIDER enables AI for a config that never mentions it,
+// and the resulting BadUsage now stops the run. The operator reading that
+// failure did not write the setting, so the error has to name the variable.
+func TestValidateAIConfig_NamesTheEnvironmentWhenItSelectedTheBackend(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	t.Setenv("PVTR_AI_PROVIDER", "openai")
+
+	cfg := &config.Config{ServiceName: "repo-one", Vars: map[string]interface{}{
+		"ai_provider": "openai",
+		"ai_api_key":  "key",
+	}}
+	err := validateAIConfig(cfg)
+	if err == nil {
+		t.Fatal("validateAIConfig() = nil, want an error for the missing model")
+	}
+	if !strings.Contains(err.Error(), "ai model is required") {
+		t.Errorf("error = %v, want the underlying validation failure", err)
+	}
+	if !strings.Contains(err.Error(), "PVTR_AI_PROVIDER") || !strings.Contains(err.Error(), "ai_skip") {
+		t.Errorf("error = %v, want it to name the enabling variable and the opt-out", err)
+	}
+	if errors.Unwrap(err) == nil {
+		t.Errorf("error = %v, want the validation error still wrapped", err)
+	}
+}
+
+func TestValidateAIConfig_OmitsTheHintWhenTheEnvironmentIsQuiet(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	t.Setenv("PVTR_AI_PROVIDER", "")
+
+	cfg := &config.Config{ServiceName: "repo-one", Vars: map[string]interface{}{
+		"ai_provider": "openai",
+		"ai_api_key":  "key",
+	}}
+	err := validateAIConfig(cfg)
+	if err == nil {
+		t.Fatal("validateAIConfig() = nil, want an error for the missing model")
+	}
+	if strings.Contains(err.Error(), "PVTR_AI_PROVIDER") {
+		t.Errorf("error = %v, want no environment hint when the variable is unset", err)
+	}
+}

@@ -32,7 +32,7 @@ are inherited into every service.
 | `ai_model` | `PVTR_AI_MODEL` | -- | Provider model id (e.g. `gpt-4o-mini`). Required when `ai_provider` is set. |
 | `ai_api_key` | `PVTR_AI_API_KEY` | -- | Provider credential. A config-file value is accepted with a warning; prefer the environment or `ai_api_key_env`. |
 | `ai_api_key_env` | -- | -- | Name of the environment variable holding the credential. Config-file only, so a target can point at its own variable. |
-| `ai_base_url` | `PVTR_AI_BASE_URL` | adapter default | Absolute HTTP(S) API-root URL for a proxy, gateway, or self-hosted endpoint; no userinfo, query, or fragment. Stands in for the credential when the endpoint needs none. |
+| `ai_base_url` | `PVTR_AI_BASE_URL` | adapter default | Absolute HTTP(S) API-root URL for a proxy, gateway, or self-hosted endpoint; no userinfo, query, or fragment. Must be `https` when a credential is sent, unless the host is loopback. Stands in for the credential when the endpoint needs none. |
 | `ai_timeout` | `PVTR_AI_TIMEOUT` | `30s` | Per-call timeout (Go duration string). Must be positive. |
 | `ai_max_tokens` | `PVTR_AI_MAX_TOKENS` | `1024` | Response length cap. Must be positive. |
 | `ai_skip` | `PVTR_AI_SKIP` | `false` | Turn AI off without removing the rest of the config. True at any level wins. When AI is enabled, a non-boolean config-file value is a startup error; the environment accepts Go `strconv.ParseBool` spellings, including `true`, `false`, `1`, and `0`. |
@@ -58,10 +58,13 @@ A credential is selected highest-priority first:
 This deliberately differs from non-credential precedence: named/environment
 sources outrank literals, while an explicit per-target variable still outranks
 the shared credential. When a named source is selected, an empty variable name
-or an unset/empty named variable is an error, not a signal to try a lower source.
+or an unset/empty named variable is an error, not a signal to try a lower
+source: naming a variable selects a specific account or tenant, so getting the
+name wrong must fail rather than quietly spend a different account's quota.
+An `ai_api_key` literal is the opposite case — a blank one is an unfilled
+placeholder at any level, and falls through to the next literal.
 Top-level sources may use flat keys or the compatibility `vars:` map; when both
-spellings define the same key, `vars:` wins. An empty target literal falls
-through to the top-level literal.
+spellings define a non-blank value for the same key, `vars:` wins.
 
 `config.NewConfig` selects sources once and materializes the result in `Vars`.
 The AI client reads only those `Vars`, not global Viper settings or ambient
@@ -81,6 +84,36 @@ credential value.
 A run fails at startup when AI is enabled but misconfigured, rather than at the
 first AI call.
 
+### Diagnostics
+
+Misspelled settings are reported rather than ignored. Any `ai_`-prefixed key
+the SDK does not recognize — in the selected target's `vars`, the shared
+`vars:` block, at the document root, or exported as a `PVTR_AI_*` variable — is
+logged as an ignored setting at startup, so `ai_provder` no longer leaves AI
+quietly off and `ai_skipp` no longer leaves it quietly on. The prefix is not
+reserved, so this is a warning: a plugin may declare its own `ai_`-prefixed var,
+and a config written for a newer SDK still runs against an older one.
+
+Because `PVTR_AI_PROVIDER` is what enables AI, a variable left exported in a
+shell or CI environment enables it for a configuration that never mentions AI.
+That is deliberate — the environment is how an operator turns AI on for one run
+without editing a committed config — but an enabled-and-invalid run now fails at
+startup, so the failure names `PVTR_AI_PROVIDER` and points at `ai_skip: true`,
+and a run enabled only by the environment logs a warning saying so.
+
+### Trust boundaries
+
+The configuration file is trusted input. It already chooses which plugin binary
+runs, and with `ai_api_key_env` it also names an environment variable to read
+and an endpoint to send the result to. The variable name is unrestricted, so a
+config file can pair any variable in the process environment with an
+`ai_base_url` of its choosing. Privateer's search path prefers `./config.yml`
+over `~/.privateer/config.yml`, so treat running `pvtr` inside a repository you
+do not control the same way you would treat running any other program it ships:
+pass `--config` explicitly, or clear credentials you do not want it to read.
+Requiring `https` off loopback whenever a credential is sent limits the damage
+to the endpoint operator rather than anything on the network path.
+
 ### Upgrade notes
 
 Enabled but invalid AI configuration now fails mobilization with `BAD_CONFIG`
@@ -90,15 +123,18 @@ disable AI with `ai_skip: true`. Stray non-provider settings no longer enable AI
 
 `NewConfig` applies environment overrides to non-credential target settings.
 Credential selection follows the ladder above: a named credential or shared
-environment key can now override a target literal. Remove stale credentials
-and environment overrides before upgrading.
+environment key can now override a target literal. A blank `ai_api_key` literal
+is an unfilled placeholder at every level, including the shared `vars:` block,
+so it falls through to the next literal instead of masking it. Remove stale
+credentials and environment overrides before upgrading.
 
 `provider.Config.Validate` allows an empty API key only with a valid custom
-HTTP(S) API root, and URL validation applies to direct clients as well as
-preflight. Custom endpoints that require authentication still need a key;
-preflight does not probe the endpoint, verify model availability, or validate
-credential correctness. Authentication errors, timeouts, rate limits, and other
-runtime failures retain the existing per-step handling.
+HTTP(S) API root, requires `https` for a custom root whenever a credential is
+sent to a non-loopback host, and applies URL validation to direct clients as
+well as preflight. Custom endpoints that require authentication still need a
+key; preflight does not probe the endpoint, verify model availability, or
+validate credential correctness. Authentication errors, timeouts, rate limits,
+and other runtime failures retain the existing per-step handling.
 
 SDK callers that previously relied on the AI client reading Viper directly must
 pass `config.NewConfig(...)` or populate `Config.Vars` explicitly instead.

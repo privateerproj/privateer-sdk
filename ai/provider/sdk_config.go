@@ -10,9 +10,15 @@ import (
 )
 
 // ConfigFromSDKConfig extracts enabled ai_* settings into a provider-neutral
-// Config. The returned bool reports whether AI is enabled, and is false both
-// when AI is disabled and when the configuration is invalid, so callers must
-// check the error before treating false as "AI disabled".
+// Config. The bool reports whether AI is enabled; it is false whenever the
+// error is non-nil, so callers must check the error before treating false as
+// "AI disabled".
+//
+// A true result means AI was asked for and the settings that were present
+// parsed, not that the set is complete: a config naming a provider but no
+// model returns true with a nil error. Completeness is Config.Validate's job,
+// which ai.NewClientWithAIConfig runs before constructing an adapter, so a
+// caller using this function directly must call Validate itself.
 func ConfigFromSDKConfig(config sdkconfig.Config) (Config, bool, error) {
 	if config.Error != nil {
 		return Config{}, false, config.Error
