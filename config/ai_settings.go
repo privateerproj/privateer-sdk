@@ -565,24 +565,44 @@ func requireNamedCredentialForConfiguredBaseURL(sources aiSettingSources, creden
 	if _, fromEnvironment := aiEnvironmentValue("ai_base_url"); fromEnvironment {
 		return nil
 	}
-	if _, found := configuredAIBaseURL(sources); !found {
+	if !aiConfigDeclaresBaseURL(sources) {
 		return nil
 	}
 	return fmt.Errorf("ai_base_url is set in configuration while the credential comes from %s, which would send an environment credential to a host the configuration chose: name the variable in configuration with ai_api_key_env to pair them deliberately, or select the endpoint with %s instead",
 		aiEnvironmentName("ai_api_key"), aiEnvironmentName("ai_base_url"))
 }
 
+// aiConfigDeclaresBaseURL reports whether the configuration declares an
+// endpoint at all, which is the only thing the pairing rule needs: it asks
+// whether the file chose the host, not which host it chose.
+//
+// Presence, unlike value, survives an environment variable shadowing it, so
+// this can consult an uncaptured file where configuredAIBaseURL cannot. That
+// matters because a caller who loaded configuration through plain Viper leaves
+// no captured copy, and the rule must not fall silent for them. Callers must
+// have already excluded an environment-supplied ai_base_url; otherwise Viper
+// echoing PVTR_AI_BASE_URL would look like a file declaration.
+func aiConfigDeclaresBaseURL(sources aiSettingSources) bool {
+	if _, found := configuredAIBaseURL(sources); found {
+		return true
+	}
+	if sources.file != nil {
+		return false
+	}
+	return viper.InConfig("ai_base_url")
+}
+
 // aiConfigDeclaresNamedCredential reports whether the configuration names an
-// environment variable for the credential at any tier.
+// environment variable for the credential at any tier. ai_api_key_env has no
+// environment spelling, so unlike the tunables there is no shadowing to guard
+// against and the root tier can be read even from an uncaptured file, matching
+// what the credential ladder itself accepts.
 func aiConfigDeclaresNamedCredential(sources aiSettingSources) bool {
 	if _, found := sources.target["ai_api_key_env"]; found {
 		return true
 	}
 	if _, found := sources.shared["ai_api_key_env"]; found {
 		return true
-	}
-	if sources.file == nil {
-		return false
 	}
 	_, found := aiFileSettingValue(sources.file, "ai_api_key_env")
 	return found

@@ -87,8 +87,9 @@ func ConfigFromSDKConfig(config sdkconfig.Config) (Config, bool, error) {
 	return aiConfig.Normalized(), true, nil
 }
 
-// NewConfig selects the credential source. Hand-built Vars may also explicitly
-// name an environment variable; no ambient environment or Viper settings apply.
+// resolveAPIKey selects the credential source. Hand-built Vars may also
+// explicitly name an environment variable; no ambient environment or Viper
+// settings apply.
 func resolveAPIKey(config sdkconfig.Config) (string, error) {
 	if envName, found, err := stringValue(config.Vars, "ai_api_key_env"); found || err != nil {
 		if err != nil {

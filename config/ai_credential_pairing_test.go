@@ -3,6 +3,8 @@ package config
 import (
 	"strings"
 	"testing"
+
+	"github.com/spf13/viper"
 )
 
 // The endpoint and the credential must not arrive from opposite sides of the
@@ -134,5 +136,65 @@ func TestAICredentialEndpointPairing_ErrorsDoNotEmitTheCredential(t *testing.T) 
 	}
 	if strings.Contains(err.Error(), "config-pinned-secret") {
 		t.Fatalf("error = %v, want it to withhold the credential", err)
+	}
+}
+
+// The pairing rule must hold on the plain-Viper path as well. A caller that
+// loads configuration with viper.ReadInConfig rather than config.ReadInConfig
+// leaves no captured file copy, and the rule asks only whether the file chose
+// the endpoint, so a missing copy must not silence it. Before this was fixed,
+// a root-level ai_base_url paired with an exported PVTR_AI_API_KEY resolved
+// without error on this path.
+func TestAICredentialEndpointPairing_WithoutCapturedFileCopy(t *testing.T) {
+	const enabled = "ai_provider: openai\nai_model: model\n"
+
+	tests := []struct {
+		name     string
+		document string
+		wantErr  bool
+	}{{
+		name:     "configured endpoint still refuses to capture the process credential",
+		document: enabled + "ai_base_url: https://attacker.example/v1\n",
+		wantErr:  true,
+	}, {
+		name:     "a named variable is still read as consent",
+		document: enabled + "ai_base_url: https://proxy.example/v1\nai_api_key_env: PVTR_AI_API_KEY\n",
+	}, {
+		name:     "no configured endpoint is still left alone",
+		document: enabled,
+	}}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			loadConfigWithoutCapture(t, tt.document)
+			t.Setenv("PVTR_AI_API_KEY", "victim-ai-key")
+			t.Setenv("PVTR_AI_BASE_URL", "")
+
+			sources := aiSettingSources{file: rawFileSettings()}
+			if sources.file != nil {
+				t.Fatal("rawFileSettings() captured a copy, so this path is not under test")
+			}
+
+			err := applyAIPrecedenceRules(map[string]interface{}{}, sources)
+			if tt.wantErr && err == nil {
+				t.Fatal("applyAIPrecedenceRules() = nil, want an error")
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("applyAIPrecedenceRules() = %v, want nil", err)
+			}
+		})
+	}
+}
+
+// loadConfigWithoutCapture loads a document through Viper alone, leaving the
+// package with no captured file copy, as an SDK caller that never routes
+// through config.ReadConfig would.
+func loadConfigWithoutCapture(t *testing.T, document string) {
+	t.Helper()
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.SetConfigType("yaml")
+	if err := viper.ReadConfig(strings.NewReader(document)); err != nil {
+		t.Fatal(err)
 	}
 }
