@@ -12,9 +12,11 @@ import (
 	"time"
 
 	"github.com/gemaraproj/go-gemara"
+
 	"github.com/goccy/go-yaml"
 	"github.com/privateerproj/privateer-sdk/ai"
 	"github.com/privateerproj/privateer-sdk/config"
+	"github.com/privateerproj/privateer-sdk/shared"
 	"github.com/spf13/viper"
 )
 
@@ -1229,5 +1231,32 @@ func TestValidateAIConfig_OmitsTheHintWhenTheEnvironmentIsQuiet(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "PVTR_AI_PROVIDER") {
 		t.Errorf("error = %v, want no environment hint when the variable is unset", err)
+	}
+}
+
+// A suite that cannot run must not report a passing run. Mobilize logs the
+// error rather than returning it, so the outcome has to live on the suite.
+func TestMobilize_SuiteThatCannotRunFailsTheRun(t *testing.T) {
+	cfg := setBasicConfig()
+	cfg.Policy.ControlCatalogs = []string{"CCC.ObjStor"}
+	orchestrator := &EvaluationOrchestrator{
+		ServiceName: "test-service",
+		PluginName:  "test-plugin",
+		config:      cfg,
+		// No steps: Evaluate fails with NO_ASSESSMENT_STEPS_PROVIDED before it
+		// assesses anything, so the suite's own Result is never set by the run.
+		possibleSuites: []*EvaluationSuite{
+			{CatalogId: "CCC.ObjStor", catalog: getTestCatalogWithRequirements(), config: cfg},
+		},
+	}
+	err := orchestrator.Mobilize()
+	if err != nil {
+		t.Fatalf("Mobilize reports a failed suite through the results, not an error: %v", err)
+	}
+	if len(orchestrator.Evaluation_Suites) != 1 || orchestrator.Evaluation_Suites[0].Result != gemara.Unknown {
+		t.Fatalf("suite result = %v, want Unknown", orchestrator.Evaluation_Suites)
+	}
+	if got := ExitCodeFor(orchestrator, err); got != shared.TestFail {
+		t.Errorf("exit code = %d, want TestFail (%d)", got, shared.TestFail)
 	}
 }
