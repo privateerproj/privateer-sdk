@@ -94,12 +94,17 @@ func applyAIPrecedenceRules(resolved map[string]interface{}, sources aiSettingSo
 
 	// Always select the credential so consumers see one resolved source, but
 	// hold any complaint until we know AI is enabled.
-	credentialErr := applyAICredential(resolved, sources)
+	credentialSource, credentialErr := applyAICredential(resolved, sources)
 
 	if !aiEnabled(resolved) {
 		return nil
 	}
-	return errors.Join(requireUnambiguousFileConfig(sources.file, "ai_skip"), credentialErr)
+	return errors.Join(
+		requireUnambiguousFileConfig(sources.file, "ai_skip"),
+		credentialErr,
+		requireCredentialSafeBaseURL(sources, credentialSource),
+		requireNamedCredentialForConfiguredBaseURL(sources, credentialSource),
+	)
 }
 
 // applyAITunables fills in the tunables the target did not set for itself.
@@ -179,7 +184,7 @@ func selectEffectiveAISkipValue(sources aiSettingSources) (interface{}, bool) {
 // A named variable that turns out to be unset is reported by the AI client
 // rather than skipped over. Falling through would spend a different account's
 // quota than the operator named.
-func applyAICredential(resolved map[string]interface{}, sources aiSettingSources) error {
+func applyAICredential(resolved map[string]interface{}, sources aiSettingSources) (aiCredentialSource, error) {
 	delete(resolved, "ai_api_key")
 	delete(resolved, "ai_api_key_env")
 
@@ -190,22 +195,22 @@ func applyAICredential(resolved map[string]interface{}, sources aiSettingSources
 	// happens to be lying around. The AI client reports the empty name.
 	if value, found := sources.target["ai_api_key_env"]; found {
 		resolved["ai_api_key_env"] = value
-		return nil
+		return aiCredentialNamedVariable, nil
 	}
 	if value, found := aiEnvironmentValue("ai_api_key"); found {
 		resolved["ai_api_key"] = value
-		return nil
+		return aiCredentialProcess, nil
 	}
 	if value, found := sources.shared["ai_api_key_env"]; found {
 		resolved["ai_api_key_env"] = value
-		return nil
+		return aiCredentialNamedVariable, nil
 	}
 	if err := requireUnambiguousFileConfig(sources.file, "ai_api_key_env"); err != nil {
-		return err
+		return aiCredentialNone, err
 	}
 	if value, found := aiRootShorthandValue(sources.file, "ai_api_key_env"); found {
 		resolved["ai_api_key_env"] = value
-		return nil
+		return aiCredentialNamedVariable, nil
 	}
 	// An empty literal is treated as "not configured" so that a placeholder
 	// left in a target block falls through to the shared credential instead of
@@ -214,19 +219,20 @@ func applyAICredential(resolved map[string]interface{}, sources aiSettingSources
 	if value, found := sources.target["ai_api_key"]; found {
 		if text, isString := value.(string); !isString || strings.TrimSpace(text) != "" {
 			resolved["ai_api_key"] = value
-			return nil
+			return aiCredentialConfigLiteral, nil
 		}
 	}
 	if value, found := sources.shared["ai_api_key"]; found {
 		if text, isString := value.(string); !isString || strings.TrimSpace(text) != "" {
 			resolved["ai_api_key"] = value
-			return nil
+			return aiCredentialConfigLiteral, nil
 		}
 	}
 	if value, found := aiRootShorthandValue(sources.file, "ai_api_key"); found {
 		resolved["ai_api_key"] = value
+		return aiCredentialConfigLiteral, nil
 	}
-	return nil
+	return aiCredentialNone, nil
 }
 
 // aiEnabled reports whether this run will actually call a model. ai_provider is
@@ -460,4 +466,124 @@ func aiRootLevelKeys(fileSettings *viper.Viper) []string {
 		}
 	}
 	return keys
+}
+
+// aiCredentialSource records where the selected credential's value came from,
+// which decides whether redirecting the endpoint may carry it along.
+type aiCredentialSource int
+
+const (
+	aiCredentialNone aiCredentialSource = iota
+	// aiCredentialNamedVariable is ai_api_key_env: the config names a
+	// variable, but the value lives in the environment, alongside any
+	// PVTR_AI_BASE_URL that redirects the endpoint.
+	aiCredentialNamedVariable
+	// aiCredentialProcess is PVTR_AI_API_KEY.
+	aiCredentialProcess
+	// aiCredentialConfigLiteral is an ai_api_key value written into the
+	// config file at any level.
+	aiCredentialConfigLiteral
+)
+
+// requireCredentialSafeBaseURL refuses to send a credential pinned in the
+// config file to an endpoint chosen by PVTR_AI_BASE_URL.
+//
+// Endpoint and credential normally come from the same person. This is the one
+// combination where they do not: ai_base_url is a tunable, so the environment
+// outranks the file, and a variable left exported in a shell or CI job
+// silently redirects a credential its author never agreed to share. Requiring
+// https stops the network from reading it, but not the new endpoint.
+//
+// The other credential sources are exempt because their provenance already
+// matches the endpoint's: PVTR_AI_API_KEY comes from the same environment, and
+// ai_api_key_env names a variable whose value does too, so whoever redirected
+// the endpoint also controls the credential.
+func requireCredentialSafeBaseURL(sources aiSettingSources, credential aiCredentialSource) error {
+	if credential != aiCredentialConfigLiteral {
+		return nil
+	}
+	environmentURL, fromEnvironment := aiEnvironmentValue("ai_base_url")
+	if !fromEnvironment {
+		return nil
+	}
+	// A variable that merely restates the configured endpoint redirects
+	// nothing. Unlike the ai_skip ambiguity, this comparison is sound: the
+	// configured value is read from the target, the shared block, or the
+	// captured file copy, none of which the environment can shadow.
+	if configured, found := configuredAIBaseURL(sources); found && configured == environmentURL {
+		return nil
+	}
+	return fmt.Errorf("%s redirects the endpoint while ai_api_key is set in configuration, which would send a config-pinned credential to an environment-chosen host: supply the credential for that endpoint with PVTR_AI_API_KEY or ai_api_key_env, or set ai_base_url in configuration instead",
+		aiEnvironmentName("ai_base_url"))
+}
+
+// configuredAIBaseURL returns the endpoint the configuration itself declares,
+// ignoring the environment. The root tier is consulted only when the file copy
+// was captured, because without it Viper cannot distinguish a file value from
+// the environment variable shadowing it, and guessing "they agree" would wave
+// through the redirect this check exists to catch.
+func configuredAIBaseURL(sources aiSettingSources) (interface{}, bool) {
+	if value, found := sources.target["ai_base_url"]; found {
+		return value, true
+	}
+	if value, found := sources.shared["ai_base_url"]; found {
+		return value, true
+	}
+	if sources.file == nil {
+		return nil, false
+	}
+	return aiFileSettingValue(sources.file, "ai_base_url")
+}
+
+// requireNamedCredentialForConfiguredBaseURL refuses to let a configuration
+// file capture PVTR_AI_API_KEY for an endpoint that file chose.
+//
+// This is the mirror of requireCredentialSafeBaseURL. PVTR_AI_API_KEY is
+// exported once and then applies to every later run, so a configuration that
+// declares ai_base_url silently borrows a credential the operator never paired
+// with that endpoint. Privateer searches the working directory ahead of
+// ~/.privateer, so running inside an untrusted repository is enough for its
+// config.yml to make that choice on the operator's behalf.
+//
+// Naming the variable with ai_api_key_env is how a configuration says yes: the
+// pairing is then written down where the operator can read it, instead of
+// being inferred from whatever happens to be exported.
+func requireNamedCredentialForConfiguredBaseURL(sources aiSettingSources, credential aiCredentialSource) error {
+	if credential != aiCredentialProcess {
+		return nil
+	}
+	// Naming a variable is how a configuration states which credential it
+	// expects. It counts as consent even when a higher rung of the ladder
+	// supplies the value, because the operator can read the pairing in the
+	// file either way.
+	if aiConfigDeclaresNamedCredential(sources) {
+		return nil
+	}
+	// The environment outranks the file for tunables, so once it supplies the
+	// endpoint the configured value is not the one in use. Endpoint and
+	// credential then share a provenance and nothing crosses a boundary.
+	if _, fromEnvironment := aiEnvironmentValue("ai_base_url"); fromEnvironment {
+		return nil
+	}
+	if _, found := configuredAIBaseURL(sources); !found {
+		return nil
+	}
+	return fmt.Errorf("ai_base_url is set in configuration while the credential comes from %s, which would send an environment credential to a host the configuration chose: name the variable in configuration with ai_api_key_env to pair them deliberately, or select the endpoint with %s instead",
+		aiEnvironmentName("ai_api_key"), aiEnvironmentName("ai_base_url"))
+}
+
+// aiConfigDeclaresNamedCredential reports whether the configuration names an
+// environment variable for the credential at any tier.
+func aiConfigDeclaresNamedCredential(sources aiSettingSources) bool {
+	if _, found := sources.target["ai_api_key_env"]; found {
+		return true
+	}
+	if _, found := sources.shared["ai_api_key_env"]; found {
+		return true
+	}
+	if sources.file == nil {
+		return false
+	}
+	_, found := aiFileSettingValue(sources.file, "ai_api_key_env")
+	return found
 }

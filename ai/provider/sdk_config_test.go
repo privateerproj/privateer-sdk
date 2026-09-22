@@ -418,11 +418,11 @@ services:
 
 func TestConfigFromSDKConfig_UnsupportedAPIKeyEnvDoesNotMaskFileValue(t *testing.T) {
 	t.Setenv("PVTR_AI_API_KEY_ENV", "IGNORED_VARIABLE_NAME")
-	t.Setenv("PRIVATEER_TEST_FILE_AI_KEY", "file-named-credential")
+	t.Setenv("PVTR_AI_TEST_FILE_AI_KEY", "file-named-credential")
 	cfg := configFromFileForTarget(t, `
 ai_provider: openai
 ai_model: top-model
-ai_api_key_env: PRIVATEER_TEST_FILE_AI_KEY
+ai_api_key_env: PVTR_AI_TEST_FILE_AI_KEY
 services:
   repo-one:
     policy: {catalogs: [catalog], applicability: [all]}
@@ -438,7 +438,7 @@ services:
 }
 
 func TestConfigFromSDKConfig_APIKeyEnv(t *testing.T) {
-	const envName = "PRIVATEER_TEST_TARGET_AI_KEY"
+	const envName = "PVTR_AI_TEST_TARGET_AI_KEY"
 
 	vars := map[string]interface{}{
 		"ai_provider":    "openai",
@@ -491,7 +491,7 @@ func TestConfigFromSDKConfig_HandBuiltTargetCredentialsPrecedeProcessEnvironment
 		{
 			name: "named credential",
 			vars: map[string]interface{}{
-				"ai_api_key_env": "PRIVATEER_TEST_HAND_BUILT_AI_KEY",
+				"ai_api_key_env": "PVTR_AI_TEST_HAND_BUILT_AI_KEY",
 			},
 			want: "target-named",
 		},
@@ -502,7 +502,7 @@ func TestConfigFromSDKConfig_HandBuiltTargetCredentialsPrecedeProcessEnvironment
 			viper.Reset()
 			t.Cleanup(viper.Reset)
 			t.Setenv("PVTR_AI_API_KEY", "process-key")
-			t.Setenv("PRIVATEER_TEST_HAND_BUILT_AI_KEY", "target-named")
+			t.Setenv("PVTR_AI_TEST_HAND_BUILT_AI_KEY", "target-named")
 			tt.vars["ai_provider"] = "openai"
 			tt.vars["ai_model"] = "gpt-4o-mini"
 
@@ -527,7 +527,7 @@ func TestConfigFromSDKConfig_TargetAPIKeyEnvDoesNotFallThrough(t *testing.T) {
 	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
 	viper.AutomaticEnv()
 	t.Setenv("PVTR_AI_API_KEY", "process-fallback")
-	t.Setenv("PRIVATEER_TEST_MISSING_AI_KEY", "")
+	t.Setenv("PVTR_AI_TEST_MISSING_AI_KEY", "")
 	viper.SetConfigType("yaml")
 	if err := sdkconfig.ReadConfig(bytes.NewBufferString(`
 ai_provider: openai
@@ -536,7 +536,7 @@ ai_api_key: top-level-fallback
 services:
   repo-one:
     vars:
-      ai_api_key_env: PRIVATEER_TEST_MISSING_AI_KEY
+      ai_api_key_env: PVTR_AI_TEST_MISSING_AI_KEY
     policy:
       catalogs: [catalog]
       applicability: [all]

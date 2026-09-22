@@ -76,28 +76,28 @@ func TestConfigFromSDKConfig_CredentialLadderAcrossTargets(t *testing.T) {
 	tests := []struct {
 		name, top, local, process, want, wantErr string
 	}{
-		{"target named before all literals", "ai_api_key_env: TEST_TOP_KEY\nai_api_key: top-literal",
-			"ai_api_key_env: TEST_TARGET_KEY\n      ai_api_key: target-literal", "process", "target-named", ""},
+		{"target named before all literals", "ai_api_key_env: PVTR_AI_TEST_TOP_KEY\nai_api_key: top-literal",
+			"ai_api_key_env: PVTR_AI_TEST_TARGET_KEY\n      ai_api_key: target-literal", "process", "target-named", ""},
 		{"process before target literal", "ai_api_key: top-literal", "ai_api_key: target-literal", "process", "process", ""},
-		{"process before top named", "ai_api_key_env: TEST_TOP_KEY\nai_api_key: top-literal",
+		{"process before top named", "ai_api_key_env: PVTR_AI_TEST_TOP_KEY\nai_api_key: top-literal",
 			"ai_api_key: target-literal", "process", "process", ""},
-		{"top named before top literal", "ai_api_key_env: TEST_TOP_KEY\nai_api_key: top-literal", "", "", "top-named", ""},
+		{"top named before top literal", "ai_api_key_env: PVTR_AI_TEST_TOP_KEY\nai_api_key: top-literal", "", "", "top-named", ""},
 		{"empty target literal falls through", "ai_api_key: top-literal", "ai_api_key: ''", "", "top-literal", ""},
-		{"top named before target literal", "ai_api_key_env: TEST_TOP_KEY", "ai_api_key: target-literal", "", "top-named", ""},
+		{"top named before target literal", "ai_api_key_env: PVTR_AI_TEST_TOP_KEY", "ai_api_key: target-literal", "", "top-named", ""},
 		{"target literal before top literal", "ai_api_key: top-literal", "ai_api_key: target-literal", "", "target-literal", ""},
-		{"global named before flat named", "ai_api_key_env: TEST_TARGET_KEY\nvars: {ai_api_key_env: TEST_TOP_KEY}",
+		{"global named before flat named", "ai_api_key_env: PVTR_AI_TEST_TARGET_KEY\nvars: {ai_api_key_env: PVTR_AI_TEST_TOP_KEY}",
 			"ai_api_key: target-literal", "", "top-named", ""},
-		{"process before global named", "vars: {ai_api_key_env: TEST_TOP_KEY}", "", "process", "process", ""},
+		{"process before global named", "vars: {ai_api_key_env: PVTR_AI_TEST_TOP_KEY}", "", "process", "process", ""},
 		{"global literal before flat literal", "ai_api_key: top-literal\nvars: {ai_api_key: global-literal}",
 			"", "", "global-literal", ""},
 		{"target literal before global literal", "vars: {ai_api_key: global-literal}", "ai_api_key: target-literal", "", "target-literal", ""},
 		{"empty global literal falls through to flat spelling", "ai_api_key: top-literal\nvars: {ai_api_key: \"\"}",
 			"", "", "top-literal", ""},
 		{"missing target named does not fall through", "ai_api_key: top-literal",
-			"ai_api_key_env: TEST_MISSING_KEY", "process", "", "unset or empty"},
+			"ai_api_key_env: PVTR_AI_TEST_MISSING_KEY", "process", "", "unset or empty"},
 		{"empty target variable name does not fall through", "ai_api_key: top-literal",
 			"ai_api_key_env: \"\"", "process", "", "non-empty environment variable"},
-		{"missing top named does not fall through", "ai_api_key_env: TEST_MISSING_KEY",
+		{"missing top named does not fall through", "ai_api_key_env: PVTR_AI_TEST_MISSING_KEY",
 			"ai_api_key: target-literal", "", "", "unset or empty"},
 		{"null top named does not fall through", "ai_api_key_env: null",
 			"ai_api_key: target-literal", "", "", "must be a string"},
@@ -108,9 +108,9 @@ func TestConfigFromSDKConfig_CredentialLadderAcrossTargets(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("PVTR_AI_API_KEY", tt.process)
-			t.Setenv("TEST_TARGET_KEY", "target-named")
-			t.Setenv("TEST_TOP_KEY", "top-named")
-			t.Setenv("TEST_MISSING_KEY", "")
+			t.Setenv("PVTR_AI_TEST_TARGET_KEY", "target-named")
+			t.Setenv("PVTR_AI_TEST_TOP_KEY", "top-named")
+			t.Setenv("PVTR_AI_TEST_MISSING_KEY", "")
 			cfg := configFromFileForTarget(t, fmt.Sprintf(`
 ai_provider: openai
 ai_model: model

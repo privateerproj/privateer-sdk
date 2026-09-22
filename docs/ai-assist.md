@@ -31,7 +31,7 @@ are inherited into every service.
 | `ai_provider` | `PVTR_AI_PROVIDER` | -- | Backend adapter. Currently `openai` or `anthropic`. Enables AI. |
 | `ai_model` | `PVTR_AI_MODEL` | -- | Provider model id (e.g. `gpt-4o-mini`). Required when `ai_provider` is set. |
 | `ai_api_key` | `PVTR_AI_API_KEY` | -- | Provider credential. A config-file value is accepted with a warning; prefer the environment or `ai_api_key_env`. |
-| `ai_api_key_env` | -- | -- | Name of the environment variable holding the credential. Config-file only, so a target can point at its own variable. |
+| `ai_api_key_env` | -- | -- | Name of the environment variable holding the credential. Config-file only, so a target can point at its own variable. Must begin with `PVTR_AI_`. |
 | `ai_base_url` | `PVTR_AI_BASE_URL` | adapter default | Absolute HTTP(S) API-root URL for a proxy, gateway, or self-hosted endpoint; no userinfo, query, or fragment. Must be `https` when a credential is sent, unless the host is loopback. Stands in for the credential when the endpoint needs none. |
 | `ai_timeout` | `PVTR_AI_TIMEOUT` | `30s` | Per-call timeout (Go duration string). Must be positive. |
 | `ai_max_tokens` | `PVTR_AI_MAX_TOKENS` | `1024` | Response length cap. Must be positive. |
@@ -103,16 +103,33 @@ and a run enabled only by the environment logs a warning saying so.
 
 ### Trust boundaries
 
-The configuration file is trusted input. It already chooses which plugin binary
-runs, and with `ai_api_key_env` it also names an environment variable to read
-and an endpoint to send the result to. The variable name is unrestricted, so a
-config file can pair any variable in the process environment with an
-`ai_base_url` of its choosing. Privateer's search path prefers `./config.yml`
-over `~/.privateer/config.yml`, so treat running `pvtr` inside a repository you
-do not control the same way you would treat running any other program it ships:
-pass `--config` explicitly, or clear credentials you do not want it to read.
-Requiring `https` off loopback whenever a credential is sent limits the damage
-to the endpoint operator rather than anything on the network path.
+Privateer searches `./config.yml` before `~/.privateer/config.yml`, so running
+`pvtr` inside a repository you do not control lets that repository's file choose
+AI settings. Two rules stop that from becoming credential disclosure.
+
+`ai_api_key_env` only names variables beginning with `PVTR_AI_`. Every other
+setting reaches the environment through Viper, which is pinned to the `PVTR_`
+prefix; `ai_api_key_env` dereferences the name directly, so without this bound a
+config file could read `GITHUB_TOKEN` or `AWS_SECRET_ACCESS_KEY` and pair it
+with an `ai_base_url` of its choosing. Export per-target credentials under
+`PVTR_AI_` names.
+
+A credential and the endpoint it is sent to must not arrive from opposite sides
+of the configuration/environment boundary:
+
+- `PVTR_AI_BASE_URL` will not carry an `ai_api_key` written in configuration.
+- An `ai_base_url` in configuration will not capture `PVTR_AI_API_KEY` unless
+  the configuration also names the variable with `ai_api_key_env`, which records
+  the pairing where an operator can read it.
+
+Requiring `https` off loopback whenever a credential is sent limits exposure to
+the endpoint operator rather than to anything on the network path.
+
+These rules bound what a configuration file can reach; they do not make an
+untrusted one safe. It still selects which installed plugin runs, and it may
+still name a `PVTR_AI_` credential you have exported. When working in a
+repository you do not control, pass `--config` explicitly or clear credentials
+you do not want it to read.
 
 ### Upgrade notes
 
@@ -120,6 +137,21 @@ Enabled but invalid AI configuration now fails mobilization with `BAD_CONFIG`
 (`BadUsage`) before evidence loading; it no longer silently completes with
 `NeedsReview` from misconfigured AI steps. Fix the configuration or deliberately
 disable AI with `ai_skip: true`. Stray non-provider settings no longer enable AI.
+
+**Breaking:** `ai_api_key_env` must name a variable beginning with `PVTR_AI_`.
+A name outside that namespace is refused with an error naming the variable, and
+no request is made. Re-export the credential under a `PVTR_AI_` name, such as
+`PVTR_AI_API_KEY` for a shared credential or `PVTR_AI_KEY_REPO_ONE` for a
+per-target one.
+
+**Breaking:** `PVTR_AI_BASE_URL` no longer carries an `ai_api_key` literal from
+configuration. Supply the credential for that endpoint with `PVTR_AI_API_KEY` or
+`ai_api_key_env`, or set `ai_base_url` in configuration instead. A variable that
+merely restates the configured endpoint redirects nothing and is still accepted.
+
+**Breaking:** an `ai_base_url` in configuration no longer captures
+`PVTR_AI_API_KEY`. Name the variable in configuration with `ai_api_key_env` to
+pair them deliberately, or select the endpoint with `PVTR_AI_BASE_URL` instead.
 
 `NewConfig` applies environment overrides to non-credential target settings.
 Credential selection follows the ladder above: a named credential or shared

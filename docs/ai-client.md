@@ -26,7 +26,11 @@ made in config, not something a plugin hardcodes.
 Pass the `Config` produced by `config.NewConfig`: it resolves operator settings
 into `Vars`. AI clients do not re-read global Viper or ambient `PVTR_AI_*`
 settings. Hand-built `Vars` are self-contained, except that `ai_api_key_env`
-explicitly reads the variable named there.
+explicitly reads the variable named there. That name must begin with
+`PVTR_AI_`; a name outside Privateer's environment namespace is refused before
+any request is made, so a configuration file cannot pair an unrelated secret
+with an endpoint of its choosing. This bound applies to direct SDK callers too,
+because it is enforced where the name becomes a credential.
 For standalone file loading, use `config.ReadInConfig` or `config.ReadConfig`
 before `NewConfig` to preserve file provenance; see the
 [upgrade notes](ai-assist.md#upgrade-notes).

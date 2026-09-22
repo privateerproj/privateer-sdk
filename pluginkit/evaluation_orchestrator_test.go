@@ -56,7 +56,7 @@ func TestValidateAIConfig(t *testing.T) {
 			vars: map[string]interface{}{
 				"ai_provider":    "openai",
 				"ai_model":       "gpt-4o-mini",
-				"ai_api_key_env": "PRIVATEER_TEST_MISSING_KEY",
+				"ai_api_key_env": "PVTR_AI_TEST_MISSING_KEY",
 			},
 			wantErrText: "ai_api_key_env",
 		},

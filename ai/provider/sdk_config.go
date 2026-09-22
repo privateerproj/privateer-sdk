@@ -111,9 +111,25 @@ func stringValue(vars map[string]interface{}, key string) (string, bool, error) 
 	return strings.TrimSpace(text), true, nil
 }
 
+// aiAPIKeyEnvPrefix bounds ai_api_key_env to Privateer's own environment
+// namespace. Every other setting reaches the environment through Viper, which
+// is pinned to the PVTR_ prefix, so a configuration file can only ever read
+// variables this tool owns. ai_api_key_env dereferences a caller-supplied name
+// directly, which escapes that boundary: without this bound, a config.yml
+// picked up from the working directory could name GITHUB_TOKEN or
+// AWS_SECRET_ACCESS_KEY and pair it with an ai_base_url of its choosing.
+//
+// The bound is enforced here rather than during config resolution because this
+// is the single point where a variable name becomes a credential, so direct
+// SDK callers that build Config.Vars themselves are covered too.
+const aiAPIKeyEnvPrefix = "PVTR_AI_"
+
 func apiKeyFromEnv(envName string) (string, error) {
 	if envName == "" {
 		return "", fmt.Errorf("ai_api_key_env must name a non-empty environment variable")
+	}
+	if !strings.HasPrefix(envName, aiAPIKeyEnvPrefix) {
+		return "", fmt.Errorf("ai_api_key_env names environment variable %q, but it must begin with %s so that a configuration file cannot read credentials outside Privateer's namespace: export the credential as %sAPI_KEY, or under another %s name for a per-target credential", envName, aiAPIKeyEnvPrefix, aiAPIKeyEnvPrefix, aiAPIKeyEnvPrefix)
 	}
 	apiKey := strings.TrimSpace(os.Getenv(envName))
 	if apiKey == "" {

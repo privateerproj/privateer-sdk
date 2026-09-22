@@ -744,12 +744,12 @@ func TestNewConfig_WarnsForConfigFileAIAPIKey(t *testing.T) {
 		},
 		{
 			name:     "target key environment name overrides top-level file key",
-			config:   "ai_api_key: dormant-file-credential\nservices:\n  my-service-1:\n    vars:\n      ai_api_key_env: PRIVATEER_TEST_AI_KEY\n",
+			config:   "ai_api_key: dormant-file-credential\nservices:\n  my-service-1:\n    vars:\n      ai_api_key_env: PVTR_AI_TEST_AI_KEY\n",
 			wantWarn: true,
 		},
 		{
 			name:   "key environment variable name",
-			config: "ai_api_key_env: PRIVATEER_TEST_AI_KEY\n",
+			config: "ai_api_key_env: PVTR_AI_TEST_AI_KEY\n",
 		},
 	}
 
