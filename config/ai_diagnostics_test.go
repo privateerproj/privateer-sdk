@@ -75,6 +75,31 @@ func TestIgnoredAISettings_ReportsEnvironmentSpellingOfConfigOnlyKeys(t *testing
 	}
 }
 
+func TestIgnoredAISettings_DoesNotReportConfiguredCredentialVariables(t *testing.T) {
+	loadConfig(t, `
+ai_provider: openai
+ai_model: model
+ai_api_key_env: PVTR_AI_KEY_ROOT
+vars:
+  ai_api_key_env: PVTR_AI_KEY_SHARED
+targets:
+  repo:
+    vars:
+      ai_api_key_env: PVTR_AI_KEY_REPO_ONE
+`)
+	t.Setenv("PVTR_AI_KEY_ROOT", "root-key")
+	t.Setenv("PVTR_AI_KEY_SHARED", "shared-key")
+	t.Setenv("PVTR_AI_KEY_REPO_ONE", "target-key")
+	t.Setenv("PVTR_AI_KEY_UNUSED", "unused-key")
+
+	got := ignoredAISettings(aiSourcesForTarget("repo"))
+
+	want := []string{"PVTR_AI_KEY_UNUSED"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("ignoredAISettings() = %v, want %v", got, want)
+	}
+}
+
 func TestIgnoredAISettings_AcceptsEveryRecognizedKey(t *testing.T) {
 	loadConfig(t, `
 ai_provider: openai
@@ -150,6 +175,20 @@ func TestApplyAICredential_BlankSharedLiteralFallsThroughToRootLiteral(t *testin
 	}
 	if got := resolved["ai_api_key"]; got != "root-literal" {
 		t.Fatalf("ai_api_key = %v, want %q; a blank shared placeholder masked the configured literal", got, "root-literal")
+	}
+}
+
+func TestApplyAICredential_BlankRootLiteralIsAPlaceholder(t *testing.T) {
+	loadConfig(t, "ai_provider: openai\nai_model: model\nai_api_key: \"\"\n")
+	t.Setenv("PVTR_AI_API_KEY", "")
+	t.Setenv("PVTR_AI_BASE_URL", "https://proxy.example/v1")
+
+	resolved := map[string]interface{}{}
+	if err := applyAIPrecedenceRules(resolved, aiSourcesForTarget("repo")); err != nil {
+		t.Fatalf("applyAIPrecedenceRules() error = %v, want none for a blank root placeholder", err)
+	}
+	if got, found := resolved["ai_api_key"]; found {
+		t.Fatalf("ai_api_key = %v, want no credential selected from a blank root placeholder", got)
 	}
 }
 

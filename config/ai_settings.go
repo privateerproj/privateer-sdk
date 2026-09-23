@@ -103,7 +103,6 @@ func applyAIPrecedenceRules(resolved map[string]interface{}, sources aiSettingSo
 		requireUnambiguousFileConfig(sources.file, "ai_skip"),
 		credentialErr,
 		requireCredentialSafeBaseURL(sources, credentialSource),
-		requireNamedCredentialForConfiguredBaseURL(sources, credentialSource),
 	)
 }
 
@@ -229,8 +228,10 @@ func applyAICredential(resolved map[string]interface{}, sources aiSettingSources
 		}
 	}
 	if value, found := aiRootShorthandValue(sources.file, "ai_api_key"); found {
-		resolved["ai_api_key"] = value
-		return aiCredentialConfigLiteral, nil
+		if text, isString := value.(string); !isString || strings.TrimSpace(text) != "" {
+			resolved["ai_api_key"] = value
+			return aiCredentialConfigLiteral, nil
+		}
 	}
 	return aiCredentialNone, nil
 }
@@ -418,6 +419,7 @@ func AIEnablementHint() string {
 // written for a newer SDK should still run against an older one.
 func ignoredAISettings(sources aiSettingSources) []string {
 	ignored := make(map[string]struct{})
+	configuredKeyEnvs := configuredAIAPIKeyEnvNames(sources)
 	collect := func(key string) {
 		key = strings.ToLower(strings.TrimSpace(key))
 		if strings.HasPrefix(key, "ai_") && !slices.Contains(aiRecognizedKeys, key) {
@@ -440,6 +442,9 @@ func ignoredAISettings(sources aiSettingSources) []string {
 		if !isPrefixed || !strings.HasPrefix(key, "ai_") {
 			continue
 		}
+		if _, configured := configuredKeyEnvs[name]; configured {
+			continue
+		}
 		if !slices.Contains(aiRecognizedKeys, key) || slices.Contains(aiConfigOnlyKeys, key) {
 			ignored[name] = struct{}{}
 		}
@@ -448,6 +453,34 @@ func ignoredAISettings(sources aiSettingSources) []string {
 	keys := slices.Collect(maps.Keys(ignored))
 	slices.Sort(keys)
 	return keys
+}
+
+// configuredAIAPIKeyEnvNames returns the environment variables the config
+// explicitly names as credential holders. Those variables may look like
+// otherwise-unknown PVTR_AI_* settings, but they are not settings at all; they
+// are credential storage selected by ai_api_key_env.
+func configuredAIAPIKeyEnvNames(sources aiSettingSources) map[string]struct{} {
+	names := make(map[string]struct{})
+	collect := func(value interface{}) {
+		text, isString := value.(string)
+		if !isString {
+			return
+		}
+		text = strings.TrimSpace(text)
+		if text != "" {
+			names[text] = struct{}{}
+		}
+	}
+	if value, found := sources.target["ai_api_key_env"]; found {
+		collect(value)
+	}
+	if value, found := sources.shared["ai_api_key_env"]; found {
+		collect(value)
+	}
+	if value, found := aiRootShorthandValue(sources.file, "ai_api_key_env"); found {
+		collect(value)
+	}
+	return names
 }
 
 // aiRootLevelKeys returns the keys written at the document root, where the
@@ -533,77 +566,4 @@ func configuredAIBaseURL(sources aiSettingSources) (interface{}, bool) {
 		return nil, false
 	}
 	return aiFileSettingValue(sources.file, "ai_base_url")
-}
-
-// requireNamedCredentialForConfiguredBaseURL refuses to let a configuration
-// file capture PVTR_AI_API_KEY for an endpoint that file chose.
-//
-// This is the mirror of requireCredentialSafeBaseURL. PVTR_AI_API_KEY is
-// exported once and then applies to every later run, so a configuration that
-// declares ai_base_url silently borrows a credential the operator never paired
-// with that endpoint. Privateer searches the working directory ahead of
-// ~/.privateer, so running inside an untrusted repository is enough for its
-// config.yml to make that choice on the operator's behalf.
-//
-// Naming the variable with ai_api_key_env is how a configuration says yes: the
-// pairing is then written down where the operator can read it, instead of
-// being inferred from whatever happens to be exported.
-func requireNamedCredentialForConfiguredBaseURL(sources aiSettingSources, credential aiCredentialSource) error {
-	if credential != aiCredentialProcess {
-		return nil
-	}
-	// Naming a variable is how a configuration states which credential it
-	// expects. It counts as consent even when a higher rung of the ladder
-	// supplies the value, because the operator can read the pairing in the
-	// file either way.
-	if aiConfigDeclaresNamedCredential(sources) {
-		return nil
-	}
-	// The environment outranks the file for tunables, so once it supplies the
-	// endpoint the configured value is not the one in use. Endpoint and
-	// credential then share a provenance and nothing crosses a boundary.
-	if _, fromEnvironment := aiEnvironmentValue("ai_base_url"); fromEnvironment {
-		return nil
-	}
-	if !aiConfigDeclaresBaseURL(sources) {
-		return nil
-	}
-	return fmt.Errorf("ai_base_url is set in configuration while the credential comes from %s, which would send an environment credential to a host the configuration chose: name the variable in configuration with ai_api_key_env to pair them deliberately, or select the endpoint with %s instead",
-		aiEnvironmentName("ai_api_key"), aiEnvironmentName("ai_base_url"))
-}
-
-// aiConfigDeclaresBaseURL reports whether the configuration declares an
-// endpoint at all, which is the only thing the pairing rule needs: it asks
-// whether the file chose the host, not which host it chose.
-//
-// Presence, unlike value, survives an environment variable shadowing it, so
-// this can consult an uncaptured file where configuredAIBaseURL cannot. That
-// matters because a caller who loaded configuration through plain Viper leaves
-// no captured copy, and the rule must not fall silent for them. Callers must
-// have already excluded an environment-supplied ai_base_url; otherwise Viper
-// echoing PVTR_AI_BASE_URL would look like a file declaration.
-func aiConfigDeclaresBaseURL(sources aiSettingSources) bool {
-	if _, found := configuredAIBaseURL(sources); found {
-		return true
-	}
-	if sources.file != nil {
-		return false
-	}
-	return viper.InConfig("ai_base_url")
-}
-
-// aiConfigDeclaresNamedCredential reports whether the configuration names an
-// environment variable for the credential at any tier. ai_api_key_env has no
-// environment spelling, so unlike the tunables there is no shadowing to guard
-// against and the root tier can be read even from an uncaptured file, matching
-// what the credential ladder itself accepts.
-func aiConfigDeclaresNamedCredential(sources aiSettingSources) bool {
-	if _, found := sources.target["ai_api_key_env"]; found {
-		return true
-	}
-	if _, found := sources.shared["ai_api_key_env"]; found {
-		return true
-	}
-	_, found := aiFileSettingValue(sources.file, "ai_api_key_env")
-	return found
 }

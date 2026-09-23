@@ -105,7 +105,8 @@ and a run enabled only by the environment logs a warning saying so.
 
 Privateer searches `./config.yml` before `~/.privateer/config.yml`, so running
 `pvtr` inside a repository you do not control lets that repository's file choose
-AI settings. Two rules stop that from becoming credential disclosure.
+AI settings. Treat a configuration file as trusted input before letting it name
+AI settings or credential variables.
 
 `ai_api_key_env` only names variables beginning with `PVTR_AI_`. Every other
 setting reaches the environment through Viper, which is pinned to the `PVTR_`
@@ -114,22 +115,17 @@ config file could read `GITHUB_TOKEN` or `AWS_SECRET_ACCESS_KEY` and pair it
 with an `ai_base_url` of its choosing. Export per-target credentials under
 `PVTR_AI_` names.
 
-A credential and the endpoint it is sent to must not arrive from opposite sides
-of the configuration/environment boundary:
-
-- `PVTR_AI_BASE_URL` will not carry an `ai_api_key` written in configuration.
-- An `ai_base_url` in configuration will not capture `PVTR_AI_API_KEY` unless
-  the configuration also names the variable with `ai_api_key_env`, which records
-  the pairing where an operator can read it.
+`PVTR_AI_BASE_URL` will not carry an `ai_api_key` written in configuration to a
+different endpoint. The credential stays with the file that declared it.
 
 Requiring `https` off loopback whenever a credential is sent limits exposure to
 the endpoint operator rather than to anything on the network path.
 
 These rules bound what a configuration file can reach; they do not make an
-untrusted one safe. It still selects which installed plugin runs, and it may
-still name a `PVTR_AI_` credential you have exported. When working in a
-repository you do not control, pass `--config` explicitly or clear credentials
-you do not want it to read.
+untrusted one safe. It still selects which installed plugin runs, chooses AI
+endpoints, and may name a `PVTR_AI_` credential you have exported. When working
+in a repository you do not control, pass `--config` explicitly or clear
+credentials you do not want it to read.
 
 ### Upgrade notes
 
@@ -148,10 +144,6 @@ per-target one.
 configuration. Supply the credential for that endpoint with `PVTR_AI_API_KEY` or
 `ai_api_key_env`, or set `ai_base_url` in configuration instead. A variable that
 merely restates the configured endpoint redirects nothing and is still accepted.
-
-**Breaking:** an `ai_base_url` in configuration no longer captures
-`PVTR_AI_API_KEY`. Name the variable in configuration with `ai_api_key_env` to
-pair them deliberately, or select the endpoint with `PVTR_AI_BASE_URL` instead.
 
 `NewConfig` applies environment overrides to non-credential target settings.
 Credential selection follows the ladder above: a named credential or shared
