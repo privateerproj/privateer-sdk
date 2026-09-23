@@ -91,8 +91,13 @@ func TestAddCatalogs_MobilizeLoadsFromCacheAndMatchesConfig(t *testing.T) {
 	if err := orch.AddEvaluationSuite(v2.String(), nil, steps); err != nil {
 		t.Fatal(err)
 	}
-	if len(orch.pendingSuites) != 2 {
-		t.Fatalf("pending suites = %d, want 2 (deduplicated)", len(orch.pendingSuites))
+	if len(orch.possibleSuites) != 2 {
+		t.Fatalf("suites = %d, want 2 (deduplicated)", len(orch.possibleSuites))
+	}
+	for _, s := range orch.possibleSuites {
+		if s.catalog != nil {
+			t.Fatalf("suite %s has a catalog before Mobilize", s.CatalogId)
+		}
 	}
 
 	// Nothing is loaded before Mobilize, yet the manifest is complete.

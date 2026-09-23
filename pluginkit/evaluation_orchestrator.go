@@ -50,22 +50,20 @@ type EvaluationOrchestrator struct {
 	Payload           any                `json:"payload,omitempty" yaml:"payload,omitempty"`
 	Evaluation_Suites []*EvaluationSuite `json:"evaluation-suites" yaml:"evaluation-suites"` // EvaluationSuite is a map of evaluations to their catalog names
 
+	// possibleSuites holds every registered suite. A suite registered against a
+	// declared coordinate has no catalog until Mobilize loads it from the cache.
 	possibleSuites    []*EvaluationSuite
-	possibleControls  map[string][]*gemara.Control
 	referenceCatalogs map[string]*gemara.ControlCatalog
 	// catalogCoordinates are the grc.store catalogs declared with AddCatalogs, in
 	// declaration order. They are read from the install cache at Mobilize (the
 	// cache location comes from config) and keyed in referenceCatalogs by their
 	// full coordinate, so two versions of one catalog coexist.
 	catalogCoordinates []CatalogCoordinate
-	// pendingSuites are suites registered against a declared coordinate before
-	// its catalog is loaded; Mobilize materializes them after loading.
-	pendingSuites []pendingSuite
-	requiredVars  []string
-	config        *config.Config
-	loader        DataLoader
-	targetBuilder TargetBuilder
-	benchmark     *BenchmarkReport
+	requiredVars       []string
+	config             *config.Config
+	loader             DataLoader
+	targetBuilder      TargetBuilder
+	benchmark          *BenchmarkReport
 }
 
 // DataLoader is a function type for loading plugin data from configuration.
@@ -118,7 +116,6 @@ func (v *EvaluationOrchestrator) AddReferenceCatalogs(dataDir string, files fs.F
 			return fmt.Errorf("duplicate catalog id found: %s", catalog.Metadata.Id)
 		}
 		v.referenceCatalogs[catalog.Metadata.Id] = catalog
-		v.addPossibleControls(catalog)
 	}
 	return nil
 }
@@ -161,14 +158,8 @@ func (v *EvaluationOrchestrator) declaredCatalog(s string) *CatalogCoordinate {
 	return nil
 }
 
-type pendingSuite struct {
-	coordinate CatalogCoordinate
-	loader     DataLoader
-	steps      map[string][]gemara.AssessmentStep
-}
-
 // loadDeclaredCatalogs reads every AddCatalogs coordinate from the install
-// cache and materializes the suites registered against them. It runs inside
+// cache and attaches each catalog to the suites registered against it. It runs inside
 // Mobilize because the cache location comes from config. A missing file is an
 // error naming the fix (run `pvtr install`); nothing is fetched here.
 func (v *EvaluationOrchestrator) loadDeclaredCatalogs() error {
@@ -206,28 +197,14 @@ func (v *EvaluationOrchestrator) loadDeclaredCatalogs() error {
 			return BAD_CATALOG(v.PluginName, fmt.Sprintf("no id found in catalog metadata in %s", key), "mob19")
 		}
 		v.referenceCatalogs[key] = catalog
-		v.addPossibleControls(catalog)
 	}
-	for _, p := range v.pendingSuites {
-		key := p.coordinate.String()
-		v.addEvaluationSuite(key, v.referenceCatalogs[key], p.loader, p.steps)
-	}
-	v.pendingSuites = nil
-	return nil
-}
-
-func (v *EvaluationOrchestrator) addPossibleControls(catalog *gemara.ControlCatalog) {
-	if v.possibleControls == nil {
-		v.possibleControls = make(map[string][]*gemara.Control)
-	}
-	for i := range catalog.Controls {
-		control := &catalog.Controls[i]
-		if _, exists := v.possibleControls[control.Id]; !exists {
-			v.possibleControls[control.Id] = []*gemara.Control{control}
-		} else {
-			v.possibleControls[control.Id] = append(v.possibleControls[control.Id], control)
+	for _, suite := range v.possibleSuites {
+		if suite.source == nil {
+			suite.catalog = v.referenceCatalogs[suite.CatalogId]
+			suite.source = suite.catalog
 		}
 	}
+	return nil
 }
 
 // AddEvaluationSuite adds an evaluation suite for the given catalog ID.
@@ -250,15 +227,11 @@ func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader Dat
 		v.addEvaluationSuite(catalogId, catalog, loader, steps)
 		return nil
 	}
-	// A declared grc.store coordinate is not loaded until Mobilize; queue the
-	// suite, and let loadDeclaredCatalogs validate the cached catalog there.
+	// A declared grc.store coordinate is not loaded until Mobilize; register the
+	// suite without a catalog, and let loadDeclaredCatalogs validate the cached
+	// catalog and attach it there.
 	if c := v.declaredCatalog(catalogId); c != nil {
-		for _, p := range v.pendingSuites {
-			if p.coordinate == *c {
-				return nil
-			}
-		}
-		v.pendingSuites = append(v.pendingSuites, pendingSuite{coordinate: *c, loader: loader, steps: steps})
+		v.addEvaluationSuite(c.String(), nil, loader, steps)
 		return nil
 	}
 	return BAD_CATALOG(v.PluginName, fmt.Sprintf("no reference catalog found with id '%s'", catalogId), "aos40")
@@ -302,7 +275,8 @@ func (v *EvaluationOrchestrator) allCatalogIDs() []string {
 // addEvaluationSuite registers a suite under suiteId: the catalog's metadata
 // id for an embedded catalog, or the full coordinate for a declared one (two
 // versions of the same catalog share a metadata id, so the id alone cannot
-// key them).
+// key them). A declared suite registers with a nil catalog, which
+// loadDeclaredCatalogs attaches at Mobilize.
 func (v *EvaluationOrchestrator) addEvaluationSuite(suiteId string, catalog *gemara.ControlCatalog, loader DataLoader, steps map[string][]gemara.AssessmentStep) {
 	for _, existing := range v.possibleSuites {
 		if existing.CatalogId == suiteId {
