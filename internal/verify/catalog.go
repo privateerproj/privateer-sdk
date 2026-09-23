@@ -33,7 +33,7 @@ type VerifiedCatalog struct {
 // one YAML layer, so there is no platform walk. Any failure aborts.
 func (v *Verifier) Catalog(ctx context.Context, fetched *oci.FetchedIndex, policy IdentityPolicy) (*VerifiedCatalog, error) {
 	if fetched == nil {
-		return nil, fmt.Errorf("%w: nil fetched manifest", ErrMalformedIndex)
+		return nil, fmt.Errorf("%w: nil fetched manifest", ErrMalformedCatalog)
 	}
 	signerIdentity, err := v.signer(ctx, fetched, policy)
 	if err != nil {
@@ -51,10 +51,10 @@ func walkVerifiedCatalog(ctx context.Context, fetched *oci.FetchedIndex, signerI
 	}
 	var m ocispec.Manifest
 	if err := json.Unmarshal(fetched.IndexBytes, &m); err != nil {
-		return nil, fmt.Errorf("%w: parse catalog manifest: %v", ErrMalformedIndex, err)
+		return nil, fmt.Errorf("%w: parse catalog manifest: %v", ErrMalformedCatalog, err)
 	}
 	if m.MediaType != ocispec.MediaTypeImageManifest {
-		return nil, fmt.Errorf("%w: catalog media type %q is not an image manifest", ErrMalformedIndex, m.MediaType)
+		return nil, fmt.Errorf("%w: catalog media type %q is not an image manifest", ErrMalformedCatalog, m.MediaType)
 	}
 	layer, err := artifactLayer(m.Layers)
 	if err != nil {
@@ -75,10 +75,10 @@ func walkVerifiedCatalog(ctx context.Context, fetched *oci.FetchedIndex, signerI
 	// manifest digest to cross-check.
 	parsed, err := pluginkit.ParseCatalog(data)
 	if err != nil {
-		return nil, fmt.Errorf("%w: parse catalog layer: %v", ErrMalformedIndex, err)
+		return nil, fmt.Errorf("%w: parse catalog layer: %v", ErrMalformedCatalog, err)
 	}
 	if _, wantId, _ := strings.Cut(fetched.Coordinate, "/"); slug.Slugify(parsed.Metadata.Id) != wantId {
-		return nil, fmt.Errorf("%w: catalog metadata id %q != requested coordinate %q", ErrMalformedIndex, parsed.Metadata.Id, fetched.Coordinate)
+		return nil, fmt.Errorf("%w: catalog metadata id %q != requested coordinate %q", ErrMalformedCatalog, parsed.Metadata.Id, fetched.Coordinate)
 	}
 	return &VerifiedCatalog{SignerIdentity: signerIdentity, YAML: data}, nil
 }
@@ -103,12 +103,12 @@ func artifactLayer(layers []ocispec.Descriptor) (ocispec.Descriptor, error) {
 	case len(marked) == 1:
 		return marked[0], nil
 	case len(marked) > 1:
-		return ocispec.Descriptor{}, fmt.Errorf("%w: %d layers marked as the catalog", ErrMalformedIndex, len(marked))
+		return ocispec.Descriptor{}, fmt.Errorf("%w: %d layers marked as the catalog", ErrMalformedCatalog, len(marked))
 	case len(artifacts) == 1:
 		return artifacts[0], nil
 	case len(artifacts) == 0:
-		return ocispec.Descriptor{}, fmt.Errorf("%w: no %q layer", ErrMalformedIndex, bundle.MediaTypeArtifact)
+		return ocispec.Descriptor{}, fmt.Errorf("%w: no %q layer", ErrMalformedCatalog, bundle.MediaTypeArtifact)
 	default:
-		return ocispec.Descriptor{}, fmt.Errorf("%w: %d artifact layers and none marked as the catalog", ErrMalformedIndex, len(artifacts))
+		return ocispec.Descriptor{}, fmt.Errorf("%w: %d artifact layers and none marked as the catalog", ErrMalformedCatalog, len(artifacts))
 	}
 }

@@ -48,6 +48,9 @@ var (
 	// ErrMalformedIndex: the verified index/child/config bytes violate the
 	// grc.store shape contract.
 	ErrMalformedIndex = errors.New("plugin index is malformed")
+	// ErrMalformedCatalog: the verified catalog manifest or layer violates the
+	// grc.store catalog shape contract, or names a different catalog.
+	ErrMalformedCatalog = errors.New("catalog manifest is malformed")
 	// ErrTrustRoot: the pinned trusted root is missing, unparseable, or expired.
 	ErrTrustRoot = errors.New("sigstore trusted root unavailable")
 )

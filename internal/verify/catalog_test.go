@@ -91,10 +91,10 @@ func TestArtifactLayer(t *testing.T) {
 	if got, err := artifactLayer([]ocispec.Descriptor{other, art}); err != nil || got.Digest != "sha256:a" {
 		t.Errorf("single artifact layer should be chosen: %v %v", got.Digest, err)
 	}
-	if _, err := artifactLayer([]ocispec.Descriptor{art, art}); !errors.Is(err, ErrMalformedIndex) {
+	if _, err := artifactLayer([]ocispec.Descriptor{art, art}); !errors.Is(err, ErrMalformedCatalog) {
 		t.Errorf("ambiguous layers: %v", err)
 	}
-	if _, err := artifactLayer([]ocispec.Descriptor{other}); !errors.Is(err, ErrMalformedIndex) {
+	if _, err := artifactLayer([]ocispec.Descriptor{other}); !errors.Is(err, ErrMalformedCatalog) {
 		t.Errorf("no artifact layer: %v", err)
 	}
 	// The annotation does not override the media type, and only one layer may
@@ -103,7 +103,7 @@ func TestArtifactLayer(t *testing.T) {
 	if got, err := artifactLayer([]ocispec.Descriptor{badMarked, art}); err != nil || got.Digest != "sha256:a" {
 		t.Errorf("annotated layer of the wrong media type must be ignored: %v %v", got.Digest, err)
 	}
-	if _, err := artifactLayer([]ocispec.Descriptor{marked, marked}); !errors.Is(err, ErrMalformedIndex) {
+	if _, err := artifactLayer([]ocispec.Descriptor{marked, marked}); !errors.Is(err, ErrMalformedCatalog) {
 		t.Errorf("two marked layers: %v", err)
 	}
 }
@@ -114,7 +114,7 @@ func TestCatalog_WrongCoordinateRejected(t *testing.T) {
 	store, desc, data := packCatalog(t)
 	fetched := oci.NewFetchedIndex("openssf/other-catalog", "v1", desc, data, nil, store)
 	_, err := walkVerifiedCatalog(context.Background(), fetched, "id")
-	if !errors.Is(err, ErrMalformedIndex) || !strings.Contains(err.Error(), "osps-baseline") {
+	if !errors.Is(err, ErrMalformedCatalog) || !strings.Contains(err.Error(), "osps-baseline") {
 		t.Fatalf("expected a coordinate mismatch, got %v", err)
 	}
 }
