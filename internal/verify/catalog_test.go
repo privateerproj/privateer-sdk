@@ -20,9 +20,14 @@ const testCatalogYAML = "metadata:\n  id: osps-baseline\n  version: v1\ncontrols
 // the manifest bytes.
 func packCatalog(t *testing.T) (*memory.Store, ocispec.Descriptor, []byte) {
 	t.Helper()
+	return packCatalogYAML(t, testCatalogYAML)
+}
+
+func packCatalogYAML(t *testing.T, yaml string) (*memory.Store, ocispec.Descriptor, []byte) {
+	t.Helper()
 	store := memory.New()
 	desc, err := bundle.Pack(context.Background(), store, &bundle.Bundle{
-		Source: bundle.File{Name: "baseline.gemara.yaml", Type: "ControlCatalog", Data: []byte(testCatalogYAML)},
+		Source: bundle.File{Name: "baseline.gemara.yaml", Type: "ControlCatalog", Data: []byte(yaml)},
 	})
 	if err != nil {
 		t.Fatalf("Pack: %v", err)
@@ -111,5 +116,15 @@ func TestCatalog_WrongCoordinateRejected(t *testing.T) {
 	_, err := walkVerifiedCatalog(context.Background(), fetched, "id")
 	if !errors.Is(err, ErrMalformedIndex) || !strings.Contains(err.Error(), "osps-baseline") {
 		t.Fatalf("expected a coordinate mismatch, got %v", err)
+	}
+}
+
+// The hub coordinate id is the slug of metadata.id, so a mixed-case id such as
+// the FINOS CCC catalogs carry must verify under its slugged coordinate.
+func TestCatalog_SluggedCoordinateAccepted(t *testing.T) {
+	store, desc, data := packCatalogYAML(t, "metadata:\n  id: CCC.ObjStor.CN\n  version: v1\ncontrols: []\n")
+	fetched := oci.NewFetchedIndex("finos-ccc/ccc.objstor.cn", "v1", desc, data, nil, store)
+	if _, err := walkVerifiedCatalog(context.Background(), fetched, "id"); err != nil {
+		t.Fatalf("walk: %v", err)
 	}
 }

@@ -10,6 +10,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/privateerproj/privateer-sdk/internal/oci"
 	"github.com/privateerproj/privateer-sdk/pluginkit"
+	"github.com/revanite-io/grc-store-protocol/slug"
 )
 
 // artifactRoleAnnotation marks the layer that carries the catalog itself in a
@@ -68,14 +69,15 @@ func walkVerifiedCatalog(ctx context.Context, fetched *oci.FetchedIndex, signerI
 	}
 	// Bind the verified bytes to the requested coordinate, as the plugin walk
 	// does with its config blob. A grc.store catalog coordinate is
-	// <author>/<metadata.id>, so a validly signed catalog for some other id
-	// must not install under this one, whether or not the hub recorded a
+	// <author>/<slug(metadata.id)> (e.g. metadata.id CCC.ObjStor.CN publishes
+	// as finos-ccc/ccc.objstor.cn), so a validly signed catalog for some other
+	// id must not install under this one, whether or not the hub recorded a
 	// manifest digest to cross-check.
 	parsed, err := pluginkit.ParseCatalog(data)
 	if err != nil {
 		return nil, fmt.Errorf("%w: parse catalog layer: %v", ErrMalformedIndex, err)
 	}
-	if _, wantId, _ := strings.Cut(fetched.Coordinate, "/"); parsed.Metadata.Id != wantId {
+	if _, wantId, _ := strings.Cut(fetched.Coordinate, "/"); slug.Slugify(parsed.Metadata.Id) != wantId {
 		return nil, fmt.Errorf("%w: catalog metadata id %q != requested coordinate %q", ErrMalformedIndex, parsed.Metadata.Id, fetched.Coordinate)
 	}
 	return &VerifiedCatalog{SignerIdentity: signerIdentity, YAML: data}, nil
