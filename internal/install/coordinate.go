@@ -31,12 +31,7 @@ func parseCoordinate(arg string) (namespace, pluginId, version string, err error
 		err = fmt.Errorf("invalid namespace %q", namespace)
 		return
 	}
-	// The install tree is shared: "local" is where --local installs go and
-	// "catalogs" is the verified-catalog cache. A hub plugin in either
-	// namespace would write into those trees, and install's stat-skip would
-	// then treat its files as already verified.
-	if namespace == "local" || namespace == "catalogs" {
-		err = fmt.Errorf("namespace %q is reserved", namespace)
+	if err = checkReservedNamespace(namespace); err != nil {
 		return
 	}
 	if !validNameSegmentRegex.MatchString(pluginId) {
@@ -44,6 +39,19 @@ func parseCoordinate(arg string) (namespace, pluginId, version string, err error
 		return
 	}
 	return
+}
+
+// checkReservedNamespace rejects the namespaces that name shared install
+// trees: "local" is where --local installs go and "catalogs" is the
+// verified-catalog cache. A hub plugin in either would write into those trees,
+// and install's stat-skip would then treat its files as already verified. The
+// match ignores case because a case-insensitive filesystem (the macOS default)
+// maps Local/ onto local/.
+func checkReservedNamespace(namespace string) error {
+	if strings.EqualFold(namespace, "local") || strings.EqualFold(namespace, "catalogs") {
+		return fmt.Errorf("namespace %q is reserved", namespace)
+	}
+	return nil
 }
 
 // normalizeVersion strips a leading "v" before a digit so "v1.4.0" and "1.4.0"

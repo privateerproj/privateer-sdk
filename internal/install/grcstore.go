@@ -60,6 +60,11 @@ func FromStore(ctx context.Context, w io.Writer, arg string) error {
 // the same authenticated client as the plugin-detail lookup above — one
 // client for both hub calls.
 func pullVerifyInstall(ctx context.Context, w io.Writer, hub *oci.Client, detail *oci.PluginDetail, release *oci.PluginRelease) error {
+	// The install path is built from the hub's answer, so check the namespace
+	// it returned as well as the one the user typed.
+	if err := checkReservedNamespace(detail.Namespace); err != nil {
+		return err
+	}
 	coordinate := detail.Coordinate()
 
 	fetchedIndex, err := fetchIndex(ctx, w, hub, release, coordinate)
