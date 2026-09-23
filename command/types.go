@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 
@@ -9,6 +10,7 @@ import (
 	hcplugin "github.com/hashicorp/go-plugin"
 	"github.com/spf13/viper"
 
+	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/privateerproj/privateer-sdk/internal/manifest"
 )
 
@@ -50,7 +52,7 @@ type PluginPkg struct {
 // multiple installed versions (each at its own coordinate/version/entrypoint
 // path) resolve unambiguously by name+version.
 func (p *PluginPkg) getBinary() (binaryPath string, err error) {
-	binariesPath := viper.GetString("binaries-path")
+	binariesPath := config.GetBinariesPath()
 	m, err := manifest.Load(binariesPath)
 	if err != nil {
 		return "", fmt.Errorf("loading plugin manifest: %w", err)
@@ -74,6 +76,11 @@ func (p *PluginPkg) queueCmd() {
 		fmt.Sprintf("--loglevel=%s", viper.GetString("loglevel")),
 		fmt.Sprintf("--service=%s", p.ServiceTarget),
 	)
+	// The binaries path is usually a harness flag, not a config-file key, so
+	// hand it to the plugin through the environment (viper maps binaries-path
+	// to PVTR_BINARIES_PATH): that is where the plugin finds the catalogs
+	// `pvtr install` cached for it. Older plugins simply ignore the variable.
+	cmd.Env = append(os.Environ(), "PVTR_BINARIES_PATH="+config.GetBinariesPath())
 	p.Command = cmd
 }
 

@@ -1,12 +1,13 @@
 package pluginkit
 
 import (
-	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
+	"slices"
 	"strings"
 	"time"
 
@@ -39,8 +40,12 @@ type EvaluationOrchestrator struct {
 	License string `json:"license,omitempty" yaml:"license,omitempty"`
 	// CatalogNamespaces optionally maps a reference-catalog id to the grc.store
 	// namespace that owns it, for plugins that evaluate catalogs published by
-	// someone else (e.g. a community plugin evaluating ossf/osps-baseline).
-	// Catalogs not listed here are assumed to live under Publisher.
+	// someone else (e.g. a community plugin evaluating ossf/osps-baseline). A
+	// catalog not listed here is namespaced by its own metadata.author.id;
+	// publishing fails closed when it has neither, because filing someone
+	// else's catalog under Publisher would be a false attribution. Only the
+	// AddReferenceCatalogs path needs this; a coordinate declared with
+	// AddCatalogs already carries its namespace.
 	CatalogNamespaces map[string]string  `json:"catalog-namespaces,omitempty" yaml:"catalog-namespaces,omitempty"`
 	Payload           any                `json:"payload,omitempty" yaml:"payload,omitempty"`
 	Evaluation_Suites []*EvaluationSuite `json:"evaluation-suites" yaml:"evaluation-suites"` // EvaluationSuite is a map of evaluations to their catalog names
@@ -48,11 +53,19 @@ type EvaluationOrchestrator struct {
 	possibleSuites    []*EvaluationSuite
 	possibleControls  map[string][]*gemara.Control
 	referenceCatalogs map[string]*gemara.ControlCatalog
-	requiredVars      []string
-	config            *config.Config
-	loader            DataLoader
-	targetBuilder     TargetBuilder
-	benchmark         *BenchmarkReport
+	// catalogCoordinates are the grc.store catalogs declared with AddCatalogs, in
+	// declaration order. They are read from the install cache at Mobilize (the
+	// cache location comes from config) and keyed in referenceCatalogs by their
+	// full coordinate, so two versions of one catalog coexist.
+	catalogCoordinates []CatalogCoordinate
+	// pendingSuites are suites registered against a declared coordinate before
+	// its catalog is loaded; Mobilize materializes them after loading.
+	pendingSuites []pendingSuite
+	requiredVars  []string
+	config        *config.Config
+	loader        DataLoader
+	targetBuilder TargetBuilder
+	benchmark     *BenchmarkReport
 }
 
 // DataLoader is a function type for loading plugin data from configuration.
@@ -82,8 +95,11 @@ func (v *EvaluationOrchestrator) AddRequiredVars(vars []string) {
 	v.requiredVars = vars
 }
 
-// AddReferenceCatalogs loads reference catalogs from the embedded file system.
-func (v *EvaluationOrchestrator) AddReferenceCatalogs(dataDir string, files embed.FS) error {
+// AddReferenceCatalogs loads reference catalogs from a file system the plugin
+// carries itself (typically an embed.FS). For a catalog published on
+// grc.store, prefer AddCatalogs: `pvtr install` then fetches and verifies it
+// instead of trusting the embedded copy.
+func (v *EvaluationOrchestrator) AddReferenceCatalogs(dataDir string, files fs.FS) error {
 	if v.referenceCatalogs == nil {
 		v.referenceCatalogs = make(map[string]*gemara.ControlCatalog)
 	}
@@ -104,6 +120,99 @@ func (v *EvaluationOrchestrator) AddReferenceCatalogs(dataDir string, files embe
 		v.referenceCatalogs[catalog.Metadata.Id] = catalog
 		v.addPossibleControls(catalog)
 	}
+	return nil
+}
+
+// AddCatalogs declares the grc.store catalogs this plugin evaluates, as
+// "<namespace>/<id>@<version>" coordinates (the version is required: a plugin
+// pins what it was written against). Nothing is read here; `pvtr install`
+// fetches and verifies each catalog into the install cache, and Mobilize loads
+// it from there, so `pvtr run` stays offline. In policy.catalogs a user names
+// a suite by the full coordinate, or by the bare "<namespace>/<id>" (or the
+// catalog's own metadata id) when the plugin declares one version of it.
+func (v *EvaluationOrchestrator) AddCatalogs(coordinates ...string) error {
+	parsed := make([]CatalogCoordinate, 0, len(coordinates))
+	for _, raw := range coordinates {
+		c, err := ParseCatalogCoordinate(raw)
+		if err != nil {
+			return err
+		}
+		if c.Version == "" {
+			return fmt.Errorf("catalog coordinate %q has no version; declare <namespace>/<id>@<version>", raw)
+		}
+		if v.declaredCatalog(c.String()) != nil || slices.Contains(parsed, c) {
+			return fmt.Errorf("duplicate catalog coordinate: %s", c)
+		}
+		parsed = append(parsed, c)
+	}
+	// Append only once every coordinate has validated, so a bad one later in the
+	// call cannot leave the earlier ones half-declared.
+	v.catalogCoordinates = append(v.catalogCoordinates, parsed...)
+	return nil
+}
+
+// declaredCatalog returns the declared coordinate whose canonical form is s.
+func (v *EvaluationOrchestrator) declaredCatalog(s string) *CatalogCoordinate {
+	for i := range v.catalogCoordinates {
+		if v.catalogCoordinates[i].String() == s {
+			return &v.catalogCoordinates[i]
+		}
+	}
+	return nil
+}
+
+type pendingSuite struct {
+	coordinate CatalogCoordinate
+	loader     DataLoader
+	steps      map[string][]gemara.AssessmentStep
+}
+
+// loadDeclaredCatalogs reads every AddCatalogs coordinate from the install
+// cache and materializes the suites registered against them. It runs inside
+// Mobilize because the cache location comes from config. A missing file is an
+// error naming the fix (run `pvtr install`); nothing is fetched here.
+func (v *EvaluationOrchestrator) loadDeclaredCatalogs() error {
+	if len(v.catalogCoordinates) == 0 {
+		return nil
+	}
+	if v.referenceCatalogs == nil {
+		v.referenceCatalogs = make(map[string]*gemara.ControlCatalog)
+	}
+	binariesDir := config.GetBinariesPath()
+	for _, c := range v.catalogCoordinates {
+		key := c.String()
+		if _, loaded := v.referenceCatalogs[key]; loaded {
+			continue
+		}
+		path := CatalogCachePath(binariesDir, c)
+		data, err := os.ReadFile(path)
+		if os.IsNotExist(err) {
+			return CATALOG_NOT_INSTALLED(key, "mob15")
+		}
+		if err != nil {
+			return BAD_CATALOG(v.PluginName, fmt.Sprintf("reading %s: %s", path, err), "mob16")
+		}
+		catalog, err := ParseCatalog(data)
+		if err != nil {
+			return BAD_CATALOG(v.PluginName, fmt.Sprintf("parsing %s: %s", path, err), "mob17")
+		}
+		// The same checks AddEvaluationSuite runs on an embedded catalog. A cached
+		// catalog is signed, not necessarily populated, and a suite with no
+		// controls evaluates nothing while still reporting an outcome.
+		if len(catalog.Controls) == 0 {
+			return BAD_CATALOG(v.PluginName, fmt.Sprintf("no controls provided in %s", key), "mob18")
+		}
+		if catalog.Metadata.Id == "" {
+			return BAD_CATALOG(v.PluginName, fmt.Sprintf("no id found in catalog metadata in %s", key), "mob19")
+		}
+		v.referenceCatalogs[key] = catalog
+		v.addPossibleControls(catalog)
+	}
+	for _, p := range v.pendingSuites {
+		key := p.coordinate.String()
+		v.addEvaluationSuite(key, v.referenceCatalogs[key], p.loader, p.steps)
+	}
+	v.pendingSuites = nil
 	return nil
 }
 
@@ -138,21 +247,33 @@ func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader Dat
 		if catalog.Metadata.Id == "" {
 			return BAD_CATALOG(v.PluginName, "no id found in catalog metadata", "aos30")
 		}
-		v.addEvaluationSuite(catalog, loader, steps)
+		v.addEvaluationSuite(catalogId, catalog, loader, steps)
+		return nil
+	}
+	// A declared grc.store coordinate is not loaded until Mobilize; queue the
+	// suite, and let loadDeclaredCatalogs validate the cached catalog there.
+	if c := v.declaredCatalog(catalogId); c != nil {
+		for _, p := range v.pendingSuites {
+			if p.coordinate == *c {
+				return nil
+			}
+		}
+		v.pendingSuites = append(v.pendingSuites, pendingSuite{coordinate: *c, loader: loader, steps: steps})
 		return nil
 	}
 	return BAD_CATALOG(v.PluginName, fmt.Sprintf("no reference catalog found with id '%s'", catalogId), "aos40")
 }
 
 // AddEvaluationSuiteForAllCatalogs registers the provided steps for every
-// reference catalog that has been loaded via AddReferenceCatalogs.
+// catalog declared with AddCatalogs or loaded via AddReferenceCatalogs.
 // This allows plugin developers to define their step implementations once and
 // have them automatically applied to all catalog versions.
 func (v *EvaluationOrchestrator) AddEvaluationSuiteForAllCatalogs(loader DataLoader, steps map[string][]gemara.AssessmentStep) error {
-	if len(v.referenceCatalogs) == 0 {
-		return BAD_CATALOG(v.PluginName, "no reference catalogs loaded", "aac10")
+	ids := v.allCatalogIDs()
+	if len(ids) == 0 {
+		return BAD_CATALOG(v.PluginName, "no catalogs declared or loaded", "aac10")
 	}
-	for catalogId := range v.referenceCatalogs {
+	for _, catalogId := range ids {
 		if err := v.AddEvaluationSuite(catalogId, loader, steps); err != nil {
 			return err
 		}
@@ -160,28 +281,42 @@ func (v *EvaluationOrchestrator) AddEvaluationSuiteForAllCatalogs(loader DataLoa
 	return nil
 }
 
-func (v *EvaluationOrchestrator) addEvaluationSuite(catalog *gemara.ControlCatalog, loader DataLoader, steps map[string][]gemara.AssessmentStep) {
+// allCatalogIDs lists every suite key a plugin can register against: loaded
+// reference catalog ids in no particular order (they come from a map), then
+// declared coordinates in declaration order. Nothing observable depends on that
+// order — Mobilize runs suites in policy.catalogs order — except the "available"
+// list in the no-match warning and error.
+func (v *EvaluationOrchestrator) allCatalogIDs() []string {
+	ids := make([]string, 0, len(v.referenceCatalogs)+len(v.catalogCoordinates))
+	for id := range v.referenceCatalogs {
+		ids = append(ids, id)
+	}
+	for _, c := range v.catalogCoordinates {
+		if _, loaded := v.referenceCatalogs[c.String()]; !loaded {
+			ids = append(ids, c.String())
+		}
+	}
+	return ids
+}
+
+// addEvaluationSuite registers a suite under suiteId: the catalog's metadata
+// id for an embedded catalog, or the full coordinate for a declared one (two
+// versions of the same catalog share a metadata id, so the id alone cannot
+// key them).
+func (v *EvaluationOrchestrator) addEvaluationSuite(suiteId string, catalog *gemara.ControlCatalog, loader DataLoader, steps map[string][]gemara.AssessmentStep) {
 	for _, existing := range v.possibleSuites {
-		if existing.CatalogId == catalog.Metadata.Id {
+		if existing.CatalogId == suiteId {
 			return
 		}
 	}
 
-	importedControls := getImportedControls(catalog, v.referenceCatalogs)
-	suiteCatalog := catalog
-	if len(importedControls) > 0 {
-		// Copy-on-import: the suite evaluates its own + imported controls, but the
-		// shared referenceCatalogs entry must stay pristine — PublishManifest reads
-		// it, and the published requirement_ids must list only the catalog's OWN
-		// control ids, deterministically, regardless of suite registration order.
-		combined := *catalog
-		combined.Controls = append(append([]gemara.Control{}, catalog.Controls...), importedControls...)
-		suiteCatalog = &combined
-	}
-
+	// Imports are resolved in Mobilize (resolveImports), not here: a declared
+	// catalog is not loaded until then, and an embedded catalog may import from
+	// one.
 	suite := EvaluationSuite{
-		CatalogId: catalog.Metadata.Id,
-		catalog:   suiteCatalog,
+		CatalogId: suiteId,
+		catalog:   catalog,
+		source:    catalog,
 		steps:     steps,
 		config:    v.config,
 	}
@@ -194,15 +329,42 @@ func (v *EvaluationOrchestrator) addEvaluationSuite(catalog *gemara.ControlCatal
 	v.possibleSuites = append(v.possibleSuites, &suite)
 }
 
-// getImportedControls returns controls from imported catalogs that are listed in the primary catalog's imports.
-func getImportedControls(catalog *gemara.ControlCatalog, referenceCatalogs map[string]*gemara.ControlCatalog) []gemara.Control {
-	if len(catalog.Imports) == 0 {
-		return nil
+// resolveImports rebuilds the suite's catalog from its registered source plus
+// the controls it imports. Copy-on-import: the shared referenceCatalogs entry
+// stays pristine, because PublishManifest reads it and the published
+// requirement_ids must list only the catalog's OWN ids. Rebuilding from
+// source keeps repeated Mobilize calls from stacking imports.
+func (v *EvaluationOrchestrator) resolveImports(suite *EvaluationSuite) {
+	if suite.source == nil {
+		return
 	}
-	var result []gemara.Control
+	imported, unmatched := getImportedControls(suite.source, v.referenceCatalogs)
+	if len(unmatched) > 0 {
+		v.config.Logger.Warn("catalog imports reference no loaded catalog; those controls will not be evaluated", "catalog", suite.CatalogId, "unmatched", unmatched)
+	}
+	suite.catalog = suite.source
+	if len(imported) > 0 {
+		combined := *suite.source
+		combined.Controls = append(append([]gemara.Control{}, suite.source.Controls...), imported...)
+		suite.catalog = &combined
+	}
+}
+
+// getImportedControls returns controls from imported catalogs that are listed
+// in the primary catalog's imports, plus the reference ids that matched no
+// loaded catalog. An import names a catalog by its metadata id; embedded
+// catalogs are keyed by that id, declared ones by their coordinate, so a
+// declared catalog is found by scanning values. Two declared versions of the
+// same catalog share a metadata id and cannot be told apart, so that import
+// counts as unmatched rather than silently picking one.
+func getImportedControls(catalog *gemara.ControlCatalog, referenceCatalogs map[string]*gemara.ControlCatalog) (result []gemara.Control, unmatched []string) {
+	if len(catalog.Imports) == 0 {
+		return nil, nil
+	}
 	for _, importEntry := range catalog.Imports {
-		refCatalog, ok := referenceCatalogs[importEntry.ReferenceId]
-		if !ok {
+		refCatalog := findReferenceCatalog(referenceCatalogs, importEntry.ReferenceId)
+		if refCatalog == nil {
+			unmatched = append(unmatched, importEntry.ReferenceId)
 			continue
 		}
 		for _, mapping := range importEntry.Entries {
@@ -215,7 +377,24 @@ func getImportedControls(catalog *gemara.ControlCatalog, referenceCatalogs map[s
 			}
 		}
 	}
-	return result
+	return result, unmatched
+}
+
+func findReferenceCatalog(referenceCatalogs map[string]*gemara.ControlCatalog, id string) *gemara.ControlCatalog {
+	if c, ok := referenceCatalogs[id]; ok {
+		return c
+	}
+	var found *gemara.ControlCatalog
+	for _, c := range referenceCatalogs {
+		if c.Metadata.Id != id {
+			continue
+		}
+		if found != nil {
+			return nil // ambiguous
+		}
+		found = c
+	}
+	return found
 }
 
 // Mobilize initializes the orchestrator and executes all evaluation suites.
@@ -228,6 +407,13 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 
 	if len(v.config.Policy.ControlCatalogs) == 0 {
 		return BAD_CONFIG(v.config.Error, "mob20")
+	}
+
+	if err := v.loadDeclaredCatalogs(); err != nil {
+		return err
+	}
+	for _, suite := range v.possibleSuites {
+		v.resolveImports(suite)
 	}
 
 	// Init before loadPayload so retrieval is timed; nil when off.
@@ -267,31 +453,41 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 		availableCatalogIDs = append(availableCatalogIDs, suite.CatalogId)
 	}
 
+	ran := map[*EvaluationSuite]bool{}
 	for _, catalog := range v.config.Policy.ControlCatalogs {
-		matched := false
-		for _, suite := range v.possibleSuites {
-			if suite.CatalogId == catalog {
-				matched = true
-				err := suite.Evaluate(v.ServiceName)
-				if err != nil {
-					v.config.Logger.Error(err.Error())
-					// A suite that could not run is not a pass. Evaluate leaves Result at
-					// NotRun when it fails before the assessment loop, and the error is
-					// logged rather than returned, so without this the whole run exits
-					// TestPass. Only fill an unset Result: a late failure (corrupted state)
-					// happens after the loop, and that aggregate is the more specific answer.
-					if suite.Result == gemara.NotRun {
-						suite.Result = gemara.Unknown
-					}
-				}
-				v.stampEvaluationLog(suite)
-				v.Evaluation_Suites = append(v.Evaluation_Suites, suite)
-				break
+		matches := v.matchSuites(catalog)
+		if len(matches) == 0 {
+			v.config.Logger.Warn("requested catalog did not match any available suite", "requested", catalog, "available", availableCatalogIDs)
+			continue
+		}
+		if len(matches) > 1 {
+			ids := make([]string, len(matches))
+			for i, s := range matches {
+				ids[i] = s.CatalogId
+			}
+			v.config.Logger.Warn("requested catalog is ambiguous; name the full <namespace>/<id>@<version> coordinate", "requested", catalog, "matched", ids)
+			continue
+		}
+		suite := matches[0]
+		if ran[suite] {
+			v.config.Logger.Warn("requested catalog names a suite that already ran under another entry; skipping", "requested", catalog, "suite", suite.CatalogId)
+			continue
+		}
+		ran[suite] = true
+		err := suite.Evaluate(v.ServiceName)
+		if err != nil {
+			v.config.Logger.Error(err.Error())
+			// A suite that could not run is not a pass. Evaluate leaves Result at
+			// NotRun when it fails before the assessment loop, and the error is
+			// logged rather than returned, so without this the whole run exits
+			// TestPass. Only fill an unset Result: a late failure (corrupted state)
+			// happens after the loop, and that aggregate is the more specific answer.
+			if suite.Result == gemara.NotRun {
+				suite.Result = gemara.Unknown
 			}
 		}
-		if !matched {
-			v.config.Logger.Warn("requested catalog did not match any available suite", "requested", catalog, "available", availableCatalogIDs)
-		}
+		v.stampEvaluationLog(suite)
+		v.Evaluation_Suites = append(v.Evaluation_Suites, suite)
 	}
 
 	if len(v.Evaluation_Suites) == 0 {
@@ -310,6 +506,24 @@ func (v *EvaluationOrchestrator) Mobilize() error {
 		return err
 	}
 	return benchErr
+}
+
+// matchSuites resolves a policy.catalogs entry to registered suites. An exact
+// suite id (a catalog id, or a full <namespace>/<id>@<version> coordinate) is
+// the single match. Otherwise a bare <namespace>/<id> coordinate or a
+// catalog's own metadata id matches every declared version of that catalog,
+// and Mobilize treats more than one as ambiguous.
+func (v *EvaluationOrchestrator) matchSuites(requested string) []*EvaluationSuite {
+	var matches []*EvaluationSuite
+	for _, suite := range v.possibleSuites {
+		if suite.CatalogId == requested {
+			return []*EvaluationSuite{suite}
+		}
+		if strings.HasPrefix(suite.CatalogId, requested+"@") || (suite.catalog != nil && suite.catalog.Metadata.Id == requested) {
+			matches = append(matches, suite)
+		}
+	}
+	return matches
 }
 
 // stampEvaluationLog populates identity, provenance, and outcome on a suite's

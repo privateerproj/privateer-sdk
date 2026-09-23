@@ -26,6 +26,10 @@ func TestParseCoordinate(t *testing.T) {
 		{"empty id", "ns/", "", "", true},
 		{"v-prefix stripped", "ossf/pvtr-github-repo@v1.4.0", "ossf/pvtr-github-repo", "1.4.0", false},
 		{"v-prefix non-semver preserved", "ossf/pvtr-github-repo@vnext", "ossf/pvtr-github-repo", "vnext", false},
+		// "local" is the --local install tree and "catalogs" the verified-catalog
+		// cache; a hub plugin in either namespace would write into them.
+		{"reserved namespace local", "local/pvtr-github-repo", "", "", true},
+		{"reserved namespace catalogs", "catalogs/pvtr-github-repo", "", "", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -150,12 +150,12 @@ func missingPluginsMsg(missing []*PluginPkg) string {
 // migrates to the command/harness import path.
 func Run(logger hclog.Logger, getPlugins func() []*PluginPkg) (exitCode int) {
 	logger.Trace(fmt.Sprintf(
-		"Using bin: %s", viper.GetString("binaries-path")))
+		"Using bin: %s", config.GetBinariesPath()))
 
 	toRun, earlyExit, errMsg := planRun(getPlugins(), config.TargetName())
 	switch earlyExit {
 	case NoTests:
-		logger.Error(fmt.Sprintf("no plugins were requested in config: %s", viper.GetString("binaries-path")))
+		logger.Error(fmt.Sprintf("no plugins were requested in config: %s", config.GetBinariesPath()))
 		return NoTests
 	case BadUsage:
 		logger.Error(errMsg)

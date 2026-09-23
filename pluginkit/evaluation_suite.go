@@ -31,7 +31,8 @@ type EvaluationSuite struct {
 	payload       interface{}                        // payload is the data to be evaluated
 	loader        DataLoader                         // loader is the function to load the payload
 	changeManager *ChangeManager                     // changes is a list of changes made during the evaluation
-	catalog       *gemara.ControlCatalog             // The Catalog this evaluation suite references
+	catalog       *gemara.ControlCatalog             // The Catalog this evaluation suite evaluates: source plus resolved imports
+	source        *gemara.ControlCatalog             // The registered catalog, untouched; Mobilize rebuilds catalog from it
 	steps         map[string][]gemara.AssessmentStep // steps is a map of control IDs to their assessment steps
 
 	evalSuccesses int // successes is the number of successful evaluations

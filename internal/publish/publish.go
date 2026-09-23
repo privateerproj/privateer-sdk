@@ -15,6 +15,7 @@ import (
 	"github.com/gemaraproj/grc-store-clientkit/hub"
 	"github.com/gemaraproj/grc-store-clientkit/keyless"
 	"github.com/privateerproj/privateer-sdk/internal/auth"
+	"github.com/privateerproj/privateer-sdk/internal/catalog"
 	"github.com/privateerproj/privateer-sdk/internal/oci"
 	"github.com/privateerproj/privateer-sdk/pluginkit"
 	"github.com/revanite-io/grc-store-protocol/pluginspec"
@@ -37,6 +38,9 @@ type Params struct {
 	// binary and run its publish-manifest subcommand); tests inject a stub so
 	// they need no real plugin binary for the host platform.
 	resolveManifest func(ctx context.Context, bins []oci.PlatformBinary) (pluginkit.PublishManifest, error)
+	// fetchCatalog overrides how a declared catalog is read. Nil pulls and
+	// verifies it from grc.store (catalog.Fetch); tests inject a stub.
+	fetchCatalog func(ctx context.Context, c pluginkit.CatalogCoordinate) ([]byte, error)
 }
 
 // Publish runs the complete producer flow. The plugin coordinate and the
@@ -94,6 +98,28 @@ func Publish(ctx context.Context, w io.Writer, p Params) error {
 			CatalogVersion: e.CatalogVersion,
 			RequirementIDs: e.RequirementIDs,
 		}
+	}
+	// Catalogs declared by coordinate are linked from the catalog itself: fetch
+	// and verify each from grc.store, and keep only the requirement ids the
+	// plugin has steps for. A declared catalog the hub cannot serve is fatal —
+	// the plugin would be published claiming a catalog nobody can install.
+	if len(manifest.Catalogs) > 0 {
+		fetch := p.fetchCatalog
+		if fetch == nil {
+			hub := oci.NewClient()
+			fetch = func(ctx context.Context, c pluginkit.CatalogCoordinate) ([]byte, error) {
+				v, err := catalog.Fetch(ctx, w, hub, c)
+				if err != nil {
+					return nil, err
+				}
+				return v.YAML, nil
+			}
+		}
+		declared, err := evaluatesFromCatalogs(ctx, fetch, manifest.Catalogs, manifest.Steps)
+		if err != nil {
+			return err
+		}
+		evaluates = append(evaluates, declared...)
 	}
 
 	assembleParams := oci.AssembleParams{

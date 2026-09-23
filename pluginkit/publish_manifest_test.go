@@ -94,7 +94,7 @@ func TestPublishManifest_FailsClosed(t *testing.T) {
 	})
 	t.Run("no reference catalogs", func(t *testing.T) {
 		orch := &EvaluationOrchestrator{Publisher: "acme", PluginName: "hello", License: "Apache-2.0"}
-		if _, err := orch.PublishManifest(); err == nil || !strings.Contains(err.Error(), "no reference catalogs") {
+		if _, err := orch.PublishManifest(); err == nil || !strings.Contains(err.Error(), "no catalogs") {
 			t.Fatalf("expected a no-catalogs error, got %v", err)
 		}
 	})
@@ -199,9 +199,10 @@ func TestPublishManifest_CopyOnImport(t *testing.T) {
 		t.Fatalf("PublishManifest after AddEvaluationSuite: %v", err)
 	}
 
-	// The two manifests must be identical — referenceCatalogs was not mutated.
-	if !reflect.DeepEqual(before, after) {
-		t.Errorf("PublishManifest changed after AddEvaluationSuite:\nbefore=%+v\nafter=%+v", before, after)
+	// The linkage must be identical — referenceCatalogs was not mutated. (Steps
+	// legitimately grows: the suite registered step keys.)
+	if !reflect.DeepEqual(before.Evaluates, after.Evaluates) {
+		t.Errorf("PublishManifest evaluates changed after AddEvaluationSuite:\nbefore=%+v\nafter=%+v", before.Evaluates, after.Evaluates)
 	}
 
 	// The importing catalog's RequirementIDs must contain only its OWN control's
@@ -293,9 +294,10 @@ func TestPublishManifest_CatalogNamespaces(t *testing.T) {
 // TestAddEvaluationSuite_ImportedControlsStillEvaluated verifies that the
 // copy-on-import change does not change evaluation behavior: a suite for a
 // catalog that imports controls from another catalog still evaluates the
-// imported controls.
+// imported controls once Mobilize has resolved them.
 func TestAddEvaluationSuite_ImportedControlsStillEvaluated(t *testing.T) {
 	orch := orchestratorWithImportingCatalog()
+	orch.config = setBasicConfig()
 
 	// Register steps covering both the own control and the imported one.
 	steps := map[string][]gemara.AssessmentStep{
@@ -310,6 +312,7 @@ func TestAddEvaluationSuite_ImportedControlsStillEvaluated(t *testing.T) {
 		t.Fatalf("expected 1 suite, got %d", len(orch.possibleSuites))
 	}
 	suite := orch.possibleSuites[0]
+	orch.resolveImports(suite)
 
 	// The suite's catalog must contain both the own control and the imported one.
 	controlIDs := make(map[string]bool)

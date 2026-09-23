@@ -1,23 +1,16 @@
 package publish
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"os/exec"
-	"path/filepath"
+	"slices"
 	"strings"
-	"time"
 
+	"github.com/privateerproj/privateer-sdk/internal/install"
 	"github.com/privateerproj/privateer-sdk/internal/oci"
 	"github.com/privateerproj/privateer-sdk/pluginkit"
+	"github.com/revanite-io/grc-store-protocol/pluginspec"
 )
-
-// manifestExecTimeout bounds running the plugin's publish-manifest subcommand.
-// It is the publisher's own freshly-built binary, so this only guards against a
-// hung process, not a hostile one.
-const manifestExecTimeout = 30 * time.Second
 
 // execPublishManifest selects the host-platform binary from the build and runs
 // its publish-manifest subcommand, decoding the JSON stdout. The binary is the
@@ -31,26 +24,7 @@ func execPublishManifest(ctx context.Context, bins []oci.PlatformBinary) (plugin
 	if err != nil {
 		return zero, fmt.Errorf("selecting a host binary to run: %w", err)
 	}
-	hostBinaryPath := host.Path
-
-	ctx, cancel := context.WithTimeout(ctx, manifestExecTimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, hostBinaryPath, pluginkit.PublishManifestCommand)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		if detail := strings.TrimSpace(stderr.String()); detail != "" {
-			return zero, fmt.Errorf("%s %s: %w: %s", filepath.Base(hostBinaryPath), pluginkit.PublishManifestCommand, err, detail)
-		}
-		return zero, fmt.Errorf("%s %s: %w", filepath.Base(hostBinaryPath), pluginkit.PublishManifestCommand, err)
-	}
-	var m pluginkit.PublishManifest
-	if err := json.Unmarshal(bytes.TrimSpace(stdout.Bytes()), &m); err != nil {
-		return zero, fmt.Errorf("decoding publish manifest JSON: %w", err)
-	}
-	return m, nil
+	return install.RunPublishManifest(ctx, host.Path)
 }
 
 // parseRegistryOverride splits a --registry value that MUST carry a scheme into
@@ -94,4 +68,45 @@ func uiBase(advertised, hubURL string) string {
 	}
 	rest = strings.TrimPrefix(rest, "hub.")
 	return scheme + "://" + rest
+}
+
+// evaluatesFromCatalogs builds one evaluates entry per declared catalog
+// coordinate: the catalog's assessment-requirement ids intersected with the
+// plugin's step keys, sorted. A catalog no step matches is an error: the
+// plugin's steps and its catalogs disagree, which must be fixed in code rather
+// than published.
+func evaluatesFromCatalogs(ctx context.Context, fetch func(context.Context, pluginkit.CatalogCoordinate) ([]byte, error), coordinates, steps []string) ([]pluginspec.Evaluate, error) {
+	out := make([]pluginspec.Evaluate, 0, len(coordinates))
+	for _, raw := range coordinates {
+		c, err := pluginkit.ParseCatalogCoordinate(raw)
+		if err != nil {
+			return nil, err
+		}
+		data, err := fetch(ctx, c)
+		if err != nil {
+			return nil, fmt.Errorf("reading declared catalog %s: %w", c, err)
+		}
+		cat, err := pluginkit.ParseCatalog(data)
+		if err != nil {
+			return nil, fmt.Errorf("parsing declared catalog %s: %w", c, err)
+		}
+		inCatalog := map[string]bool{}
+		for _, ctrl := range cat.Controls {
+			for _, req := range ctrl.AssessmentRequirements {
+				inCatalog[req.Id] = true
+			}
+		}
+		var reqs []string
+		for _, s := range steps {
+			if inCatalog[s] {
+				reqs = append(reqs, s)
+			}
+		}
+		if len(reqs) == 0 {
+			return nil, fmt.Errorf("no evaluation step matches any assessment requirement in declared catalog %s", c)
+		}
+		slices.Sort(reqs)
+		out = append(out, pluginspec.Evaluate{Catalog: c.Repository(), CatalogVersion: c.Version, RequirementIDs: reqs})
+	}
+	return out, nil
 }

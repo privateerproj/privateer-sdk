@@ -62,16 +62,25 @@ func (d *PluginDetail) ResolveRelease(requestedVersion string) (*PluginRelease, 
 // ErrPluginNotFound is returned when the hub has no such plugin coordinate.
 var ErrPluginNotFound = fmt.Errorf("plugin not found on grc.store")
 
+// getJSONOr404 decodes an anonymous hub GET into dst, mapping a 404 onto
+// notFound so a caller gets a typed "no such coordinate" rather than a raw
+// status error. Both detail endpoints share it so the mapping cannot drift
+// apart between plugins and catalogs.
+func (c *Client) getJSONOr404(ctx context.Context, path string, dst any, notFound error) error {
+	err := c.getJSON(ctx, path, dst)
+	var statusErr *httpStatusError
+	if errors.As(err, &statusErr) && statusErr.status == http.StatusNotFound {
+		return notFound
+	}
+	return err
+}
+
 // GetPluginDetails fetches GET /v1/plugins/<ns>/<id> from the configured hub
 // (anonymous). A 404 yields ErrPluginNotFound (a clear "no such plugin").
 func (c *Client) GetPluginDetails(ctx context.Context, namespace, pluginID string) (*PluginDetail, error) {
 	var d PluginDetail
-	err := c.getJSON(ctx, fmt.Sprintf("/v1/plugins/%s/%s", namespace, pluginID), &d)
-	if err != nil {
-		var statusErr *httpStatusError
-		if errors.As(err, &statusErr) && statusErr.status == http.StatusNotFound {
-			return nil, fmt.Errorf("%w: %s/%s", ErrPluginNotFound, namespace, pluginID)
-		}
+	notFound := fmt.Errorf("%w: %s/%s", ErrPluginNotFound, namespace, pluginID)
+	if err := c.getJSONOr404(ctx, fmt.Sprintf("/v1/plugins/%s/%s", namespace, pluginID), &d, notFound); err != nil {
 		return nil, err
 	}
 	return &d, nil

@@ -2,16 +2,28 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
-// GetBinariesPath returns the path to the directory where plugins are installed.
-// It reads from the same viper state as NewConfig (e.g. after command.ReadConfig()).
+// GetBinariesPath returns the path to the directory where plugins (and the
+// catalogs they declare) are installed. It reads from the same viper state as
+// NewConfig (e.g. after command.ReadConfig()); when nothing is configured it
+// falls back to ~/.privateer/bin, the harness default, so a plugin run on its
+// own (e.g. its debug subcommand) looks where `pvtr install` wrote.
 func GetBinariesPath() string {
-	return viper.GetString("binaries-path")
+	if p := viper.GetString("binaries-path"); p != "" {
+		return p
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join(".", ".privateer", "bin")
+	}
+	return filepath.Join(home, ".privateer", "bin")
 }
 
 // AutoInstall reports whether runtime autoinstall is enabled (the "autoinstall"

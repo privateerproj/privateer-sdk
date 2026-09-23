@@ -9,12 +9,14 @@ import (
 	"runtime"
 	"strings"
 
-	ckhub "github.com/gemaraproj/grc-store-clientkit/hub"
 	"github.com/privateerproj/privateer-sdk/config"
+	"github.com/privateerproj/privateer-sdk/internal/catalog"
 	"github.com/privateerproj/privateer-sdk/internal/manifest"
 	"github.com/privateerproj/privateer-sdk/internal/oci"
 	"github.com/privateerproj/privateer-sdk/internal/verify"
+	"github.com/privateerproj/privateer-sdk/pluginkit"
 	"github.com/privateerproj/privateer-sdk/utils"
+	"github.com/revanite-io/grc-store-protocol/pluginspec"
 )
 
 // FromStore resolves a plugin DIRECTLY against grc.store (the single source of
@@ -163,18 +165,35 @@ func pullVerifyInstall(ctx context.Context, w io.Writer, hub *oci.Client, detail
 	}
 
 	_, _ = fmt.Fprintf(w, "Successfully installed %s:%s (signed by %s)\n", coordinate, verified.Version, verified.SignerIdentity)
+
+	// The signed config says which catalogs the plugin evaluates; cache them so
+	// `pvtr run` can load them offline. Nothing here executes the binary.
+	if err := catalog.Install(ctx, w, hub, destDir, catalogCoordinates(w, verified.Evaluates), true); err != nil {
+		return fmt.Errorf("installing catalogs for %s:%s: %w", coordinate, verified.Version, err)
+	}
 	return nil
 }
 
-func fetchIndex(ctx context.Context, w io.Writer, hub *oci.Client, release *oci.PluginRelease, coordinate string) (index *oci.FetchedIndex, err error) {
-	remote, err := ckhub.Discover(ctx, hub.BaseURL())
-	if err != nil {
-		err = fmt.Errorf("hub discovery: %w", err)
-		return
+// catalogCoordinates turns the signed evaluates linkage into catalog
+// coordinates to install. An entry that is not a valid coordinate is reported
+// on w and skipped: it can only come from an older plugin whose embedded
+// catalog produced a shape the hub never published.
+func catalogCoordinates(w io.Writer, evaluates []pluginspec.Evaluate) []pluginkit.CatalogCoordinate {
+	var coords []pluginkit.CatalogCoordinate
+	for _, e := range evaluates {
+		c, err := pluginkit.ParseCatalogCoordinate(e.Catalog + "@" + e.CatalogVersion)
+		if err != nil || c.Version == "" {
+			_, _ = fmt.Fprintf(w, "Warning: evaluates entry %s@%s is not a grc.store catalog coordinate; skipping\n", e.Catalog, e.CatalogVersion)
+			continue
+		}
+		coords = append(coords, c)
 	}
-	host, plainHTTP, err := ckhub.Registry(remote)
+	return coords
+}
+
+func fetchIndex(ctx context.Context, w io.Writer, hub *oci.Client, release *oci.PluginRelease, coordinate string) (index *oci.FetchedIndex, err error) {
+	host, plainHTTP, err := hub.Registry(ctx)
 	if err != nil {
-		err = fmt.Errorf("resolving registry host: %w", err)
 		return
 	}
 

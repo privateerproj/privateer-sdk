@@ -53,3 +53,19 @@ func TestGetBinary_ResolvesViaManifest(t *testing.T) {
 		t.Error("expected error for unknown plugin")
 	}
 }
+
+func TestQueueCmd_PassesBinariesPathToPlugin(t *testing.T) {
+	viper.Set("binaries-path", "/opt/pvtr/bin")
+	t.Cleanup(func() { viper.Set("binaries-path", "") })
+	p := &PluginPkg{Path: "/bin/true", ServiceTarget: "svc"}
+	p.queueCmd()
+	found := false
+	for _, kv := range p.Command.Env {
+		if kv == "PVTR_BINARIES_PATH=/opt/pvtr/bin" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("plugin env lacks PVTR_BINARIES_PATH: %v", p.Command.Env)
+	}
+}
