@@ -162,7 +162,7 @@ func (v *EvaluationOrchestrator) PublishManifest() (PublishManifest, error) {
 }
 
 // stepKeys returns the sorted, deduplicated assessment-requirement ids across
-// every registered and pending suite.
+// every registered suite.
 func (v *EvaluationOrchestrator) stepKeys() []string {
 	seen := map[string]bool{}
 	var keys []string
@@ -176,9 +176,6 @@ func (v *EvaluationOrchestrator) stepKeys() []string {
 	}
 	for _, s := range v.possibleSuites {
 		add(s.steps)
-	}
-	for _, p := range v.pendingSuites {
-		add(p.steps)
 	}
 	slices.Sort(keys)
 	return keys

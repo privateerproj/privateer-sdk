@@ -30,6 +30,8 @@ func TestParseCoordinate(t *testing.T) {
 		// cache; a hub plugin in either namespace would write into them.
 		{"reserved namespace local", "local/pvtr-github-repo", "", "", true},
 		{"reserved namespace catalogs", "catalogs/pvtr-github-repo", "", "", true},
+		// A case-insensitive filesystem (the macOS default) maps Local/ onto local/.
+		{"reserved namespace any case", "Local/pvtr-github-repo", "", "", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

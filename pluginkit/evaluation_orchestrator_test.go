@@ -539,15 +539,6 @@ func BenchmarkGetImportedControls(b *testing.B) {
 	}
 }
 
-func BenchmarkAddPossibleControls(b *testing.B) {
-	catalog := getTestCatalogWithRequirements()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		orchestrator := &EvaluationOrchestrator{}
-		orchestrator.addPossibleControls(catalog)
-	}
-}
-
 func BenchmarkGetPluginCatalogs(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, err := getPluginCatalogs("catalog-test-data/valid", testDataFS)

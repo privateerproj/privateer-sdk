@@ -120,3 +120,33 @@ func TestFromStore_VersionPin(t *testing.T) {
 		t.Error("a bad version pin must not reach pull")
 	}
 }
+
+// The install path comes from the hub's answer, not the user's argument, so a
+// hub that answers with a reserved namespace is refused before any pull.
+func TestFromStore_HubReservedNamespaceRejected(t *testing.T) {
+	pullHit := false
+	mux := http.NewServeMux()
+	var srv *httptest.Server
+	mux.HandleFunc("/.well-known/grc-store-configuration", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprintf(w, `{"registry_url":%q,"hub_url":%q,"api_version":"v1"}`, srv.URL, srv.URL)
+	})
+	mux.HandleFunc("/v1/plugins/", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"namespace":"catalogs","plugin_id":"hello","latest_version":"0.1.0",` +
+			`"releases":[{"version":"0.1.0","index_digest":"sha256:aa","signed":true}]}`))
+	})
+	mux.HandleFunc("/v2/", func(w http.ResponseWriter, _ *http.Request) {
+		pullHit = true
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+	srv = httptest.NewServer(mux)
+	defer srv.Close()
+	t.Setenv("PVTR_HUB_URL", srv.URL)
+
+	err := FromStore(context.Background(), io.Discard, "acme/hello")
+	if err == nil || !strings.Contains(err.Error(), "reserved") {
+		t.Fatalf("expected a reserved-namespace error, got %v", err)
+	}
+	if pullHit {
+		t.Error("must not pull a plugin whose hub namespace is reserved")
+	}
+}
