@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/gemaraproj/go-gemara"
 	"github.com/gemaraproj/go-gemara/bundle"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/privateerproj/privateer-sdk/internal/oci"
@@ -19,11 +20,13 @@ import (
 const artifactRoleAnnotation = "org.gemara.artifact.role"
 
 // VerifiedCatalog is the trusted result of verifying a catalog pulled from
-// grc.store: the YAML bytes to cache and the signer to report. The bytes
-// come from the digest-checked layer of the signed manifest.
+// grc.store: the YAML bytes to cache, the catalog parsed from them, and the
+// signer to report. The bytes come from the digest-checked layer of the signed
+// manifest.
 type VerifiedCatalog struct {
 	SignerIdentity string // canonical keyless identity of the signer
 	YAML           []byte
+	Catalog        *gemara.ControlCatalog
 }
 
 // Catalog verifies a fetched Gemara catalog manifest: the signature and signer
@@ -80,7 +83,7 @@ func walkVerifiedCatalog(ctx context.Context, fetched *oci.FetchedIndex, signerI
 	if _, wantId, _ := strings.Cut(fetched.Coordinate, "/"); slug.Slugify(parsed.Metadata.Id) != wantId {
 		return nil, fmt.Errorf("%w: catalog metadata id %q != requested coordinate %q", ErrMalformedCatalog, parsed.Metadata.Id, fetched.Coordinate)
 	}
-	return &VerifiedCatalog{SignerIdentity: signerIdentity, YAML: data}, nil
+	return &VerifiedCatalog{SignerIdentity: signerIdentity, YAML: data, Catalog: parsed}, nil
 }
 
 // artifactLayer picks the layer carrying the catalog, with the same rules as
