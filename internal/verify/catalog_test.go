@@ -52,6 +52,9 @@ func TestCatalog_WalkHappyPath(t *testing.T) {
 	if vc.SignerIdentity != "keyless:x#y" {
 		t.Errorf("signer = %q", vc.SignerIdentity)
 	}
+	if vc.Catalog == nil || vc.Catalog.Metadata.Id != "osps-baseline" {
+		t.Errorf("parsed catalog = %+v", vc.Catalog)
+	}
 }
 
 func TestCatalog_TamperedLayerRejected(t *testing.T) {

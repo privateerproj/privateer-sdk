@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/privateerproj/privateer-sdk/internal/verify"
 	"github.com/privateerproj/privateer-sdk/pluginkit"
 )
 
@@ -14,17 +15,23 @@ const (
 	catalogV1 = "metadata:\n  id: osps-baseline\ncontrols:\n  - id: C1\n    assessment-requirements:\n      - id: R-1\n"
 )
 
-func stubCatalogs(m map[string]string) func(context.Context, pluginkit.CatalogCoordinate) ([]byte, error) {
-	return func(_ context.Context, c pluginkit.CatalogCoordinate) ([]byte, error) {
-		if y, ok := m[c.String()]; ok {
-			return []byte(y), nil
-		}
+// stubCatalogs is a catalog.Source serving parsed catalogs keyed by coordinate.
+type stubCatalogs map[string]string
+
+func (m stubCatalogs) Fetch(_ context.Context, c pluginkit.CatalogCoordinate) (*verify.VerifiedCatalog, error) {
+	y, ok := m[c.String()]
+	if !ok {
 		return nil, errors.New("not published")
 	}
+	cat, err := pluginkit.ParseCatalog([]byte(y))
+	if err != nil {
+		return nil, err
+	}
+	return &verify.VerifiedCatalog{YAML: []byte(y), Catalog: cat}, nil
 }
 
 func TestEvaluatesFromCatalogs_IntersectsStepsPerCatalog(t *testing.T) {
-	fetch := stubCatalogs(map[string]string{"openssf/osps-baseline@v2": catalogV2, "openssf/osps-baseline@v1": catalogV1})
+	fetch := stubCatalogs{"openssf/osps-baseline@v2": catalogV2, "openssf/osps-baseline@v1": catalogV1}
 	got, err := evaluatesFromCatalogs(context.Background(), fetch, []string{"openssf/osps-baseline@v2", "openssf/osps-baseline@v1"}, []string{"R-2", "R-1"})
 	if err != nil {
 		t.Fatal(err)
@@ -39,7 +46,7 @@ func TestEvaluatesFromCatalogs_IntersectsStepsPerCatalog(t *testing.T) {
 }
 
 func TestEvaluatesFromCatalogs_FailsClosed(t *testing.T) {
-	fetch := stubCatalogs(map[string]string{"openssf/osps-baseline@v1": catalogV1})
+	fetch := stubCatalogs{"openssf/osps-baseline@v1": catalogV1}
 	cases := map[string]struct {
 		coords, steps []string
 		wantErr       string

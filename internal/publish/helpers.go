@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/privateerproj/privateer-sdk/internal/catalog"
 	"github.com/privateerproj/privateer-sdk/internal/install"
 	"github.com/privateerproj/privateer-sdk/internal/oci"
 	"github.com/privateerproj/privateer-sdk/pluginkit"
@@ -75,23 +76,19 @@ func uiBase(advertised, hubURL string) string {
 // plugin's step keys, sorted. A catalog no step matches is an error: the
 // plugin's steps and its catalogs disagree, which must be fixed in code rather
 // than published.
-func evaluatesFromCatalogs(ctx context.Context, fetch func(context.Context, pluginkit.CatalogCoordinate) ([]byte, error), coordinates, steps []string) ([]pluginspec.Evaluate, error) {
+func evaluatesFromCatalogs(ctx context.Context, src catalog.Source, coordinates, steps []string) ([]pluginspec.Evaluate, error) {
 	out := make([]pluginspec.Evaluate, 0, len(coordinates))
 	for _, raw := range coordinates {
 		c, err := pluginkit.ParseCatalogCoordinate(raw)
 		if err != nil {
 			return nil, err
 		}
-		data, err := fetch(ctx, c)
+		verified, err := src.Fetch(ctx, c)
 		if err != nil {
 			return nil, fmt.Errorf("reading declared catalog %s: %w", c, err)
 		}
-		cat, err := pluginkit.ParseCatalog(data)
-		if err != nil {
-			return nil, fmt.Errorf("parsing declared catalog %s: %w", c, err)
-		}
 		inCatalog := map[string]bool{}
-		for _, ctrl := range cat.Controls {
+		for _, ctrl := range verified.Catalog.Controls {
 			for _, req := range ctrl.AssessmentRequirements {
 				inCatalog[req.Id] = true
 			}
