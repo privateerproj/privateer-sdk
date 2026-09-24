@@ -2,6 +2,7 @@ package install
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -69,10 +70,14 @@ func Local(ctx context.Context, w io.Writer, binaryPath string) error {
 		}
 		coords = append(coords, c)
 	}
-	// skipUnpublished is false: these coordinates come only from AddCatalogs, so
-	// each one names a catalog that is meant to be on grc.store. Skipping a
-	// missing one would exit 0 here and fail every later `pvtr run`.
-	return catalog.Install(ctx, w, oci.NewClient(), binDirPath, coords, false)
+	unpublished, err := catalog.Install(ctx, w, catalog.NewFetcher(w, oci.NewClient(), nil), binDirPath, coords)
+	if err != nil {
+		return err
+	}
+	// These coordinates come only from AddCatalogs, so each one names a catalog
+	// that is meant to be on grc.store. Skipping a missing one would exit 0 here
+	// and fail every later `pvtr run`.
+	return errors.Join(unpublished...)
 }
 
 func getSourceName(binaryPath string) (string, error) {

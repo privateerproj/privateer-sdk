@@ -38,9 +38,9 @@ type Params struct {
 	// binary and run its publish-manifest subcommand); tests inject a stub so
 	// they need no real plugin binary for the host platform.
 	resolveManifest func(ctx context.Context, bins []oci.PlatformBinary) (pluginkit.PublishManifest, error)
-	// fetchCatalog overrides how a declared catalog is read. Nil pulls and
-	// verifies it from grc.store (catalog.Fetch); tests inject a stub.
-	fetchCatalog func(ctx context.Context, c pluginkit.CatalogCoordinate) ([]byte, error)
+	// catalogs overrides how a declared catalog is read. Nil pulls and verifies
+	// it from grc.store (catalog.Fetcher); tests inject a stub.
+	catalogs catalog.Source
 }
 
 // Publish runs the complete producer flow. The plugin coordinate and the
@@ -104,18 +104,11 @@ func Publish(ctx context.Context, w io.Writer, p Params) error {
 	// plugin has steps for. A declared catalog the hub cannot serve is fatal —
 	// the plugin would be published claiming a catalog nobody can install.
 	if len(manifest.Catalogs) > 0 {
-		fetch := p.fetchCatalog
-		if fetch == nil {
-			hub := oci.NewClient()
-			fetch = func(ctx context.Context, c pluginkit.CatalogCoordinate) ([]byte, error) {
-				v, err := catalog.Fetch(ctx, w, hub, c)
-				if err != nil {
-					return nil, err
-				}
-				return v.YAML, nil
-			}
+		src := p.catalogs
+		if src == nil {
+			src = catalog.NewFetcher(w, oci.NewClient(), nil)
 		}
-		declared, err := evaluatesFromCatalogs(ctx, fetch, manifest.Catalogs, manifest.Steps)
+		declared, err := evaluatesFromCatalogs(ctx, src, manifest.Catalogs, manifest.Steps)
 		if err != nil {
 			return err
 		}

@@ -172,9 +172,16 @@ func pullVerifyInstall(ctx context.Context, w io.Writer, hub *oci.Client, detail
 	_, _ = fmt.Fprintf(w, "Successfully installed %s:%s (signed by %s)\n", coordinate, verified.Version, verified.SignerIdentity)
 
 	// The signed config says which catalogs the plugin evaluates; cache them so
-	// `pvtr run` can load them offline. Nothing here executes the binary.
-	if err := catalog.Install(ctx, w, hub, destDir, catalogCoordinates(w, verified.Evaluates), true); err != nil {
+	// `pvtr run` can load them offline. Nothing here executes the binary. The
+	// plugin's verifier is reused, so the trust root is parsed once.
+	unpublished, err := catalog.Install(ctx, w, catalog.NewFetcher(w, hub, verifier), destDir, catalogCoordinates(w, verified.Evaluates))
+	if err != nil {
 		return fmt.Errorf("installing catalogs for %s:%s: %w", coordinate, verified.Version, err)
+	}
+	// An older plugin's evaluates can name a catalog it embeds itself and never
+	// published, so a missing one is reported, not fatal.
+	for _, e := range unpublished {
+		_, _ = fmt.Fprintf(w, "Warning: %v; skipping (the plugin must carry its own copy)\n", e)
 	}
 	return nil
 }

@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,6 +17,25 @@ import (
 	"github.com/privateerproj/privateer-sdk/pluginkit"
 )
 
+// stubSource serves verified catalogs from a map; a coordinate not in it is
+// ErrCatalogNotFound, and err (when set) is returned for every fetch.
+type stubSource struct {
+	catalogs map[pluginkit.CatalogCoordinate]*verify.VerifiedCatalog
+	err      error
+	calls    int
+}
+
+func (s *stubSource) Fetch(_ context.Context, c pluginkit.CatalogCoordinate) (*verify.VerifiedCatalog, error) {
+	s.calls++
+	if s.err != nil {
+		return nil, s.err
+	}
+	if v, ok := s.catalogs[c]; ok {
+		return v, nil
+	}
+	return nil, fmt.Errorf("%w: %s", oci.ErrCatalogNotFound, c)
+}
+
 func TestInstall_CachedVersionIsNotRefetched(t *testing.T) {
 	dir := t.TempDir()
 	c := pluginkit.CatalogCoordinate{Namespace: "openssf", ID: "osps-baseline", Version: "v1"}
@@ -28,14 +46,54 @@ func TestInstall_CachedVersionIsNotRefetched(t *testing.T) {
 	if err := os.WriteFile(path, []byte("cached"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// A nil hub client would panic on any fetch, so success proves the cache
-	// short-circuited before touching the network.
+	// A nil source would panic on any fetch, so success proves the cache
+	// short-circuited first.
 	var w bytes.Buffer
-	if err := Install(context.Background(), &w, nil, dir, []pluginkit.CatalogCoordinate{c}, true); err != nil {
+	if _, err := Install(context.Background(), &w, nil, dir, []pluginkit.CatalogCoordinate{c}); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 	if got, _ := os.ReadFile(path); string(got) != "cached" {
 		t.Fatalf("cached file was rewritten: %q", got)
+	}
+}
+
+// A catalog the hub does not know is returned to the caller, which decides
+// whether that is a warning or a failure; the rest are still cached.
+func TestInstall_ReturnsUnpublishedAndCachesTheRest(t *testing.T) {
+	dir := t.TempDir()
+	missing1 := pluginkit.CatalogCoordinate{Namespace: "acme", ID: "gone", Version: "v1"}
+	present := pluginkit.CatalogCoordinate{Namespace: "openssf", ID: "osps-baseline", Version: "v1"}
+	missing2 := pluginkit.CatalogCoordinate{Namespace: "acme", ID: "also-gone", Version: "v2"}
+	src := &stubSource{catalogs: map[pluginkit.CatalogCoordinate]*verify.VerifiedCatalog{
+		present: {YAML: []byte("metadata:\n  id: osps-baseline\n"), SignerIdentity: "keyless:example#wf"},
+	}}
+
+	var w bytes.Buffer
+	unpublished, err := Install(context.Background(), &w, src, dir, []pluginkit.CatalogCoordinate{missing1, present, missing2})
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if len(unpublished) != 2 {
+		t.Fatalf("unpublished = %v, want 2 errors", unpublished)
+	}
+	for i, want := range []pluginkit.CatalogCoordinate{missing1, missing2} {
+		if !errors.Is(unpublished[i], oci.ErrCatalogNotFound) || !strings.Contains(unpublished[i].Error(), want.String()) {
+			t.Errorf("unpublished[%d] = %v, want ErrCatalogNotFound naming %s", i, unpublished[i], want)
+		}
+	}
+	if _, err := os.Stat(pluginkit.CatalogCachePath(dir, present)); err != nil {
+		t.Errorf("published catalog was not cached: %v", err)
+	}
+}
+
+// Anything other than not-found is a verification or transport failure and
+// aborts the install.
+func TestInstall_FetchFailureAborts(t *testing.T) {
+	c := pluginkit.CatalogCoordinate{Namespace: "openssf", ID: "osps-baseline", Version: "v1"}
+	boom := errors.New("signature did not verify")
+	_, err := Install(context.Background(), &bytes.Buffer{}, &stubSource{err: boom}, t.TempDir(), []pluginkit.CatalogCoordinate{c})
+	if !errors.Is(err, boom) {
+		t.Fatalf("got %v, want %v", err, boom)
 	}
 }
 
@@ -57,29 +115,19 @@ func mockCatalogHub(t *testing.T) *httptest.Server {
 	return srv
 }
 
-// A catalog the hub does not know is skipped with a warning for `pvtr install`
-// (an older plugin's evaluates can name a catalog it embeds) and fatal for
-// `pvtr install --local` (those coordinates come only from AddCatalogs).
-func TestInstall_NotFoundSkipsOrFailsByCaller(t *testing.T) {
+// The hub's 404 surfaces as ErrCatalogNotFound, and the verifier is built only
+// when there is something to verify, so a lookup that ends at the hub never
+// parses the trust root.
+func TestFetcher_NotFoundBeforeVerifier(t *testing.T) {
 	hub := mockCatalogHub(t)
 	t.Setenv("PVTR_HUB_URL", hub.URL)
-	c := pluginkit.CatalogCoordinate{Namespace: "openssf", ID: "osps-baseline", Version: "v1"}
-
-	var skipped bytes.Buffer
-	if err := Install(context.Background(), &skipped, oci.NewClient(), t.TempDir(), []pluginkit.CatalogCoordinate{c}, true); err != nil {
-		t.Fatalf("skipUnpublished=true must not fail: %v", err)
-	}
-	if !strings.Contains(skipped.String(), "not published on grc.store; skipping") {
-		t.Errorf("expected a skip warning, got: %q", skipped.String())
-	}
-
-	var fatal bytes.Buffer
-	err := Install(context.Background(), &fatal, oci.NewClient(), t.TempDir(), []pluginkit.CatalogCoordinate{c}, false)
+	f := NewFetcher(&bytes.Buffer{}, oci.NewClient(), nil)
+	_, err := f.Fetch(context.Background(), pluginkit.CatalogCoordinate{Namespace: "openssf", ID: "osps-baseline", Version: "v1"})
 	if !errors.Is(err, oci.ErrCatalogNotFound) {
-		t.Fatalf("skipUnpublished=false must surface ErrCatalogNotFound, got %v", err)
+		t.Fatalf("got %v, want ErrCatalogNotFound", err)
 	}
-	if strings.Contains(fatal.String(), "skipping") {
-		t.Errorf("a fatal install must not also print the skip warning: %q", fatal.String())
+	if f.verifier != nil {
+		t.Error("verifier was built for a catalog the hub does not have")
 	}
 }
 
@@ -89,7 +137,7 @@ func TestInstall_NotFoundSkipsOrFailsByCaller(t *testing.T) {
 func TestFetch_RejectsEmptyVersion(t *testing.T) {
 	c := pluginkit.CatalogCoordinate{Namespace: "openssf", ID: "osps-baseline"}
 	// A nil hub would panic if the guard did not return first.
-	_, err := Fetch(context.Background(), &bytes.Buffer{}, nil, c)
+	_, err := NewFetcher(&bytes.Buffer{}, nil, nil).Fetch(context.Background(), c)
 	if err == nil || !strings.Contains(err.Error(), "has no version") {
 		t.Fatalf("got %v, want a no-version error", err)
 	}
@@ -110,23 +158,18 @@ func TestCheckHubDigest(t *testing.T) {
 	}
 }
 
-// The cache write is driven through the fetch seam: real verification needs a
+// The cache write is driven through a stub source: real verification needs a
 // live signature, but everything after it is ordinary file work worth covering.
 func TestInstall_WritesVerifiedCatalogToCache(t *testing.T) {
 	dir := t.TempDir()
 	c := pluginkit.CatalogCoordinate{Namespace: "openssf", ID: "osps-baseline", Version: "v1"}
-	calls := 0
-	fetch := func(_ context.Context, _ io.Writer, _ *oci.Client, got pluginkit.CatalogCoordinate) (*verify.VerifiedCatalog, error) {
-		calls++
-		if got != c {
-			t.Errorf("fetched %s, want %s", got, c)
-		}
-		return &verify.VerifiedCatalog{YAML: []byte("metadata:\n  id: osps-baseline\n"), SignerIdentity: "keyless:example#wf"}, nil
-	}
+	src := &stubSource{catalogs: map[pluginkit.CatalogCoordinate]*verify.VerifiedCatalog{
+		c: {YAML: []byte("metadata:\n  id: osps-baseline\n"), SignerIdentity: "keyless:example#wf"},
+	}}
 
 	var w bytes.Buffer
-	if err := install(context.Background(), &w, nil, dir, []pluginkit.CatalogCoordinate{c}, false, fetch); err != nil {
-		t.Fatalf("install: %v", err)
+	if _, err := Install(context.Background(), &w, src, dir, []pluginkit.CatalogCoordinate{c}); err != nil {
+		t.Fatalf("Install: %v", err)
 	}
 	got, err := os.ReadFile(pluginkit.CatalogCachePath(dir, c))
 	if err != nil {
@@ -140,11 +183,11 @@ func TestInstall_WritesVerifiedCatalogToCache(t *testing.T) {
 	}
 
 	// Second pass: the version is immutable, so the cached file short-circuits.
-	if err := install(context.Background(), &w, nil, dir, []pluginkit.CatalogCoordinate{c}, false, fetch); err != nil {
-		t.Fatalf("install (cached): %v", err)
+	if _, err := Install(context.Background(), &w, src, dir, []pluginkit.CatalogCoordinate{c}); err != nil {
+		t.Fatalf("Install (cached): %v", err)
 	}
-	if calls != 1 {
-		t.Errorf("fetched %d times, want 1", calls)
+	if src.calls != 1 {
+		t.Errorf("fetched %d times, want 1", src.calls)
 	}
 }
 
@@ -157,14 +200,11 @@ func TestFetch_LiveHub(t *testing.T) {
 		t.Skip("set PVTR_LIVE_HUB=1 to run against hub.grc.store")
 	}
 	c := pluginkit.CatalogCoordinate{Namespace: "openssf", ID: "osps-baseline", Version: "v2026.08.26"}
-	vc, err := Fetch(context.Background(), os.Stderr, oci.NewClient(), c)
+	vc, err := NewFetcher(os.Stderr, oci.NewClient(), nil).Fetch(context.Background(), c)
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
-	cat, err := pluginkit.ParseCatalog(vc.YAML)
-	if err != nil {
-		t.Fatalf("ParseCatalog: %v", err)
-	}
+	cat := vc.Catalog
 	if cat.Metadata.Id != "osps-baseline" || len(cat.Controls) == 0 {
 		t.Fatalf("unexpected catalog: id=%q controls=%d", cat.Metadata.Id, len(cat.Controls))
 	}
