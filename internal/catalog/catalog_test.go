@@ -17,8 +17,9 @@ import (
 	"github.com/privateerproj/privateer-sdk/pluginkit"
 )
 
-// stubSource serves verified catalogs from a map; a coordinate not in it is
-// ErrCatalogNotFound, and err (when set) is returned for every fetch.
+// stubSource serves verified catalogs from a map; a coordinate not in it is a
+// bare ErrCatalogNotFound (like the hub's 404, which names no version), and err
+// (when set) is returned for every fetch.
 type stubSource struct {
 	catalogs map[pluginkit.CatalogCoordinate]*verify.VerifiedCatalog
 	err      error
@@ -33,7 +34,7 @@ func (s *stubSource) Fetch(_ context.Context, c pluginkit.CatalogCoordinate) (*v
 	if v, ok := s.catalogs[c]; ok {
 		return v, nil
 	}
-	return nil, fmt.Errorf("%w: %s", oci.ErrCatalogNotFound, c)
+	return nil, oci.ErrCatalogNotFound
 }
 
 func TestInstall_CachedVersionIsNotRefetched(t *testing.T) {

@@ -70,13 +70,18 @@ func Local(ctx context.Context, w io.Writer, binaryPath string) error {
 		}
 		coords = append(coords, c)
 	}
-	unpublished, err := catalog.Install(ctx, w, catalog.NewFetcher(w, oci.NewClient(), nil), binDirPath, coords)
+	return installDeclaredCatalogs(ctx, w, catalog.NewFetcher(w, oci.NewClient(), nil), binDirPath, coords)
+}
+
+// installDeclaredCatalogs caches the catalogs a local plugin declares and fails
+// naming every one the hub does not have. These coordinates come only from
+// AddCatalogs, so each one names a catalog that is meant to be on grc.store.
+// Skipping a missing one would exit 0 here and fail every later `pvtr run`.
+func installDeclaredCatalogs(ctx context.Context, w io.Writer, src catalog.Source, binDirPath string, coords []pluginkit.CatalogCoordinate) error {
+	unpublished, err := catalog.Install(ctx, w, src, binDirPath, coords)
 	if err != nil {
 		return err
 	}
-	// These coordinates come only from AddCatalogs, so each one names a catalog
-	// that is meant to be on grc.store. Skipping a missing one would exit 0 here
-	// and fail every later `pvtr run`.
 	return errors.Join(unpublished...)
 }
 

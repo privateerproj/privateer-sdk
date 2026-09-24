@@ -125,7 +125,8 @@ func Install(ctx context.Context, w io.Writer, src Source, binariesDir string, c
 		}
 		verified, err := src.Fetch(ctx, c)
 		if errors.Is(err, oci.ErrCatalogNotFound) {
-			unpublished = append(unpublished, err)
+			// The hub's 404 names no version, so say which coordinate was asked for.
+			unpublished = append(unpublished, fmt.Errorf("%s: %w", c, err))
 			continue
 		}
 		if err != nil {
