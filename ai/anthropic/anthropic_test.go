@@ -129,6 +129,35 @@ func TestAnalyze_OAuthTokenUsesBearerAuth(t *testing.T) {
 	}
 }
 
+func TestAnalyze_CustomBaseURLWithoutAPIKeyOmitsAuthentication(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for _, header := range []string{"Authorization", "x-api-key", "anthropic-beta"} {
+			if _, found := r.Header[http.CanonicalHeaderKey(header)]; found {
+				t.Fatalf("expected %s header to be absent", header)
+			}
+		}
+		if got := r.Header.Get("anthropic-version"); got != apiVersion {
+			t.Fatalf("unexpected anthropic-version header: %s", got)
+		}
+		encodeTextResponse(t, w, "ok")
+	}))
+	defer server.Close()
+
+	client := newTestClient(provider.Config{
+		Provider: Provider,
+		Model:    "claude-opus-4-8",
+		BaseURL:  server.URL,
+	})
+
+	response, err := client.Analyze(context.Background(), "prompt", "content", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if response.Text != "ok" {
+		t.Fatalf("unexpected text: %q", response.Text)
+	}
+}
+
 func TestAnalyze_SkipsNonTextBlocks(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{

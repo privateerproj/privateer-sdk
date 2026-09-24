@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -23,15 +24,6 @@ const defaultServiceName = "overview"
 
 var allowedOutputTypes = []string{"json", "yaml", "sarif", "gemara"}
 
-var inheritedTopLevelVarKeys = []string{
-	"ai_provider",
-	"ai_model",
-	"ai_api_key",
-	"ai_base_url",
-	"ai_timeout",
-	"ai_max_tokens",
-}
-
 // Config holds the configuration for a plugin execution.
 type Config struct {
 	ServiceName    string // Must be unique in the config file or logs will be overwritten
@@ -48,6 +40,11 @@ type Config struct {
 
 	Benchmark            bool
 	BenchmarkPayloadOnly bool
+
+	// logWriter and logJSON retain how Logger was built so startup
+	// diagnostics can reach the same destination at their own level.
+	logWriter io.Writer
+	logJSON   bool
 }
 
 // Policy defines the control catalogs and applicability settings for a plugin.
@@ -62,7 +59,9 @@ func NewConfig(requiredVars []string) Config {
 	var errString string
 
 	serviceName := TargetName() // the currently running target; if empty, we're probably running from core
-	svcKey := targetsKey()      // "targets" or its legacy "services" alias, whichever the config uses
+	targetsSectionKey := targetsKey()
+	fileSettings := rawFileSettings()
+	aiAPIKeyInConfigFile := hasConfigFileAIAPIKey(serviceName, targetsSectionKey)
 
 	write := viper.GetBool("write")                                         // defaults to true, but allow the user to disable file writing
 	output := strings.ToLower(strings.TrimSpace(viper.GetString("output"))) // defaults to yaml; can be set to json, sarif, or gemara
@@ -70,27 +69,26 @@ func NewConfig(requiredVars []string) Config {
 	benchmark := viper.GetBool("benchmark")                                 // defaults to false
 	benchmarkPayloadOnly := viper.GetBool("benchmark-payload-only")         // defaults to false; loader only, skip steps
 
-	vars := viper.GetStringMap("vars")
-	localVars := viper.GetStringMap(fmt.Sprintf("%s.%s.vars", svcKey, serviceName))
-	for key, value := range localVars {
-		// Overwrite or add local vars onto the global vars
-		vars[key] = value
+	// A target inherits the shared vars block and may override any of it.
+	sharedVars := viper.GetStringMap("vars")
+	targetVars := viper.GetStringMap(fmt.Sprintf("%s.%s.vars", targetsSectionKey, serviceName))
+	vars := make(map[string]interface{}, len(sharedVars)+len(targetVars))
+	maps.Copy(vars, sharedVars)
+	maps.Copy(vars, targetVars)
+
+	// AI settings follow their own precedence rules, applied here so that SDK
+	// consumers read one settled value per key. See applyAIPrecedenceRules.
+	aiSources := aiSettingSources{
+		target: targetVars,
+		shared: sharedVars,
+		file:   fileSettings,
 	}
-	// AI settings may be declared at the top level so all services inherit them.
-	// Copy them into Vars so SDK consumers that only receive config.Config still
-	// see the same effective ai_* values at runtime.
-	for _, key := range inheritedTopLevelVarKeys {
-		if _, exists := vars[key]; exists {
-			continue
-		}
-		if viper.IsSet(key) {
-			value := viper.Get(key)
-			vars[key] = value
-		}
-	}
+	aiSettingsErr := applyAIPrecedenceRules(vars, aiSources)
+	ignoredAIKeys := ignoredAISettings(aiSources)
+	aiEnabledByEnvironment := aiEnabledByEnvironmentOnly(vars, aiSources)
 
 	topLoglevel := viper.GetString("loglevel")
-	loglevel := viper.GetString(fmt.Sprintf("%s.%s.loglevel", svcKey, serviceName))
+	loglevel := viper.GetString(fmt.Sprintf("%s.%s.loglevel", targetsSectionKey, serviceName))
 	if loglevel == "" && topLoglevel != "" {
 		loglevel = topLoglevel
 	} else if loglevel == "" {
@@ -103,19 +101,19 @@ func NewConfig(requiredVars []string) Config {
 	}
 
 	topInvasive := viper.GetBool("invasive") // make sure we're actually using this to block changes
-	invasive := viper.GetBool(fmt.Sprintf("%s.%s.invasive", svcKey, serviceName))
+	invasive := viper.GetBool(fmt.Sprintf("%s.%s.invasive", targetsSectionKey, serviceName))
 	if !invasive && topInvasive {
 		invasive = topInvasive
 	}
 
 	topCatalogs := viper.GetStringSlice("policy.catalogs")
-	catalogs := viper.GetStringSlice(fmt.Sprintf("%s.%s.policy.catalogs", svcKey, serviceName))
+	catalogs := viper.GetStringSlice(fmt.Sprintf("%s.%s.policy.catalogs", targetsSectionKey, serviceName))
 	if len(catalogs) == 0 {
 		catalogs = topCatalogs
 	}
 
 	topApplicability := viper.GetStringSlice("policy.applicability")
-	applicability := viper.GetStringSlice(fmt.Sprintf("%s.%s.policy.applicability", svcKey, serviceName))
+	applicability := viper.GetStringSlice(fmt.Sprintf("%s.%s.policy.applicability", targetsSectionKey, serviceName))
 	if len(applicability) == 0 {
 		applicability = topApplicability
 	}
@@ -123,7 +121,7 @@ func NewConfig(requiredVars []string) Config {
 	if serviceName != "" && (len(applicability) == 0 || len(catalogs) == 0) {
 		errString = fmt.Sprintf("invalid policy for service %s. applicability=%v catalogs=%v",
 			serviceName, len(applicability), len(catalogs))
-		if svcKey == "targets" && viper.IsSet("services."+serviceName) {
+		if targetsSectionKey == "targets" && viper.IsSet("services."+serviceName) {
 			errString += fmt.Sprintf("; %q is defined under the legacy services key, which is ignored because a targets key is present", serviceName)
 		}
 	}
@@ -148,6 +146,7 @@ func NewConfig(requiredVars []string) Config {
 	if errString != "" {
 		err = errors.New(errString)
 	}
+	err = errors.Join(err, aiSettingsErr)
 
 	config := Config{
 		ServiceName:          serviceName,
@@ -170,6 +169,17 @@ func NewConfig(requiredVars []string) Config {
 		serviceName = defaultServiceName
 	}
 	config.SetupLogging(serviceName, output == "json")
+	diagnostics := config.configDiagnosticsLogger()
+	if aiAPIKeyInConfigFile {
+		diagnostics.Warn(aiAPIKeyConfigWarning)
+	}
+	if len(ignoredAIKeys) > 0 {
+		diagnostics.Warn("ignoring unrecognized ai_ settings; check for typos and see docs/ai-assist.md for the recognized keys",
+			"settings", ignoredAIKeys)
+	}
+	if aiEnabledByEnvironment {
+		diagnostics.Warn(AIEnablementHint())
+	}
 	printSanitizedVars(config.Logger, vars)
 	config.Logger.Trace("Creating a new config instance for service",
 		"serviceName", serviceName,
@@ -195,10 +205,13 @@ func sanitizeVars(vars map[string]interface{}) map[string]interface{} {
 	for key, value := range vars {
 		redact := false
 		lower := strings.ToLower(key)
-		for _, pattern := range sensitivePatterns {
-			if strings.Contains(lower, pattern) {
-				redact = true
-				break
+		// ai_api_key_env holds the name of an environment variable, not a credential.
+		if lower != "ai_api_key_env" {
+			for _, pattern := range sensitivePatterns {
+				if strings.Contains(lower, pattern) {
+					redact = true
+					break
+				}
 			}
 		}
 		if redact {
@@ -247,6 +260,35 @@ func (c *Config) SetupLogging(name string, jsonFormat bool) {
 	})
 	log.SetOutput(logger.StandardWriter(&hclog.StandardLoggerOptions{InferLevels: false, InferLevelsWithTimestamp: false}))
 	c.Logger = logger
+	c.logWriter = writer
+	c.logJSON = jsonFormat
+}
+
+// configDiagnosticsLogger emits the startup findings that an operator has to
+// see to act on: a plaintext credential in the config file, ai_ settings that
+// were ignored, and AI switched on by nothing but an ambient environment
+// variable.
+//
+// It exists because the default log level is Error (see the loglevel flag in
+// command.SetBase), which discards Warn. Reporting a silently-wrong AI
+// configuration at a level the default configuration throws away would
+// reproduce the failure this package is meant to remove, so these findings are
+// emitted at Warn against a logger floored at Warn. An explicit `off` is still
+// honored: an operator who asked for silence gets it.
+func (c *Config) configDiagnosticsLogger() hclog.Logger {
+	level := hclog.LevelFromString(c.LogLevel)
+	if level == hclog.Off || level <= hclog.Warn {
+		return c.Logger
+	}
+	writer := c.logWriter
+	if writer == nil {
+		writer = io.Writer(os.Stderr)
+	}
+	return hclog.New(&hclog.LoggerOptions{
+		Level:      hclog.Warn,
+		JSONFormat: c.logJSON,
+		Output:     writer,
+	})
 }
 
 func (c *Config) setupLoggingFilesAndDirectories(logFilePath string) io.Writer {
