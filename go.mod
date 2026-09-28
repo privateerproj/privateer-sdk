@@ -11,7 +11,7 @@ require (
 	github.com/hashicorp/go-plugin v1.8.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
-	github.com/revanite-io/grc-store-protocol v0.7.0
+	github.com/revanite-io/grc-store-protocol v0.8.0
 	github.com/sigstore/sigstore-go v1.3.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
