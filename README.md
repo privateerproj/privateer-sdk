@@ -90,13 +90,13 @@ privateer-sdk/
 
 ## Contributing
 
-We welcome contributions! See our [Contributing Guidelines](https://github.com/privateerproj/privateer?tab=contributing-ov-file) for details.
+We welcome contributions! See our [Contributing Guidelines](https://github.com/privateerproj/pvtr?tab=contributing-ov-file) for details.
 
-All contributions are covered by the [Apache 2 License](https://github.com/privateerproj/privateer?tab=Apache-2.0-1-ov-file) at the time the pull request is opened, and all community interactions are governed by our [Code of Conduct](https://github.com/privateerproj/privateer?tab=coc-ov-file).
+All contributions are covered by the [Apache 2 License](https://github.com/privateerproj/pvtr?tab=Apache-2.0-1-ov-file) at the time the pull request is opened, and all community interactions are governed by our [Code of Conduct](https://github.com/privateerproj/pvtr?tab=coc-ov-file).
 
 ## Security
 
-For vulnerability reporting, please reference our [Security Policy](https://github.com/privateerproj/privateer?tab=security-ov-file). For security questions, please search our closed issues and open a new issue if your question has not yet been answered.
+For vulnerability reporting, please reference our [Security Policy](https://github.com/privateerproj/pvtr?tab=security-ov-file). For security questions, please search our closed issues and open a new issue if your question has not yet been answered.
 
 ## Helpful Links
 
