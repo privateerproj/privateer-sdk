@@ -1,7 +1,8 @@
 issuer: https://token.actions.githubusercontent.com
-subject_pattern: "repo:privateerproj/privateer-sdk:(pull_request|ref:refs/heads/.+)"
+# Issue the scan token only to the workflow running on main, never to branches or PRs
+subject: repo:privateerproj/privateer-sdk:ref:refs/heads/main
 claim_pattern:
-  job_workflow_ref: "^privateerproj/privateer-sdk/.github/workflows/osps-security-assessment.yml@refs/(heads/.+|pull/[0-9]+/merge)$"
+  job_workflow_ref: "^privateerproj/privateer-sdk/.github/workflows/osps-security-assessment.yml@refs/heads/main$"
 
 permissions:
   contents: read
