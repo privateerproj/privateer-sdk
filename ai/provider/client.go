@@ -8,7 +8,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -105,10 +108,44 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.Model) == "" {
 		return fmt.Errorf("ai model is required")
 	}
-	if strings.TrimSpace(c.APIKey) == "" {
-		return fmt.Errorf("ai api key is required")
+	// A custom BaseURL may front a gateway, proxy, or local model server that
+	// authenticates by other means, so it stands in for the credential here.
+	if strings.TrimSpace(c.APIKey) == "" && strings.TrimSpace(c.BaseURL) == "" {
+		return fmt.Errorf("ai api key is required unless ai base url is set")
+	}
+	if c.BaseURL != "" {
+		parsed, err := url.Parse(c.BaseURL)
+		if err != nil || (!strings.EqualFold(parsed.Scheme, "http") && !strings.EqualFold(parsed.Scheme, "https")) ||
+			parsed.Hostname() == "" || parsed.User != nil || parsed.ForceQuery || parsed.RawQuery != "" ||
+			strings.Contains(c.BaseURL, "#") {
+			// Parse errors can include credentials or other secrets from the URL.
+			return fmt.Errorf("ai base url must be an absolute HTTP(S) API root URL without userinfo, query, or fragment")
+		}
+		if port := parsed.Port(); port != "" || strings.HasSuffix(parsed.Host, ":") {
+			number, err := strconv.Atoi(port)
+			if err != nil || number < 1 || number > 65535 {
+				return fmt.Errorf("ai base url must use a port between 1 and 65535")
+			}
+		}
+		// A credential sent over plain HTTP is readable by anything on the
+		// path, and the base URL can be redirected per run by PVTR_AI_BASE_URL
+		// while the credential stays pinned in the configuration. Loopback is
+		// exempt because that is how a local model server is reached and the
+		// traffic never leaves the host; such endpoints usually need no
+		// credential at all, which Validate already permits.
+		if strings.TrimSpace(c.APIKey) != "" && strings.EqualFold(parsed.Scheme, "http") && !isLoopbackHost(parsed.Hostname()) {
+			return fmt.Errorf("ai base url must use https when an ai api key is set, unless the host is loopback")
+		}
 	}
 	return nil
+}
+
+func isLoopbackHost(hostname string) bool {
+	if strings.EqualFold(hostname, "localhost") {
+		return true
+	}
+	address := net.ParseIP(hostname)
+	return address != nil && address.IsLoopback()
 }
 
 // Normalized returns a copy with fields trimmed, the provider lowercased, and

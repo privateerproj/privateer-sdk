@@ -90,7 +90,7 @@ func ReadConfig() {
 		}
 	}
 
-	if err := viper.ReadInConfig(); err != nil {
+	if err := config.ReadInConfig(); err != nil {
 		log.Print("[ERROR] " + err.Error())
 	}
 }

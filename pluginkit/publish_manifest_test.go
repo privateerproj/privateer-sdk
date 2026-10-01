@@ -216,8 +216,7 @@ func TestPublishManifest_CopyOnImport(t *testing.T) {
 	}
 	if primaryEntry == nil {
 		t.Fatalf("no evaluates entry for acme/primary in manifest: %+v", after.Evaluates)
-	}
-	if len(primaryEntry.RequirementIDs) != 1 || primaryEntry.RequirementIDs[0] != "P-1.T01" {
+	} else if len(primaryEntry.RequirementIDs) != 1 || primaryEntry.RequirementIDs[0] != "P-1.T01" {
 		t.Errorf("primary catalog RequirementIDs = %v, want [P-1.T01] (own controls only, not imports)", primaryEntry.RequirementIDs)
 	}
 }

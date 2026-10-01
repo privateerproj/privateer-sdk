@@ -128,10 +128,12 @@ func (c *Client) Analyze(ctx context.Context, prompt, content string, schema *pr
 		}
 	}
 
+	var headers map[string]string
+	if c.Config.APIKey != "" {
+		headers = map[string]string{"Authorization": "Bearer " + c.Config.APIKey}
+	}
 	httpReq, err := c.NewJSONRequest(ctx, http.MethodPost, "/chat/completions", reqBody, provider.RequestOptions{
-		Headers: map[string]string{
-			"Authorization": "Bearer " + c.Config.APIKey,
-		},
+		Headers: headers,
 	})
 
 	if err != nil {
