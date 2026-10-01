@@ -6,6 +6,8 @@ on:
     - cron: "0 9 * * 1"
   workflow_dispatch: # Allow manual triggering
 
+permissions: {}
+
 jobs:
   osps-assessment:
     runs-on: ubuntu-latest
@@ -17,24 +19,28 @@ jobs:
       security-events: write # Required for SARIF upload
 
     steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05
+      - uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05 # v1.1.1
         id: octo-sts
         with:
           scope: privateerproj/privateer-sdk
           identity: privateer-sdk
 
       - name: Open Source Project Security Baseline Scanner
-        uses: revanite-io/osps-baseline-action@6ba0e05ce6566af82fd77bb9356ae8387027f32e
+        uses: revanite-io/osps-baseline-action@1af7ff8b44af83f120b20cc5f63b877286849257 # v1.5.2
         with:
           owner: ${{ github.repository_owner }}
           repo: ${{ github.event.repository.name }}
           token: ${{ steps.octo-sts.outputs.token }}
-          catalog: "osps-baseline"
+          catalog: "osps-baseline-2026-08"
           upload-sarif: "true"
 
       - name: Upload Assessment Results
