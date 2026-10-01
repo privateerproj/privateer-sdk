@@ -9,48 +9,65 @@ template: |
 
 categories:
   - title: "💥 Breaking Changes"
-    labels:
-      - "breaking"
+    when:
+      labels:
+        - "breaking"
+  # exclusive: a security fix lists here only, not again under a later
+  # category such as Bug Fixes. It can still also appear under Breaking.
   - title: "🔒 Security"
-    labels:
-      - "security"
+    exclusive: true
+    when:
+      labels:
+        - "security"
   - title: "🚀 Features"
-    labels:
-      - "feature"
-      - "enhancement"
+    when:
+      labels:
+        - "feature"
+        - "enhancement"
   - title: "🐛 Bug Fixes"
-    labels:
-      - "fix"
-      - "bugfix"
-      - "bug"
+    when:
+      labels:
+        - "fix"
+        - "bugfix"
+        - "bug"
   - title: "🧰 Maintenance"
-    labels:
-      - "infrastructure"
-      - "automation"
-      - "documentation"
-      - "dependencies"
-      - "maintenance"
-      - "revert"
+    when:
+      labels:
+        - "infrastructure"
+        - "automation"
+        - "documentation"
+        - "dependencies"
+        - "maintenance"
+        - "revert"
   - title: "🏎 Performance"
-    label: "performance"
-change-template: "- $TITLE @$AUTHOR (#$NUMBER)"
-version-resolver:
+    when:
+      label: "performance"
+  # Version resolution: the highest matching increment wins.
   # Dependabot applies "major", "minor", and "patch" labels to its PRs when
   # those labels exist in the repo. A dependency's semver bump says nothing
   # about this project's API, so only human-applied labels drive the resolver.
-  major:
-    labels:
-      - "breaking"
-  minor:
-    labels:
-      - "enhancement"
-      - "feature"
-  patch:
-    labels:
-      - "documentation"
-      - "fix"
-      - "maintenance"
-  default: patch
+  - type: "version-resolver"
+    semver-increment: "major"
+    when:
+      labels:
+        - "breaking"
+  - type: "version-resolver"
+    semver-increment: "minor"
+    when:
+      labels:
+        - "enhancement"
+        - "feature"
+  - type: "version-resolver"
+    semver-increment: "patch"
+    when:
+      labels:
+        - "documentation"
+        - "fix"
+        - "maintenance"
+  # Fallback when no other version-resolver matches (was default: patch)
+  - type: "version-resolver"
+    semver-increment: "patch"
+change-template: "- $TITLE @$AUTHOR (#$NUMBER)"
 autolabeler:
   - label: "automation"
     title:
