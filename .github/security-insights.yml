@@ -43,6 +43,11 @@ repository:
         comment: |
           Gemara v1.5.0 threat assessment of the Privateer SDK, written by the Privateer Maintainer Group.
           Threats are in .github/threat-assessment.yaml and capabilities are in .github/capability-catalog.yaml.
+      third-party:
+        - name: OpenSSF Best Practices OSPS Baseline
+          evidence: https://www.bestpractices.dev/projects/12018/baseline-1
+          date: "2026-10-01"
+          comment: OSPS Baseline Level 1 (criteria v2026.08.28), self-reported on bestpractices.dev with autodetected answers.
     champions:
       - name: Jason Meridth
         primary: true

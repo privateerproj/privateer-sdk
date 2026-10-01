@@ -1,5 +1,8 @@
 # Privateer SDK
 
+[![OSPS Baseline](https://github.com/privateerproj/privateer-sdk/actions/workflows/osps-security-assessment.yml/badge.svg)](https://github.com/privateerproj/privateer-sdk/actions/workflows/osps-security-assessment.yml)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12018/baseline)](https://www.bestpractices.dev/projects/12018/baseline-1)
+
 The **Privateer SDK** provides the interface and utilities needed for developing Privateer plugins. It includes common logic, cloud provider utilities, and an evaluation framework that can be reused across multiple plugins.
 
 ## Documentation
@@ -97,6 +100,8 @@ All contributions are covered by the [Apache 2 License](https://github.com/priva
 ## Security
 
 For vulnerability reporting, please reference our [Security Policy](https://github.com/privateerproj/.github/blob/main/.github/SECURITY.md). Please do not open public issues for security vulnerabilities or questions. Report them privately through [GitHub private vulnerability reporting](https://github.com/privateerproj/privateer-sdk/security/advisories/new) instead.
+
+See [CRA-READINESS.md](CRA-READINESS.md) for how the project voluntarily documents its security practices against the EU Cyber Resilience Act (CRA) readiness checklist.
 
 ## Helpful Links
 
