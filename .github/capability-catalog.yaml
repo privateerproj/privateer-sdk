@@ -1,0 +1,56 @@
+---
+title: Privateer SDK Capabilities
+metadata:
+  id: PrivProj.SDK.CAPS
+  type: CapabilityCatalog
+  gemara-version: "1.5.0"
+  description: Capability catalog for Privateer SDK Self-Assessment
+  version: 2026.Feb.28
+  author:
+    id: pvtr-maintainers
+    name: Privateer Maintainer Group
+    type: Human
+  mapping-references:
+    - id: CCC
+      title: Common Cloud Controls Core
+      version: v2025.10
+      url: https://github.com/finos/common-cloud-controls/releases/download/v2025.10/CCC.Core_v2025.10.yaml
+      description: |
+        Foundational repository of reusable security controls, capabilities,
+        and threat models maintained by FINOS.
+
+groups:
+  - id: distribution
+    title: Distribution
+    description: Versioning, releasing, and distributing the SDK as a Go package
+  - id: plugin-development
+    title: Plugin Development
+    description: Foundational logic and shared interfaces for building Privateer plugins
+  - id: configuration
+    title: Configuration
+    description: Managing plugin settings, environment variables, and configuration logic
+  - id: evaluation
+    title: Evaluation
+    description: Orchestrating assessment logic and producing machine-readable results
+
+capabilities:
+  - id: PrivProj.SDK.CP01
+    title: Go Package
+    description: Privateer SDK is a go package, version controlled and released via GitHub and distributed by pkg.go.dev
+    group: distribution
+  - id: PrivProj.SDK.CP02
+    title: Plugin Development Kit
+    description: Provides the foundational logic required for building the base of any Privateer plugin
+    group: plugin-development
+  - id: PrivProj.SDK.CP03
+    title: Shared Plugin Interfaces
+    description: Standardizes data structures across diverse plugin implementations
+    group: plugin-development
+  - id: PrivProj.SDK.CP04
+    title: Configuration Management
+    description: Manages plugin settings, environment variables, and configuration logic for Privateer (core) and plugins
+    group: configuration
+  - id: PrivProj.SDK.CP05
+    title: Evaluation Framework
+    description: Orchestrates assessment logic to ensure consistent machine-readable validation
+    group: evaluation
