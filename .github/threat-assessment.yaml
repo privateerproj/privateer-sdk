@@ -2,6 +2,8 @@
 title: Privateer SDK Self-Assessment
 metadata:
   id: PrivProj.SDK
+  type: ThreatCatalog
+  gemara-version: "1.5.0"
   description: Threat catalog for Privateer SDK Self-Assessment
   version: 2026.Feb.28
   author:
@@ -16,23 +18,19 @@ metadata:
       description: |
         Foundational repository of reusable security controls, capabilities,
         and threat models maintained by FINOS.
+    - id: PrivProj.SDK.CAPS
+      title: Privateer SDK Capabilities
+      version: 2026.Feb.28
+      url: https://github.com/privateerproj/privateer-sdk/blob/main/.github/capability-catalog.yaml
+      description: Capability catalog for Privateer SDK Self-Assessment
 
-capabilities:
-  - id: PrivProj.SDK.CP01
-    title: Go Package
-    description: Privateer SDK is a go package, version controlled and released via GitHub and distributed by pkg.go.dev
-  - id: PrivProj.SDK.CP02
-    title: Plugin Development Kit
-    description: Provides the foundational logic required for building the base of any Privateer plugin
-  - id: PrivProj.SDK.CP03
-    title: Shared Plugin Interfaces
-    description: Standardizes data structures across diverse plugin implementations
-  - id: PrivProj.SDK.CP04
-    title: Configuration Management
-    description: Manages plugin settings, environment variables, and configuration logic for Privateer (core) and plugins
-  - id: PrivProj.SDK.CP05
-    title: Evaluation Framework
-    description: Orchestrates assessment logic to ensure consistent machine-readable validation
+groups:
+  - id: distribution
+    title: Distribution
+    description: Threats to the source, release, and dependencies of the SDK Go package
+  - id: plugin-development
+    title: Plugin Development
+    description: Threats to the plugin development kit and shared interfaces that downstream plugins rely on
 
 threats:
   - id: PrivProj.SDK.TH01
@@ -40,19 +38,21 @@ threats:
     description: |
       Access control failures on the source repository may result in distribution of compromised code,
       which will then compromise all downstream users.
+    group: distribution
     capabilities:
-      - reference-id: PrivProj.SDK
+      - reference-id: PrivProj.SDK.CAPS
         entries:
           - reference-id: PrivProj.SDK.CP01
           - reference-id: PrivProj.SDK.CP02
   - id: PrivProj.SDK.TH02
     title: Undetected Breaking Changes Disrupt Downstream Plugins
     description: |
-      Syntactic or behavioral modifications to core interfaces or evaluation logic may disrupt 
-      compatibility for existing plugins, leading to silent validation failures or logic errors 
+      Syntactic or behavioral modifications to core interfaces or evaluation logic may disrupt
+      compatibility for existing plugins, leading to silent validation failures or logic errors
       in security assessments.
+    group: plugin-development
     capabilities:
-      - reference-id: PrivProj.SDK
+      - reference-id: PrivProj.SDK.CAPS
         entries:
           - reference-id: PrivProj.SDK.CP02
           - reference-id: PrivProj.SDK.CP03
@@ -62,7 +62,8 @@ threats:
     description: |
       The use of unvetted, unpinned, or compromised third-party Go modules can
       introduce vulnerabilities or malicious logic into the SDK and derived plugins.
+    group: distribution
     capabilities:
-      - reference-id: PrivProj.SDK
+      - reference-id: PrivProj.SDK.CAPS
         entries:
           - reference-id: PrivProj.SDK.CP01
