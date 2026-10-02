@@ -7,7 +7,7 @@ The **Privateer SDK** provides the interface and utilities needed for developing
 
 ## Documentation
 
-**For complete SDK documentation, visit [privateerproj.com/docs/developers/sdk/](https://privateerproj.com/docs/developers/sdk/)**
+**For complete SDK documentation, visit [privateerproj.com/developer-reference/](https://privateerproj.com/developer-reference/)**
 
 The website includes:
 
@@ -38,18 +38,18 @@ import (
 )
 ```
 
-See the [plugin development guide](https://privateerproj.com/docs/developers/plugins/) for detailed usage examples.
+See the [plugin development guide](https://privateerproj.com/developer-reference/build-a-plugin/) for detailed usage examples.
 
 ## API Reference
 
 - **[pkg.go.dev Documentation](https://pkg.go.dev/github.com/privateerproj/privateer-sdk)** - Complete API reference
-- **[SDK Documentation](https://privateerproj.com/docs/developers/sdk/)** - Developer guide and tutorials
+- **[SDK Documentation](https://privateerproj.com/developer-reference/)** - Developer guide and tutorials
 
 ## Local Development
 
 ### Prerequisites
 
-- **Go 1.25.1 or later** - Required for building and testing
+- **Go 1.26.2 or later** - Required for building and testing
 - **Make** - For using the Makefile build targets
 
 ### Building
