@@ -2,6 +2,7 @@ package command
 
 import (
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/spf13/viper"
@@ -67,5 +68,30 @@ func TestQueueCmd_PassesBinariesPathToPlugin(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("plugin env lacks PVTR_BINARIES_PATH: %v", p.Command.Env)
+	}
+}
+
+func TestQueueCmd_ForwardsRunFlagsToPlugin(t *testing.T) {
+	viper.Set("write-directory", "/tmp/results")
+	viper.Set("output", "json")
+	viper.Set("write", false)
+	viper.Set("include-payload", true)
+	t.Cleanup(func() {
+		for _, k := range []string{"write-directory", "output", "write", "include-payload"} {
+			viper.Set(k, nil)
+		}
+	})
+	p := &PluginPkg{Path: "/bin/true", ServiceTarget: "svc"}
+	p.queueCmd()
+	want := []string{
+		"PVTR_WRITE_DIRECTORY=/tmp/results",
+		"PVTR_OUTPUT=json",
+		"PVTR_WRITE=false",
+		"PVTR_INCLUDE_PAYLOAD=true",
+	}
+	for _, w := range want {
+		if !slices.Contains(p.Command.Env, w) {
+			t.Errorf("plugin env lacks %s: %v", w, p.Command.Env)
+		}
 	}
 }

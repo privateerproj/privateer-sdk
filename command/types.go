@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 
 	hclog "github.com/hashicorp/go-hclog"
 	hcplugin "github.com/hashicorp/go-plugin"
@@ -76,11 +77,19 @@ func (p *PluginPkg) queueCmd() {
 		fmt.Sprintf("--loglevel=%s", viper.GetString("loglevel")),
 		fmt.Sprintf("--service=%s", p.ServiceTarget),
 	)
-	// The binaries path is usually a harness flag, not a config-file key, so
-	// hand it to the plugin through the environment (viper maps binaries-path
-	// to PVTR_BINARIES_PATH): that is where the plugin finds the catalogs
-	// `pvtr install` cached for it. Older plugins simply ignore the variable.
-	cmd.Env = append(os.Environ(), "PVTR_BINARIES_PATH="+config.GetBinariesPath())
+	// Harness-resolved values go to the plugin through the environment (viper
+	// maps each key to PVTR_<KEY>), not as flags: a plugin built on an older SDK
+	// fails on a flag it does not register but simply ignores an env var.
+	// binaries-path is where the plugin finds the catalogs `pvtr install`
+	// cached for it; the rest are run flags the plugin reads when writing
+	// results and would otherwise fall back to its own defaults.
+	cmd.Env = append(os.Environ(),
+		"PVTR_BINARIES_PATH="+config.GetBinariesPath(),
+		"PVTR_WRITE_DIRECTORY="+viper.GetString("write-directory"),
+		"PVTR_OUTPUT="+viper.GetString("output"),
+		"PVTR_WRITE="+strconv.FormatBool(viper.GetBool("write")),
+		"PVTR_INCLUDE_PAYLOAD="+strconv.FormatBool(viper.GetBool("include-payload")),
+	)
 	p.Command = cmd
 }
 
