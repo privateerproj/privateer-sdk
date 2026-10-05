@@ -1,6 +1,6 @@
 header:
   schema-version: 2.2.0
-  last-updated: "2026-10-01"
+  last-updated: "2026-10-05"
   last-reviewed: "2026-10-01"
   url: https://github.com/privateerproj/privateer-sdk/blob/main/.github/security-insights.yml
   project-si-source: https://raw.githubusercontent.com/privateerproj/.github/refs/heads/main/.github/security-insights.yml
@@ -52,6 +52,19 @@ repository:
       - name: Jason Meridth
         primary: true
     tools:
+      - name: OSPS Baseline Scanner
+        type: other
+        rulesets:
+          - osps-baseline
+        results:
+          ci:
+            name: OSPS Baseline evaluation
+            predicate-uri: https://github.com/revanite-io/pvtr-publish-results
+            location: https://grc.store/targets/privateer/privateer-sdk
+        integration:
+          adhoc: false
+          ci: true
+          release: false
       - name: Dependabot
         type: SCA
         version: "2"
