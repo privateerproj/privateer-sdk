@@ -3,7 +3,7 @@ module github.com/privateerproj/privateer-sdk
 go 1.26.2
 
 require (
-	github.com/gemaraproj/go-gemara v0.10.0
+	github.com/gemaraproj/go-gemara v0.11.0
 	github.com/gemaraproj/grc-store-clientkit v0.2.0
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/goccy/go-yaml v1.19.2
@@ -11,7 +11,7 @@ require (
 	github.com/hashicorp/go-plugin v1.8.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
-	github.com/revanite-io/grc-store-protocol v0.8.0
+	github.com/revanite-io/grc-store-protocol v0.17.0
 	github.com/sigstore/sigstore-go v1.3.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
