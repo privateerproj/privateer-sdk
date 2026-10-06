@@ -101,7 +101,7 @@ func (c *Client) authHeaders() map[string]string {
 	if strings.HasPrefix(c.Config.APIKey, oauthTokenPrefix) {
 		headers["Authorization"] = "Bearer " + c.Config.APIKey
 		headers["anthropic-beta"] = oauthBetaHeader
-	} else {
+	} else if c.Config.APIKey != "" {
 		headers["x-api-key"] = c.Config.APIKey
 	}
 	return headers
