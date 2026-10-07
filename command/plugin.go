@@ -18,6 +18,9 @@ type Plugin struct{}
 // ActiveEvaluationOrchestrator is the currently active evaluation orchestrator.
 var ActiveEvaluationOrchestrator *pluginkit.EvaluationOrchestrator
 
+// exit is os.Exit, replaceable in tests.
+var exit = os.Exit
+
 // Start will be called by Privateer via gRPC.
 func (p *Plugin) Start() (int, error) {
 	err := ActiveEvaluationOrchestrator.Mobilize()
@@ -71,6 +74,10 @@ func debugCommand() *cobra.Command {
 			err := ActiveEvaluationOrchestrator.Mobilize()
 			if err != nil {
 				cmd.Println(err)
+			}
+			// Match the RPC path (Plugin.Start) so debug and run agree.
+			if code := pluginkit.ExitCodeFor(ActiveEvaluationOrchestrator, err); code != shared.TestPass {
+				exit(code)
 			}
 		},
 	}

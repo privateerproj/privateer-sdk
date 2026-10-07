@@ -1,13 +1,20 @@
 package command
 
 import (
+	"bytes"
+	"errors"
+	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
+	hclog "github.com/hashicorp/go-hclog"
+	hcplugin "github.com/hashicorp/go-plugin"
 	"github.com/spf13/viper"
 
 	"github.com/privateerproj/privateer-sdk/internal/manifest"
+	"github.com/privateerproj/privateer-sdk/shared"
 )
 
 // TestGetBinary_ResolvesViaManifest verifies that binary resolution reads the
@@ -93,5 +100,37 @@ func TestQueueCmd_ForwardsRunFlagsToPlugin(t *testing.T) {
 		if !slices.Contains(p.Command.Env, w) {
 			t.Errorf("plugin env lacks %s: %v", w, p.Command.Env)
 		}
+	}
+}
+
+func TestCloseClient_NonPassExitWithoutError(t *testing.T) {
+	tests := []struct {
+		name       string
+		pkg        PluginPkg
+		want       string
+		wantAbsent string
+	}{
+		{"pass", PluginPkg{Successful: true}, "completed successfully", "Unexpected"},
+		{"error", PluginPkg{Error: errors.New("boom")}, "Error from svc", "Unexpected"},
+		{"test fail without error", PluginPkg{ExitCode: shared.TestFail}, "finished with TestFail", "Unexpected exit"},
+		{"unknown code", PluginPkg{ExitCode: 99}, "Unexpected exit from svc", "finished with"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			logger := hclog.New(&hclog.LoggerOptions{Output: &buf, Level: hclog.Info})
+			client := hcplugin.NewClient(&hcplugin.ClientConfig{
+				HandshakeConfig: shared.GetHandshakeConfig(),
+				Cmd:             exec.Command("true"),
+			})
+			tt.pkg.closeClient("svc", client, logger)
+			out := buf.String()
+			if !strings.Contains(out, tt.want) {
+				t.Errorf("expected %q in %q", tt.want, out)
+			}
+			if strings.Contains(out, tt.wantAbsent) {
+				t.Errorf("did not expect %q in %q", tt.wantAbsent, out)
+			}
+		})
 	}
 }

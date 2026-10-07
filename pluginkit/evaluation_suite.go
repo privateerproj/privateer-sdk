@@ -142,6 +142,8 @@ func (e *EvaluationSuite) Evaluate(serviceName string) error {
 		e.config.Logger.Info(output)
 	case gemara.NotRun:
 		e.config.Logger.Trace(output)
+	case gemara.NeedsReview:
+		e.config.Logger.Warn(output)
 	default:
 		e.config.Logger.Error(output)
 	}
