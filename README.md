@@ -101,7 +101,7 @@ All contributions are covered by the [Apache 2 License](https://github.com/priva
 
 For vulnerability reporting, please reference our [Security Policy](https://github.com/privateerproj/.github/blob/main/.github/SECURITY.md). Please do not open public issues for security vulnerabilities or questions. Report them privately through [GitHub private vulnerability reporting](https://github.com/privateerproj/privateer-sdk/security/advisories/new) instead.
 
-See [CRA-READINESS.md](CRA-READINESS.md) for how the project voluntarily documents its security practices against the EU Cyber Resilience Act (CRA) readiness checklist.
+See the [Security Policy](https://github.com/privateerproj/.github/blob/main/.github/SECURITY.md) for the project's EU Cyber Resilience Act (CRA) readiness statement.
 
 ## Helpful Links
 
