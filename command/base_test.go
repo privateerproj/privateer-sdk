@@ -54,8 +54,7 @@ func TestSetRunFlags_TargetAliasForService(t *testing.T) {
 	target := cmd.PersistentFlags().Lookup("target")
 	if target == nil {
 		t.Fatal("expected target flag to be registered")
-	}
-	if target.Shorthand != "" {
+	} else if target.Shorthand != "" {
 		t.Errorf("target flag shorthand: got = %q, want none (-t belongs to --test-suites)", target.Shorthand)
 	}
 
