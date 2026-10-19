@@ -4,12 +4,15 @@ metadata:
   id: PrivProj.SDK
   type: ThreatCatalog
   gemara-version: "1.5.0"
-  description: Threat catalog for Privateer SDK Self-Assessment
-  version: 2026.Feb.28
+  description: |
+    Threat model for the Privateer SDK, built from an attack surface analysis of the source,
+    release, plugin execution, plugin installation and publishing, configuration,
+    AI-assisted assessment, and result output paths.
+  version: 2026.Oct.05
   author:
     id: pvtr-maintainers
     name: Privateer Maintainer Group
-    type: Human
+    type: Software Assisted
   mapping-references:
     - id: CCC
       title: Common Cloud Controls Core
@@ -20,7 +23,7 @@ metadata:
         and threat models maintained by FINOS.
     - id: PrivProj.SDK.CAPS
       title: Privateer SDK Capabilities
-      version: 2026.Feb.28
+      version: 2026.Oct.05
       url: https://github.com/privateerproj/privateer-sdk/blob/main/.github/capability-catalog.yaml
       description: Capability catalog for Privateer SDK Self-Assessment
 
@@ -31,13 +34,32 @@ groups:
   - id: plugin-development
     title: Plugin Development
     description: Threats to the plugin development kit and shared interfaces that downstream plugins rely on
+  - id: harness
+    title: Harness
+    description: Threats to installing, verifying, publishing, and running plugin binaries
+  - id: configuration
+    title: Configuration
+    description: Threats arising from how settings and credentials reach the harness and plugins
+  - id: evaluation
+    title: Evaluation
+    description: Threats to the integrity and confidentiality of assessments and their results
+
+imports:
+  - reference-id: CCC
+    entries:
+      - reference-id: CCC.Core.TH14
+        remarks: |
+          Older Resource Versions are Used. A service whose plugin coordinate carries no @<version>
+          runs whichever installed version the manifest resolves as latest, and a plugin built against
+          an old SDK release keeps that release's behavior until it is rebuilt.
 
 threats:
   - id: PrivProj.SDK.TH01
     title: Source Repository is Compromised
     description: |
-      Access control failures on the source repository may result in distribution of compromised code,
-      which will then compromise all downstream users.
+      A stolen maintainer credential, or a gap in the review that branch protection and CODEOWNERS
+      require on main, may let an attacker merge malicious code. The next tagged release then reaches
+      every plugin and harness that updates its SDK version.
     group: distribution
     capabilities:
       - reference-id: PrivProj.SDK.CAPS
@@ -47,9 +69,9 @@ threats:
   - id: PrivProj.SDK.TH02
     title: Undetected Breaking Changes Disrupt Downstream Plugins
     description: |
-      Syntactic or behavioral modifications to core interfaces or evaluation logic may disrupt
-      compatibility for existing plugins, leading to silent validation failures or logic errors
-      in security assessments.
+      A change to the shared.Pluginer RPC contract, the exit codes in shared, the exported result
+      types, or the evaluation logic in pluginkit may break existing plugins without a compile error,
+      leading to silent validation failures or wrong results in security assessments.
     group: plugin-development
     capabilities:
       - reference-id: PrivProj.SDK.CAPS
@@ -60,10 +82,174 @@ threats:
   - id: PrivProj.SDK.TH03
     title: Supply Chain Contamination via Dependencies
     description: |
-      The use of unvetted, unpinned, or compromised third-party Go modules can
-      introduce vulnerabilities or malicious logic into the SDK and derived plugins.
+      A compromised or vulnerable Go module in go.mod (for example go-plugin, sigstore-go, oras-go,
+      go-git, or viper) may introduce malicious logic into the SDK. Plugins that import the command
+      package inherit its dependencies, and the harness inherits the larger set behind command/harness.
     group: distribution
     capabilities:
       - reference-id: PrivProj.SDK.CAPS
         entries:
           - reference-id: PrivProj.SDK.CP01
+          - reference-id: PrivProj.SDK.CP02
+  - id: PrivProj.SDK.TH04
+    title: Release Pipeline or Privileged Workflow is Abused
+    description: |
+      release.yml, auto-labeler.yml, and pr-title.yml run on pull_request_target, and the release job
+      holds contents write through a third-party reusable workflow. A compromised action, or a workflow
+      change that exposes those permissions to pull request content, may let an attacker create or move
+      a release tag that the Go module proxy then serves.
+    group: distribution
+    capabilities:
+      - reference-id: PrivProj.SDK.CAPS
+        entries:
+          - reference-id: PrivProj.SDK.CP01
+  - id: PrivProj.SDK.TH05
+    title: Malicious or Compromised Plugin Runs with Harness Privileges
+    description: |
+      The harness starts each plugin binary from the binaries path as a child process and passes it
+      the full environment. The binary is not re-verified at launch, and the go-plugin handshake is not
+      a security control. A malicious plugin, or one replaced on disk after install, can read every
+      credential in the environment and config file and act with the privileges of the user or CI job.
+    group: harness
+    capabilities:
+      - reference-id: CCC
+        entries:
+          - reference-id: CCC.Core.CP28
+      - reference-id: PrivProj.SDK.CAPS
+        entries:
+          - reference-id: PrivProj.SDK.CP04
+          - reference-id: PrivProj.SDK.CP06
+  - id: PrivProj.SDK.TH06
+    title: Plugin Misreports Its Own Result
+    description: |
+      The harness learns the outcome of a run only from the exit code the plugin returns through
+      shared.Pluginer.Start and from the result files the plugin writes. A faulty or malicious plugin
+      can report a pass for controls it did not evaluate, and the harness has no independent check.
+    group: harness
+    capabilities:
+      - reference-id: PrivProj.SDK.CAPS
+        entries:
+          - reference-id: PrivProj.SDK.CP03
+          - reference-id: PrivProj.SDK.CP05
+          - reference-id: PrivProj.SDK.CP06
+          - reference-id: PrivProj.SDK.CP12
+  - id: PrivProj.SDK.TH07
+    title: Attacker's Signer Identity is Accepted on First Install
+    description: |
+      Install pins a plugin's signer identity on first use. When neither the local manifest nor the
+      hub declares an identity, internal/verify accepts any valid keyless Sigstore identity and pins it.
+      An attacker who can publish under the coordinate before the first install has their identity
+      trusted for every later update.
+    group: harness
+    capabilities:
+      - reference-id: CCC
+        entries:
+          - reference-id: CCC.Core.CP29
+      - reference-id: PrivProj.SDK.CAPS
+        entries:
+          - reference-id: PrivProj.SDK.CP07
+  - id: PrivProj.SDK.TH08
+    title: Compromised Hub or Registry Serves an Altered Plugin or Catalog
+    description: |
+      Install trusts the hub for the release list, the expected digest, and the first signer identity,
+      and pulls the bytes from the registry. The registry digest cross-check is skipped with a warning
+      when the hub records no digest, and catalogs have no local signer pin, so a compromised hub can
+      change a catalog's signer without resistance. With autoinstall set, this happens during a run.
+    group: harness
+    capabilities:
+      - reference-id: CCC
+        entries:
+          - reference-id: CCC.Core.CP18
+          - reference-id: CCC.Core.CP29
+      - reference-id: PrivProj.SDK.CAPS
+        entries:
+          - reference-id: PrivProj.SDK.CP07
+  - id: PrivProj.SDK.TH09
+    title: Unsigned Local Plugin is Installed and Executed
+    description: |
+      install --local copies a binary into the binaries path with no signature check and runs its
+      publish-manifest subcommand immediately. The path assumes the binary is the user's own build;
+      a user persuaded to install a binary from elsewhere executes it at install time and on every run.
+    group: harness
+    capabilities:
+      - reference-id: PrivProj.SDK.CAPS
+        entries:
+          - reference-id: PrivProj.SDK.CP06
+          - reference-id: PrivProj.SDK.CP07
+  - id: PrivProj.SDK.TH10
+    title: Credentials are Exposed through Configuration, Storage, or Logs
+    description: |
+      Target tokens live in config file vars, PVTR_ environment variables carry the hub bearer and AI
+      key, and pvtr login stores hub credentials in a file under the user's data directory. Log
+      redaction matches on key names only, so a secret under an unexpected key is logged at trace
+      level. A stolen hub bearer and signing identity let an attacker publish under the plugin's coordinate.
+    group: configuration
+    capabilities:
+      - reference-id: PrivProj.SDK.CAPS
+        entries:
+          - reference-id: PrivProj.SDK.CP04
+          - reference-id: PrivProj.SDK.CP08
+          - reference-id: PrivProj.SDK.CP12
+  - id: PrivProj.SDK.TH11
+    title: Sensitive Target Data Persists in Results and Evidence
+    description: |
+      AI-assisted evidence records the prompt and the assessed material verbatim, and results and logs
+      are written to the write directory for upload or publication. Material that contains secrets or
+      private data from the assessed target is then disclosed to anyone who can read the results.
+    group: evaluation
+    capabilities:
+      - reference-id: PrivProj.SDK.CAPS
+        entries:
+          - reference-id: PrivProj.SDK.CP09
+          - reference-id: PrivProj.SDK.CP12
+  - id: PrivProj.SDK.TH12
+    title: Assessed Content Steers the AI Verdict
+    description: |
+      The material sent to the model comes from the target being assessed. Whoever controls that
+      content can embed instructions that lead the model to return a passing verdict, which a plugin
+      may fold into a control result without further checks.
+    group: evaluation
+    capabilities:
+      - reference-id: PrivProj.SDK.CAPS
+        entries:
+          - reference-id: PrivProj.SDK.CP05
+          - reference-id: PrivProj.SDK.CP09
+  - id: PrivProj.SDK.TH13
+    title: AI Requests are Redirected to an Untrusted Endpoint
+    description: |
+      ai_base_url replaces the provider's default endpoint. Anyone who can set it in the config file
+      or environment receives the API key and the assessed material on every request, and can return
+      any verdict they choose.
+    group: configuration
+    capabilities:
+      - reference-id: PrivProj.SDK.CAPS
+        entries:
+          - reference-id: PrivProj.SDK.CP04
+          - reference-id: PrivProj.SDK.CP09
+  - id: PrivProj.SDK.TH14
+    title: Invasive Change Runs Unintended or Fails to Revert
+    description: |
+      A top-level invasive setting is inherited by every service, so enabling it for one target allows
+      changes on all of them. When a change's revert fails, the ChangeManager marks a corrupted state
+      and the assessed target is left modified.
+    group: evaluation
+    capabilities:
+      - reference-id: PrivProj.SDK.CAPS
+        entries:
+          - reference-id: PrivProj.SDK.CP04
+          - reference-id: PrivProj.SDK.CP10
+  - id: PrivProj.SDK.TH15
+    title: Generated Plugins Inherit Tampered Templates
+    description: |
+      generate-plugin clones the default branch of privateerproj/plugin-generator-templates with no
+      pinned commit or signature check, into a fixed directory under the system temp directory, and
+      renders it into the source of a new plugin. A change to that repository, or to the directory
+      before rendering, is carried into every plugin generated afterward.
+    group: plugin-development
+    capabilities:
+      - reference-id: CCC
+        entries:
+          - reference-id: CCC.Core.CP29
+      - reference-id: PrivProj.SDK.CAPS
+        entries:
+          - reference-id: PrivProj.SDK.CP11

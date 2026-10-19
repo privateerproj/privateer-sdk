@@ -1,6 +1,6 @@
 header:
   schema-version: 2.2.0
-  last-updated: "2026-10-01"
+  last-updated: "2026-10-05"
   last-reviewed: "2026-10-01"
   url: https://github.com/privateerproj/privateer-sdk/blob/main/.github/security-insights.yml
   project-si-source: https://raw.githubusercontent.com/privateerproj/.github/refs/heads/main/.github/security-insights.yml
@@ -39,9 +39,10 @@ repository:
     assessments:
       self:
         evidence: https://github.com/privateerproj/privateer-sdk/blob/main/.github/threat-assessment.yaml
-        date: "2026-02-28"
+        date: "2026-10-05"
         comment: |
-          Gemara v1.5.0 threat assessment of the Privateer SDK, written by the Privateer Maintainer Group.
+          Gemara v1.5.0 threat model of the Privateer SDK, built from an attack surface analysis of the code.
+          Drafted with software assistance for the Privateer Maintainer Group.
           Threats are in .github/threat-assessment.yaml and capabilities are in .github/capability-catalog.yaml.
       third-party:
         - name: OpenSSF Best Practices OSPS Baseline

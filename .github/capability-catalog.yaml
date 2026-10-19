@@ -5,11 +5,11 @@ metadata:
   type: CapabilityCatalog
   gemara-version: "1.5.0"
   description: Capability catalog for Privateer SDK Self-Assessment
-  version: 2026.Feb.28
+  version: 2026.Oct.05
   author:
     id: pvtr-maintainers
     name: Privateer Maintainer Group
-    type: Human
+    type: Software Assisted
   mapping-references:
     - id: CCC
       title: Common Cloud Controls Core
@@ -32,6 +32,25 @@ groups:
   - id: evaluation
     title: Evaluation
     description: Orchestrating assessment logic and producing machine-readable results
+  - id: harness
+    title: Harness
+    description: Installing, verifying, publishing, and running plugin binaries on behalf of the pvtr CLI
+
+imports:
+  - reference-id: CCC
+    entries:
+      - reference-id: CCC.Core.CP18
+        remarks: |
+          Resource Versioning. Plugins and catalogs are addressed as
+          <namespace>/<id>@<version>, and the SDK itself is consumed at a pinned Go module version.
+      - reference-id: CCC.Core.CP28
+        remarks: |
+          Command-line Interface. The command and command/harness packages provide
+          the cobra commands behind both plugin binaries and the pvtr CLI.
+      - reference-id: CCC.Core.CP29
+        remarks: |
+          Active Ingestion. The harness pulls plugins and catalogs from the grc.store
+          hub and its OCI registry, and plugin scaffolding clones templates from GitHub.
 
 capabilities:
   - id: PrivProj.SDK.CP01
@@ -53,4 +72,51 @@ capabilities:
   - id: PrivProj.SDK.CP05
     title: Evaluation Framework
     description: Orchestrates assessment logic to ensure consistent machine-readable validation
+    group: evaluation
+  - id: PrivProj.SDK.CP06
+    title: Plugin Execution
+    description: |
+      The command package starts each installed plugin binary as a child process and
+      drives it through the one-method shared.Pluginer contract over hashicorp/go-plugin net/rpc.
+      The plugin inherits the harness's environment and reports its own exit code.
+    group: harness
+  - id: PrivProj.SDK.CP07
+    title: Plugin Installation and Verification
+    description: |
+      internal/install resolves a plugin through the grc.store hub, pulls it from the OCI registry,
+      verifies its Sigstore keyless signature and digests in internal/verify, pins the signer identity
+      in the local manifest, and caches the catalogs the plugin declares. It also installs an unsigned
+      local binary with --local, and installs missing plugins during a run when autoinstall is set.
+    group: harness
+  - id: PrivProj.SDK.CP08
+    title: Plugin Publishing
+    description: |
+      internal/publish pushes a plugin to the hub's registry as an OCI artifact and signs it with a
+      keyless Sigstore identity. internal/auth supplies the hub bearer from PVTR_TOKEN or from the
+      credentials file that pvtr login stores.
+    group: harness
+  - id: PrivProj.SDK.CP09
+    title: AI-Assisted Assessment
+    description: |
+      The ai packages send a prompt and material chosen by the plugin to a configured model provider
+      (OpenAI, Anthropic, or any endpoint set in ai_base_url) and return the verdict as Gemara evidence
+      that records the prompt, the material, and the provider.
+    group: evaluation
+  - id: PrivProj.SDK.CP10
+    title: Invasive Change Management
+    description: |
+      pluginkit.ChangeManager lets an assessment apply a change to the assessed target and revert it
+      afterward. Changes run only when the invasive configuration value is true.
+    group: evaluation
+  - id: PrivProj.SDK.CP11
+    title: Plugin Scaffolding
+    description: |
+      generate-plugin clones the privateerproj/plugin-generator-templates repository, reads a Gemara
+      control catalog from a local path or URL, and renders the templates into the source of a new plugin.
+    group: plugin-development
+  - id: PrivProj.SDK.CP12
+    title: Result and Log Output
+    description: |
+      pluginkit writes evaluation results (YAML, JSON, SARIF, or Gemara) and config writes log files
+      under the configured write directory, one folder per service.
     group: evaluation
