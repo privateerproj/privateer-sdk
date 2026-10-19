@@ -21,6 +21,6 @@ jobs:
       contents: read        # Read repository contents for the reusable workflow
       pull-requests: read   # Read the pull request title to validate it
       statuses: write       # Required by the reusable workflow's job; capped to read on fork PRs
-    uses: github-community-projects/ospo-reusable-workflows/.github/workflows/pr-title.yaml@690dbbefe65f0c1d68c5211dd6ff997f533099b5 # v2.2.0
+    uses: github-community-projects/ospo-reusable-workflows/.github/workflows/pr-title.yaml@ee8277bd76ef808b3a6e0bdd1f5a46a520a12c5d # v2.3.1
     secrets:
       github-token: ${{ secrets.GITHUB_TOKEN }}
