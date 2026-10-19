@@ -5,7 +5,7 @@ metadata:
   type: CapabilityCatalog
   gemara-version: "1.5.0"
   description: Capability catalog for Privateer SDK Self-Assessment
-  version: 2026.Oct.05
+  version: 2026.Oct.19
   author:
     id: pvtr-maintainers
     name: Privateer Maintainer Group

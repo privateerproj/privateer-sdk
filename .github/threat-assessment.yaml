@@ -8,7 +8,7 @@ metadata:
     Threat model for the Privateer SDK, built from an attack surface analysis of the source,
     release, plugin execution, plugin installation and publishing, configuration,
     AI-assisted assessment, and result output paths.
-  version: 2026.Oct.05
+  version: 2026.Oct.19
   author:
     id: pvtr-maintainers
     name: Privateer Maintainer Group
@@ -23,7 +23,7 @@ metadata:
         and threat models maintained by FINOS.
     - id: PrivProj.SDK.CAPS
       title: Privateer SDK Capabilities
-      version: 2026.Oct.05
+      version: 2026.Oct.19
       url: https://github.com/privateerproj/privateer-sdk/blob/main/.github/capability-catalog.yaml
       description: Capability catalog for Privateer SDK Self-Assessment
 
@@ -112,9 +112,6 @@ threats:
       credential in the environment and config file and act with the privileges of the user or CI job.
     group: harness
     capabilities:
-      - reference-id: CCC
-        entries:
-          - reference-id: CCC.Core.CP28
       - reference-id: PrivProj.SDK.CAPS
         entries:
           - reference-id: PrivProj.SDK.CP04
@@ -159,7 +156,6 @@ threats:
     capabilities:
       - reference-id: CCC
         entries:
-          - reference-id: CCC.Core.CP18
           - reference-id: CCC.Core.CP29
       - reference-id: PrivProj.SDK.CAPS
         entries:
@@ -229,8 +225,8 @@ threats:
   - id: PrivProj.SDK.TH14
     title: Invasive Change Runs Unintended or Fails to Revert
     description: |
-      A top-level invasive setting is inherited by every service, so enabling it for one target allows
-      changes on all of them. When a change's revert fails, the ChangeManager marks a corrupted state
+      A top-level invasive setting applies to every service and cannot be turned off per service, so
+      enabling it once allows changes on every target. When a change's revert fails, the ChangeManager marks a corrupted state
       and the assessed target is left modified.
     group: evaluation
     capabilities:
@@ -253,3 +249,33 @@ threats:
       - reference-id: PrivProj.SDK.CAPS
         entries:
           - reference-id: PrivProj.SDK.CP11
+  - id: PrivProj.SDK.TH16
+    title: Results Cannot be Attributed or Shown Unaltered
+    description: |
+      Results and logs are written as plain files under the write directory with no signature and no
+      record of who ran the assessment or which plugin build produced it. A result altered after the
+      run, or fabricated without a run, cannot be told from a genuine one until a hub verifies it on
+      publication, and the party that produced a result can deny having done so.
+    group: evaluation
+    capabilities:
+      - reference-id: PrivProj.SDK.CAPS
+        entries:
+          - reference-id: PrivProj.SDK.CP05
+          - reference-id: PrivProj.SDK.CP06
+          - reference-id: PrivProj.SDK.CP12
+  - id: PrivProj.SDK.TH17
+    title: Plugin Hang or Install Failure Blocks the Run
+    description: |
+      Once a plugin has started, the harness waits on shared.Pluginer.Start with no deadline, so a
+      plugin that hangs, or a target that never answers, stalls the run. Install fails closed when the
+      hub or registry is unreachable or when the embedded Sigstore trusted root has expired, and with
+      autoinstall set that failure is hit as part of the run rather than before it.
+    group: harness
+    capabilities:
+      - reference-id: CCC
+        entries:
+          - reference-id: CCC.Core.CP29
+      - reference-id: PrivProj.SDK.CAPS
+        entries:
+          - reference-id: PrivProj.SDK.CP06
+          - reference-id: PrivProj.SDK.CP07

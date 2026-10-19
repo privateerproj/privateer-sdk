@@ -1,7 +1,7 @@
 header:
   schema-version: 2.2.0
-  last-updated: "2026-10-05"
-  last-reviewed: "2026-10-01"
+  last-updated: "2026-10-19"
+  last-reviewed: "2026-10-19"
   url: https://github.com/privateerproj/privateer-sdk/blob/main/.github/security-insights.yml
   project-si-source: https://raw.githubusercontent.com/privateerproj/.github/refs/heads/main/.github/security-insights.yml
   comment: |
@@ -39,7 +39,7 @@ repository:
     assessments:
       self:
         evidence: https://github.com/privateerproj/privateer-sdk/blob/main/.github/threat-assessment.yaml
-        date: "2026-10-05"
+        date: "2026-10-19"
         comment: |
           Gemara v1.5.0 threat model of the Privateer SDK, built from an attack surface analysis of the code.
           Drafted with software assistance for the Privateer Maintainer Group.
