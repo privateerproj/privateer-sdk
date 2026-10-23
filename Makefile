@@ -1,4 +1,7 @@
-build: tidy build test
+.PHONY: all build quick test test-race testcov test-cov tidy bench
+.DEFAULT_GOAL := all
+
+all: tidy build test
 quick: build
 testcov: test-cov
 
@@ -25,7 +28,7 @@ test-race:
 test-cov:
 	@echo "Running tests and generating coverage output"
 	@go test ./... -coverprofile coverage.out -covermode count
-	@echo "Current test coverage : $(shell go tool cover -func=coverage.out | grep total | grep -Eo '[0-9]+\.[0-9]+') %"
+	@echo "Current test coverage : $$(go tool cover -func=coverage.out | grep total | grep -Eo '[0-9]+\.[0-9]+') %"
 
 bench:
 	@echo "  >  Running benchmarks ..."
