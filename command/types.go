@@ -13,6 +13,7 @@ import (
 
 	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/privateerproj/privateer-sdk/internal/manifest"
+	"github.com/privateerproj/privateer-sdk/shared"
 )
 
 // PluginError retains an error object and the name of the pack that generated it.
@@ -44,6 +45,7 @@ type PluginPkg struct {
 	Installed   bool
 	Requested   bool
 	Successful  bool
+	ExitCode    int
 	Error       error
 }
 
@@ -99,8 +101,12 @@ func (p *PluginPkg) closeClient(serviceName string, client *hcplugin.Client, log
 		logger.Info(fmt.Sprintf("Plugin for %s completed successfully", serviceName))
 	} else if p.Error != nil {
 		logger.Error(fmt.Sprintf("Error from %s: %s", serviceName, p.Error))
+	} else if name := shared.ExitCodeName(p.ExitCode); name != "" {
+		// A clean non-pass code with no error is the designed outcome for a
+		// suite whose evaluations did not all pass.
+		logger.Warn(fmt.Sprintf("Plugin for %s finished with %s: evaluations did not all pass", serviceName, name))
 	} else {
-		logger.Warn(fmt.Sprintf("Unexpected exit from %s with no error or success", serviceName))
+		logger.Warn(fmt.Sprintf("Unexpected exit from %s with no error or success (exit code %d)", serviceName, p.ExitCode))
 	}
 	client.Kill()
 }

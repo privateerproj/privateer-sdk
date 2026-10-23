@@ -263,6 +263,7 @@ func runOne(logger hclog.Logger, num int, pluginPkg *PluginPkg) (code int, fatal
 	if response != nil {
 		pluginPkg.Error = fmt.Errorf("plugin %s: %v", serviceName, response)
 	}
+	pluginPkg.ExitCode = pluginExitCode
 	pluginPkg.Successful = pluginExitCode == TestPass
 	pluginPkg.closeClient(serviceName, client, logger)
 	return pluginExitCode, false
