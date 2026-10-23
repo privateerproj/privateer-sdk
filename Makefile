@@ -1,12 +1,14 @@
-build: tidy build test
-quick: build
+.PHONY: build quick compile test test-race testcov test-cov tidy bench
+
+build: tidy compile test
+quick: compile
 testcov: test-cov
 
 tidy:
 	@echo "  >  Tidying go.mod ..."
 	go mod tidy
 
-build:
+compile:
 	@echo "  >  Building ..."
 	go build ./...
 
@@ -25,7 +27,7 @@ test-race:
 test-cov:
 	@echo "Running tests and generating coverage output"
 	@go test ./... -coverprofile coverage.out -covermode count
-	@echo "Current test coverage : $(shell go tool cover -func=coverage.out | grep total | grep -Eo '[0-9]+\.[0-9]+') %"
+	@echo "Current test coverage : $$(go tool cover -func=coverage.out | grep total | grep -Eo '[0-9]+\.[0-9]+') %"
 
 bench:
 	@echo "  >  Running benchmarks ..."
