@@ -74,11 +74,11 @@ make testcov
 
 ### Available Make Targets
 
-- `make build` - Build all packages
+- `make build` - Tidy, compile all packages, and run tests
+- `make quick` - Compile all packages without running tests
 - `make test` - Run tests and vet checks
 - `make testcov` - Run tests with coverage report
 - `make tidy` - Clean up go.mod dependencies
-- `make quick` - Alias for `make build`
 
 ## Project Structure
 
