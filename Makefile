@@ -1,14 +1,15 @@
-.PHONY: build quick compile test test-race testcov test-cov tidy bench
+.PHONY: all build quick test test-race testcov test-cov tidy bench
+.DEFAULT_GOAL := all
 
-build: tidy compile test
-quick: compile
+all: tidy build test
+quick: build
 testcov: test-cov
 
 tidy:
 	@echo "  >  Tidying go.mod ..."
 	go mod tidy
 
-compile:
+build:
 	@echo "  >  Building ..."
 	go build ./...
 
