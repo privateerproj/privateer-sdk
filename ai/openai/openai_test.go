@@ -101,6 +101,37 @@ func TestAnalyze_StructuredOutput(t *testing.T) {
 	}
 }
 
+func TestAnalyze_CustomBaseURLWithoutAPIKeyOmitsAuthorization(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, found := r.Header["Authorization"]; found {
+			t.Fatal("expected Authorization header to be absent")
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":    "chatcmpl-123",
+			"model": "gpt-4o-mini",
+			"choices": []map[string]any{{
+				"finish_reason": "stop",
+				"message":       map[string]string{"content": "ok"},
+			}},
+		})
+	}))
+	defer server.Close()
+
+	client := newTestClient(provider.Config{
+		Provider: Provider,
+		Model:    "gpt-4o-mini",
+		BaseURL:  server.URL,
+	})
+
+	response, err := client.Analyze(context.Background(), "prompt", "content", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if response.Text != "ok" {
+		t.Fatalf("unexpected text: %q", response.Text)
+	}
+}
+
 func TestAnalyze_RequiresSchemaName(t *testing.T) {
 	client := newTestClient(provider.Config{
 		Provider: Provider,

@@ -14,6 +14,8 @@ import (
 	"github.com/gemaraproj/go-gemara"
 	"github.com/gemaraproj/go-gemara/gemaraconv"
 	"github.com/goccy/go-yaml"
+	"github.com/privateerproj/privateer-sdk/ai"
+	"github.com/privateerproj/privateer-sdk/ai/provider"
 	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/privateerproj/privateer-sdk/utils"
 )
@@ -371,12 +373,45 @@ func findReferenceCatalog(referenceCatalogs map[string]*gemara.ControlCatalog, i
 	return found
 }
 
+// validateAIConfig fails a run at mobilization time when AI is enabled but
+// misconfigured, so the problem surfaces as a config error up front rather than
+// as a step failure on the first AI call. AI is opt-in, so a config that does
+// not enable it is not an error.
+func validateAIConfig(cfg *config.Config) error {
+	aiConfig, configured, err := provider.ConfigFromSDKConfig(*cfg)
+	if err != nil {
+		return aiConfigError(cfg.ServiceName, err)
+	}
+	if !configured {
+		return nil
+	}
+
+	// Use the same validation and provider registry as direct client callers.
+	if _, err := ai.NewClientWithAIConfig(aiConfig); err != nil {
+		return aiConfigError(cfg.ServiceName, err)
+	}
+	return nil
+}
+
+// aiConfigError names the target and, when the process environment is what
+// selected the backend, says so: this failure now stops the run, and the
+// operator seeing it may not be the person who exported the variable.
+func aiConfigError(serviceName string, err error) error {
+	if hint := config.AIEnablementHint(); hint != "" {
+		return fmt.Errorf("target %q: invalid AI configuration: %w (%s)", serviceName, err, hint)
+	}
+	return fmt.Errorf("target %q: invalid AI configuration: %w", serviceName, err)
+}
+
 // Mobilize initializes the orchestrator and executes all evaluation suites.
 func (v *EvaluationOrchestrator) Mobilize() error {
 	v.Evaluation_Suites = nil
 	v.setupConfig()
 	if v.config.Error != nil {
 		return BAD_CONFIG(v.config.Error, "mob10")
+	}
+	if err := validateAIConfig(v.config); err != nil {
+		return BAD_CONFIG(err, "mob15")
 	}
 
 	if len(v.config.Policy.ControlCatalogs) == 0 {
