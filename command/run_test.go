@@ -1,6 +1,13 @@
 package command
 
 import (
+	"go/ast"
+	"go/constant"
+	"go/importer"
+	"go/parser"
+	"go/token"
+	"go/types"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -25,6 +32,11 @@ func TestMergeExitCode(t *testing.T) {
 		{"BadUsage does not downgrade InternalError", InternalError, BadUsage, InternalError},
 		{"InternalError beats TestFail", TestFail, InternalError, InternalError},
 		{"InternalError beats TestPass", TestPass, InternalError, InternalError},
+		{"Aborted beats TestPass", TestPass, Aborted, Aborted},
+		{"Aborted beats TestFail", TestFail, Aborted, Aborted},
+		{"BadUsage beats Aborted", Aborted, BadUsage, BadUsage},
+		{"NoTests beats TestPass", TestPass, NoTests, NoTests},
+		{"TestFail beats NoTests", NoTests, TestFail, TestFail},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -32,6 +44,44 @@ func TestMergeExitCode(t *testing.T) {
 				t.Errorf("mergeExitCode(%d, %d) = %d, want %d", tt.prev, tt.next, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestExitSeverityCoversEveryExitCode reads the exit codes straight from
+// shared/exitcodes.go, so a code added there without its own exitSeverity
+// entry fails here instead of silently merging as TestPass. Severities must
+// also be unique, since mergeExitCode keeps the earlier code on a tie.
+func TestExitSeverityCoversEveryExitCode(t *testing.T) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, filepath.Join("..", "shared", "exitcodes.go"), nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conf := types.Config{Importer: importer.Default()}
+	pkg, err := conf.Check("shared", fset, []*ast.File{file}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bySeverity := map[int]string{}
+	for _, name := range pkg.Scope().Names() {
+		c, ok := pkg.Scope().Lookup(name).(*types.Const)
+		if !ok || !c.Exported() || c.Val().Kind() != constant.Int {
+			continue
+		}
+		code, _ := constant.Int64Val(c.Val())
+		severity, ok := exitSeverity[int(code)]
+		if !ok {
+			t.Errorf("exit code %s (%d) has no exitSeverity entry", name, code)
+			continue
+		}
+		if other, taken := bySeverity[severity]; taken {
+			t.Errorf("exit codes %s and %s share severity %d", other, name, severity)
+		}
+		bySeverity[severity] = name
+	}
+	if len(bySeverity) == 0 {
+		t.Fatal("found no exit codes in shared/exitcodes.go")
 	}
 }
 
