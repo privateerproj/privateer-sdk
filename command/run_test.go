@@ -2,8 +2,8 @@ package command
 
 import (
 	"go/ast"
+	"go/build"
 	"go/constant"
-	"go/importer"
 	"go/parser"
 	"go/token"
 	"go/types"
@@ -48,17 +48,32 @@ func TestMergeExitCode(t *testing.T) {
 }
 
 // TestExitSeverityCoversEveryExitCode reads the exit codes straight from
-// shared/exitcodes.go, so a code added there without its own exitSeverity
-// entry fails here instead of silently merging as TestPass. Severities must
-// also be unique, since mergeExitCode keeps the earlier code on a tie.
+// package shared, so a code added to any of its files without its own
+// exitSeverity entry fails here instead of silently merging as TestPass.
+// Severities must also be unique, since mergeExitCode keeps the earlier code
+// on a tie.
 func TestExitSeverityCoversEveryExitCode(t *testing.T) {
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, filepath.Join("..", "shared", "exitcodes.go"), nil, 0)
+	dir := filepath.Join("..", "shared")
+	bp, err := build.ImportDir(dir, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	conf := types.Config{Importer: importer.Default()}
-	pkg, err := conf.Check("shared", fset, []*ast.File{file}, nil)
+	// Only the const declarations are type-checked, so the package's own
+	// imports never need resolving.
+	fset := token.NewFileSet()
+	consts := &ast.File{Name: ast.NewIdent(bp.Name)}
+	for _, name := range bp.GoFiles {
+		file, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, decl := range file.Decls {
+			if gen, ok := decl.(*ast.GenDecl); ok && gen.Tok == token.CONST {
+				consts.Decls = append(consts.Decls, gen)
+			}
+		}
+	}
+	pkg, err := new(types.Config).Check(bp.Name, fset, []*ast.File{consts}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +96,7 @@ func TestExitSeverityCoversEveryExitCode(t *testing.T) {
 		bySeverity[severity] = name
 	}
 	if len(bySeverity) == 0 {
-		t.Fatal("found no exit codes in shared/exitcodes.go")
+		t.Fatal("found no exit codes in package shared")
 	}
 }
 
