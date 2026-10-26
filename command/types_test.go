@@ -113,6 +113,7 @@ func TestCloseClient_NonPassExitWithoutError(t *testing.T) {
 		{"pass", PluginPkg{Successful: true}, "completed successfully", "Unexpected"},
 		{"error", PluginPkg{Error: errors.New("boom")}, "Error from svc", "Unexpected"},
 		{"test fail without error", PluginPkg{ExitCode: shared.TestFail}, "finished with TestFail", "Unexpected exit"},
+		{"startup failure with unset exit code", PluginPkg{}, "Unexpected exit from svc", "finished with"},
 		{"unknown code", PluginPkg{ExitCode: 99}, "Unexpected exit from svc", "finished with"},
 	}
 	for _, tt := range tests {

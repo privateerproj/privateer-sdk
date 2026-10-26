@@ -101,7 +101,7 @@ func (p *PluginPkg) closeClient(serviceName string, client *hcplugin.Client, log
 		logger.Info(fmt.Sprintf("Plugin for %s completed successfully", serviceName))
 	} else if p.Error != nil {
 		logger.Error(fmt.Sprintf("Error from %s: %s", serviceName, p.Error))
-	} else if name := shared.ExitCodeName(p.ExitCode); name != "" {
+	} else if name := shared.ExitCodeName(p.ExitCode); name != "" && p.ExitCode != shared.TestPass {
 		// A clean non-pass code with no error is the designed outcome for a
 		// suite whose evaluations did not all pass.
 		logger.Warn(fmt.Sprintf("Plugin for %s finished with %s: evaluations did not all pass", serviceName, name))
