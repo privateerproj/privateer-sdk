@@ -31,8 +31,8 @@ const (
 
 // Across multi-plugin runs the most severe outcome wins. Every exit code needs
 // an entry here, because a missing one scores 0 and merges as if it were
-// TestPass. NoTests ranks just above TestPass, so a plugin that evaluated
-// nothing never reads as a pass, while a real TestFail still wins over it.
+// TestPass. NoTests ranks just above TestPass, so a plugin that returns NoTests
+// never reads as a pass, while a real TestFail still wins over it.
 var exitSeverity = map[int]int{
 	TestPass:      0,
 	NoTests:       1,
