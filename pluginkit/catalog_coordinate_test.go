@@ -46,4 +46,8 @@ func TestCatalogCoordinate_StringAndCachePath(t *testing.T) {
 	if got := CatalogCachePath("bin", c); got != want {
 		t.Fatalf("CatalogCachePath = %q, want %q", got, want)
 	}
+	wantPin := filepath.Join("bin", "catalogs", "openssf", "osps-baseline", ".signer")
+	if got := CatalogPinPath("bin", c); got != wantPin {
+		t.Fatalf("CatalogPinPath = %q, want %q", got, wantPin)
+	}
 }

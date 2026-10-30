@@ -63,3 +63,10 @@ func (c CatalogCoordinate) String() string {
 func CatalogCachePath(binariesDir string, c CatalogCoordinate) string {
 	return filepath.Join(binariesDir, "catalogs", c.Namespace, c.ID, c.Version+".yaml")
 }
+
+// CatalogPinPath is where `pvtr install` writes the first-seen signer identity
+// and where subsequent fetches read it to enforce trust-on-first-use:
+// <binariesDir>/catalogs/<namespace>/<id>/.signer.
+func CatalogPinPath(binariesDir string, c CatalogCoordinate) string {
+	return filepath.Join(binariesDir, "catalogs", c.Namespace, c.ID, ".signer")
+}
