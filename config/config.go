@@ -89,6 +89,11 @@ func NewConfig(requiredVars []string) Config {
 		}
 	}
 
+	// Overlay env vars after AI key inheritance so that env-sourced values
+	// take precedence. Keys discovered from the environment are lowercased,
+	// which aligns with the underscore-cased keys in inheritedTopLevelVarKeys.
+	overlayEnvVars(vars, serviceName, requiredVars)
+
 	topLoglevel := viper.GetString("loglevel")
 	loglevel := viper.GetString(fmt.Sprintf("%s.%s.loglevel", svcKey, serviceName))
 	if loglevel == "" && topLoglevel != "" {
@@ -187,6 +192,85 @@ func NewConfig(requiredVars []string) Config {
 func printSanitizedVars(logger hclog.Logger, vars map[string]interface{}) {
 	sanitizedVars := sanitizeVars(vars)
 	logger.Trace("Using vars", "vars", sanitizedVars)
+}
+
+// normalizeVarKey uppercases a key and replaces hyphens and dots with
+// underscores so it can be matched against environment variable suffixes.
+func normalizeVarKey(k string) string {
+	return strings.ToUpper(strings.ReplaceAll(strings.ReplaceAll(k, "-", "_"), ".", "_"))
+}
+
+// overlayEnvVars overlays environment variables on top of vars.
+// Precedence from lowest to highest:
+// 1. global vars (config)
+// 2. target vars (config)
+// 3. PVTR_VARS_<KEY>
+// 4. PVTR_SERVICES_<TARGET>_VARS_<KEY> (legacy)
+// 5. PVTR_TARGETS_<TARGET>_VARS_<KEY>
+func overlayEnvVars(vars map[string]interface{}, serviceName string, requiredVars []string) {
+	globalPrefix := "PVTR_VARS_"
+	targetNorm := normalizeVarKey(serviceName)
+	targetsPrefix := ""
+	servicesPrefix := ""
+	if targetNorm != "" {
+		targetsPrefix = fmt.Sprintf("PVTR_TARGETS_%s_VARS_", targetNorm)
+		servicesPrefix = fmt.Sprintf("PVTR_SERVICES_%s_VARS_", targetNorm)
+	}
+
+	normToKey := make(map[string]string)
+	for k := range vars {
+		normToKey[normalizeVarKey(k)] = k
+	}
+	for _, k := range requiredVars {
+		normToKey[normalizeVarKey(k)] = k
+	}
+
+	globalEnv := make(map[string]string)
+	servicesEnv := make(map[string]string)
+	targetsEnv := make(map[string]string)
+
+	for _, env := range os.Environ() {
+		parts := strings.SplitN(env, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		rawKey, val := parts[0], parts[1]
+		upperKey := strings.ToUpper(rawKey)
+
+		// Check most-specific prefixes first to avoid false matches
+		// when a target name happens to start with "vars".
+		if targetsPrefix != "" && strings.HasPrefix(upperKey, targetsPrefix) {
+			suffix := upperKey[len(targetsPrefix):]
+			targetsEnv[suffix] = val
+			if _, exists := normToKey[suffix]; !exists {
+				normToKey[suffix] = strings.ToLower(rawKey[len(targetsPrefix):])
+			}
+		} else if servicesPrefix != "" && strings.HasPrefix(upperKey, servicesPrefix) {
+			suffix := upperKey[len(servicesPrefix):]
+			servicesEnv[suffix] = val
+			if _, exists := normToKey[suffix]; !exists {
+				normToKey[suffix] = strings.ToLower(rawKey[len(servicesPrefix):])
+			}
+		} else if strings.HasPrefix(upperKey, globalPrefix) {
+			suffix := upperKey[len(globalPrefix):]
+			globalEnv[suffix] = val
+			if _, exists := normToKey[suffix]; !exists {
+				normToKey[suffix] = strings.ToLower(rawKey[len(globalPrefix):])
+			}
+		}
+	}
+
+	for norm, actualKey := range normToKey {
+		if val, ok := globalEnv[norm]; ok {
+			vars[actualKey] = val
+		}
+		if val, ok := servicesEnv[norm]; ok {
+			vars[actualKey] = val
+		}
+		if val, ok := targetsEnv[norm]; ok {
+			vars[actualKey] = val
+		}
+	}
 }
 
 func sanitizeVars(vars map[string]interface{}) map[string]interface{} {
