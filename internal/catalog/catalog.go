@@ -9,9 +9,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/privateerproj/privateer-sdk/internal/oci"
 	"github.com/privateerproj/privateer-sdk/internal/verify"
 	"github.com/privateerproj/privateer-sdk/pluginkit"
@@ -29,23 +32,81 @@ type Source interface {
 // Fetcher serves a whole run, so the sigstore trust root is parsed once however
 // many catalogs a plugin declares.
 type Fetcher struct {
-	w        io.Writer
-	hub      *oci.Client
-	verifier *verify.Verifier
+	w           io.Writer
+	hub         *oci.Client
+	verifier    *verify.Verifier
+	binariesDir string
+
+	// pull and verifyCatalog default to the real registry pull and sigstore
+	// verification. Tests replace them so the pin logic in Fetch, including
+	// the identity-mismatch branch, runs without a registry or a signature.
+	pull          func(ctx context.Context, repository, tag string, opts oci.PullOptions) (*oci.FetchedIndex, error)
+	verifyCatalog func(ctx context.Context, fetched *oci.FetchedIndex, policy verify.IdentityPolicy) (*verify.VerifiedCatalog, error)
 }
 
 // NewFetcher returns a Fetcher that writes warnings to w. Pass the verifier the
 // caller already built, if any; with nil, one is built on the first catalog
 // that reaches verification.
 func NewFetcher(w io.Writer, hub *oci.Client, verifier *verify.Verifier) *Fetcher {
-	return &Fetcher{w: w, hub: hub, verifier: verifier}
+	f := &Fetcher{w: w, hub: hub, verifier: verifier, pull: oci.PullManifest}
+	f.verifyCatalog = f.sigstoreVerify
+	return f
+}
+
+// sigstoreVerify is the real verifyCatalog: it builds the verifier on first
+// use, so a lookup that ends at the hub never parses the trust root.
+func (f *Fetcher) sigstoreVerify(ctx context.Context, fetched *oci.FetchedIndex, policy verify.IdentityPolicy) (*verify.VerifiedCatalog, error) {
+	if f.verifier == nil {
+		var err error
+		if f.verifier, err = verify.NewVerifier(); err != nil {
+			return nil, fmt.Errorf("initializing verifier: %w", err)
+		}
+	}
+	return f.verifier.Catalog(ctx, fetched, policy)
+}
+
+// WithBinariesDir overrides the binaries directory used for local catalog pinning.
+func (f *Fetcher) WithBinariesDir(dir string) *Fetcher {
+	f.binariesDir = dir
+	return f
+}
+
+func (f *Fetcher) binariesPath() string {
+	if f.binariesDir != "" {
+		return f.binariesDir
+	}
+	return config.GetBinariesPath()
+}
+
+// pinnedIdentity picks the identity Fetch enforces for c: the local pin if
+// there is one, else the hub's declared identity (else open TOFU). A pin file
+// that exists but cannot be read is an error, never "no pin".
+func (f *Fetcher) pinnedIdentity(c pluginkit.CatalogCoordinate, hubIdentity string) (pin, warn string, err error) {
+	pinPath := pluginkit.CatalogPinPath(f.binariesPath(), c)
+	localPin, err := readCatalogPin(pinPath)
+	if err != nil {
+		return "", "", err
+	}
+	pin, warn = verify.PinnedIdentityFor(localPin, hubIdentity, rotateHint(pinPath))
+	return pin, warn, nil
+}
+
+// rotateHint tells the user how to accept a new signer after a legitimate
+// rotation. The pin is per catalog (<ns>/<id>), not per version, so deleting
+// cached YAMLs is not enough: the .signer file itself must go.
+func rotateHint(pinPath string) string {
+	return fmt.Sprintf("if the publisher legitimately rotated its signer, delete %s and reinstall to pin the new identity", pinPath)
 }
 
 // Fetch pulls <namespace>/<id>:<version> from the hub's registry and verifies
 // it end-to-end: keyless signature against the pinned trust root, signer
-// identity against the one the hub verified at ingest, and the manifest digest
-// against the hub's record. It fails closed; a catalog the hub does not know is
-// ErrCatalogNotFound.
+// identity against the local pin (the hub's declared identity only seeds the
+// first pin), and the manifest digest against the hub's record. It fails
+// closed; a catalog the hub does not know is ErrCatalogNotFound.
+//
+// Fetch only enforces the pin; it never writes one. Install records the pin
+// after caching the catalog, so `pvtr publish`, which also reads catalogs
+// through Fetch, leaves no pin files behind.
 func (f *Fetcher) Fetch(ctx context.Context, c pluginkit.CatalogCoordinate) (*verify.VerifiedCatalog, error) {
 	// The version is the whole of a coordinate's meaning here: it picks the OCI
 	// tag to pull and the cache file to write. Rejecting an empty one at this
@@ -68,7 +129,7 @@ func (f *Fetcher) Fetch(ctx context.Context, c pluginkit.CatalogCoordinate) (*ve
 	if err != nil {
 		return nil, err
 	}
-	fetched, err := oci.PullManifest(ctx, c.Repository(), release.Version, oci.PullOptions{RegistryHost: host, PlainHTTP: plainHTTP})
+	fetched, err := f.pull(ctx, c.Repository(), release.Version, oci.PullOptions{RegistryHost: host, PlainHTTP: plainHTTP})
 	if err != nil {
 		return nil, fmt.Errorf("pulling catalog: %w", err)
 	}
@@ -76,17 +137,18 @@ func (f *Fetcher) Fetch(ctx context.Context, c pluginkit.CatalogCoordinate) (*ve
 		return nil, err
 	}
 
-	if f.verifier == nil {
-		if f.verifier, err = verify.NewVerifier(); err != nil {
-			return nil, fmt.Errorf("initializing verifier: %w", err)
-		}
+	pin, warn, err := f.pinnedIdentity(c, detail.SignerIdentity)
+	if err != nil {
+		return nil, err
 	}
-	// TODO: the hub's signer identity is taken as the expected one on every
-	// fetch. Catalogs have no local trust-on-first-use pin, unlike plugins
-	// (internal/install.pinnedIdentityFor), so a hub that changes a catalog's
-	// signer for a new version meets no local resistance. Deferred to a
-	// follow-up issue.
-	verified, err := f.verifier.Catalog(ctx, fetched, verify.IdentityPolicy{PinnedIdentity: detail.SignerIdentity})
+	if warn != "" {
+		_, _ = fmt.Fprintf(f.w, "Warning: %s\n", warn)
+	}
+
+	verified, err := f.verifyCatalog(ctx, fetched, verify.IdentityPolicy{PinnedIdentity: pin})
+	if errors.Is(err, verify.ErrIdentityMismatch) {
+		return nil, fmt.Errorf("verifying %s: %w; %s", c, err, rotateHint(pluginkit.CatalogPinPath(f.binariesPath(), c)))
+	}
 	if err != nil {
 		return nil, fmt.Errorf("verifying %s: %w", c, err)
 	}
@@ -118,6 +180,9 @@ func checkHubDigest(w io.Writer, c pluginkit.CatalogCoordinate, hubDigest, regis
 // detail) while the rest are cached; what a missing catalog means is the
 // caller's call. Any other failure aborts. Progress is written to w.
 func Install(ctx context.Context, w io.Writer, src Source, binariesDir string, coords []pluginkit.CatalogCoordinate) (unpublished []error, err error) {
+	if f, ok := src.(*Fetcher); ok && f.binariesDir == "" {
+		f.binariesDir = binariesDir
+	}
 	for _, c := range coords {
 		path := pluginkit.CatalogCachePath(binariesDir, c)
 		if _, err := os.Stat(path); err == nil {
@@ -138,7 +203,48 @@ func Install(ctx context.Context, w io.Writer, src Source, binariesDir string, c
 		if err := utils.WriteFileAtomic(path, verified.YAML, 0o644); err != nil {
 			return nil, fmt.Errorf("writing catalog %s: %w", c, err)
 		}
+		// Pin on first install: Fetch enforced any existing pin, so only write
+		// when there is none. A failure here is fatal, like Fetch's errors.
+		pinPath := pluginkit.CatalogPinPath(binariesDir, c)
+		localPin, err := readCatalogPin(pinPath)
+		if err != nil {
+			return nil, err
+		}
+		if localPin == "" {
+			if err := writeCatalogPin(pinPath, verified.SignerIdentity); err != nil {
+				return nil, fmt.Errorf("saving catalog signer pin for %s: %w", c, err)
+			}
+		}
 		_, _ = fmt.Fprintf(w, "Installed catalog %s (signed by %s)\n", c, verified.SignerIdentity)
 	}
 	return unpublished, nil
+}
+
+// readCatalogPin returns the pinned signer identity at path. Only a missing
+// file means "no pin" (""). Any other read error, such as a permission error
+// or a directory at the path, and an empty pin file are returned as errors,
+// so they fail closed instead of silently falling back to trusting the hub.
+func readCatalogPin(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("reading catalog signer pin %s: %w", path, err)
+	}
+	pin := strings.TrimSpace(string(data))
+	if pin == "" {
+		return "", fmt.Errorf("catalog signer pin %s is empty; delete it and reinstall to pin again", path)
+	}
+	return pin, nil
+}
+
+func writeCatalogPin(path, identity string) error {
+	if identity == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("creating catalog dir for signer pin: %w", err)
+	}
+	return utils.WriteFileAtomic(path, []byte(strings.TrimSpace(identity)+"\n"), 0o644)
 }

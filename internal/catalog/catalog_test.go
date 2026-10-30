@@ -5,12 +5,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	digest "github.com/opencontainers/go-digest"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"github.com/privateerproj/privateer-sdk/internal/oci"
 	"github.com/privateerproj/privateer-sdk/internal/verify"
@@ -182,6 +186,13 @@ func TestInstall_WritesVerifiedCatalogToCache(t *testing.T) {
 	if !strings.Contains(w.String(), "Installed catalog openssf/osps-baseline@v1 (signed by keyless:example#wf)") {
 		t.Errorf("progress = %q", w.String())
 	}
+	pinBytes, err := os.ReadFile(pluginkit.CatalogPinPath(dir, c))
+	if err != nil {
+		t.Fatalf("catalog signer pin was not written: %v", err)
+	}
+	if strings.TrimSpace(string(pinBytes)) != "keyless:example#wf" {
+		t.Errorf("pinned identity = %q, want %q", string(pinBytes), "keyless:example#wf")
+	}
 
 	// Second pass: the version is immutable, so the cached file short-circuits.
 	if _, err := Install(context.Background(), &w, src, dir, []pluginkit.CatalogCoordinate{c}); err != nil {
@@ -210,4 +221,214 @@ func TestFetch_LiveHub(t *testing.T) {
 		t.Fatalf("unexpected catalog: id=%q controls=%d", cat.Metadata.Id, len(cat.Controls))
 	}
 	t.Logf("verified %s: signed by %s, %d controls", c, vc.SignerIdentity, len(cat.Controls))
+}
+
+func TestCatalogPin_ReadWrite(t *testing.T) {
+	dir := t.TempDir()
+	c := pluginkit.CatalogCoordinate{Namespace: "openssf", ID: "osps-baseline", Version: "v1"}
+	pinPath := pluginkit.CatalogPinPath(dir, c)
+
+	// Only a missing file means "no pin".
+	if got, err := readCatalogPin(pinPath); got != "" || err != nil {
+		t.Fatalf("missing file: got (%q, %v), want (\"\", nil)", got, err)
+	}
+
+	// An empty identity write is a no-op.
+	if err := writeCatalogPin(pinPath, ""); err != nil {
+		t.Fatalf("writeCatalogPin empty identity: %v", err)
+	}
+	if got, err := readCatalogPin(pinPath); got != "" || err != nil {
+		t.Fatalf("after empty write: got (%q, %v), want (\"\", nil)", got, err)
+	}
+
+	id := "keyless:https://token.actions.githubusercontent.com#workflow.yml"
+	if err := writeCatalogPin(pinPath, id); err != nil {
+		t.Fatalf("writeCatalogPin: %v", err)
+	}
+	if got, err := readCatalogPin(pinPath); got != id || err != nil {
+		t.Fatalf("got (%q, %v), want (%q, nil)", got, err, id)
+	}
+}
+
+// A pin file that exists but cannot be used fails closed rather than reading
+// as "no pin", which would let the hub's identity overwrite it.
+func TestReadCatalogPin_UnusableFileIsAnError(t *testing.T) {
+	dir := t.TempDir()
+
+	empty := filepath.Join(dir, "empty", ".signer")
+	if err := os.MkdirAll(filepath.Dir(empty), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(empty, []byte("  \n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readCatalogPin(empty); err == nil || !strings.Contains(err.Error(), "is empty") {
+		t.Errorf("empty pin file: got %v, want an error", err)
+	}
+
+	isDir := filepath.Join(dir, "dir", ".signer")
+	if err := os.MkdirAll(isDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readCatalogPin(isDir); err == nil {
+		t.Error("directory at pin path: got nil, want an error")
+	}
+}
+
+func TestFetcher_PinnedIdentity(t *testing.T) {
+	dir := t.TempDir()
+	c := pluginkit.CatalogCoordinate{Namespace: "openssf", ID: "osps-baseline", Version: "v1"}
+	f := NewFetcher(&bytes.Buffer{}, nil, nil).WithBinariesDir(dir)
+	pinPath := pluginkit.CatalogPinPath(dir, c)
+
+	// First fetch (no local pin): seeds from the hub identity, no warning.
+	hubID := "keyless:https://issuer#workflow"
+	pin, warn, err := f.pinnedIdentity(c, hubID)
+	if err != nil || pin != hubID || warn != "" {
+		t.Fatalf("first fetch: got (%q, %q, %v), want (%q, \"\", nil)", pin, warn, err, hubID)
+	}
+
+	if err := writeCatalogPin(pinPath, hubID); err != nil {
+		t.Fatalf("writeCatalogPin: %v", err)
+	}
+
+	// Matching hub identity: local pin enforced, no warning.
+	if pin, warn, err = f.pinnedIdentity(c, hubID); err != nil || pin != hubID || warn != "" {
+		t.Fatalf("matching: got (%q, %q, %v)", pin, warn, err)
+	}
+
+	// Differing hub identity: local pin still wins, and the warning names
+	// both identities and the .signer file to delete.
+	rogueHubID := "keyless:https://attacker#evil-workflow"
+	pin, warn, err = f.pinnedIdentity(c, rogueHubID)
+	if err != nil || pin != hubID {
+		t.Fatalf("local pin must win: got (%q, %v), want %q", pin, err, hubID)
+	}
+	for _, want := range []string{hubID, rogueHubID, pinPath} {
+		if !strings.Contains(warn, want) {
+			t.Errorf("warning %q missing %q", warn, want)
+		}
+	}
+}
+
+// pinHub serves discovery and a catalog-detail document declaring hubID and a
+// release whose manifest digest matches stubPull's descriptor.
+func pinHub(t *testing.T, hubID string) {
+	t.Helper()
+	mux := http.NewServeMux()
+	var srv *httptest.Server
+	mux.HandleFunc("/.well-known/grc-store-configuration", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprintf(w, `{"registry_url":%q,"hub_url":%q,"api_version":"v1"}`, srv.URL, srv.URL)
+	})
+	mux.HandleFunc("/v1/catalogs/", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprintf(w, `{"namespace":"openssf","catalog_id":"osps-baseline","latest_version":"v1","signer_identity":%q,"releases":[{"version":"v1","manifest_digest":%q}]}`,
+			hubID, stubDesc.Digest.String())
+	})
+	srv = httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	t.Setenv("PVTR_HUB_URL", srv.URL)
+}
+
+var stubDesc = ocispec.Descriptor{
+	MediaType: ocispec.MediaTypeImageManifest,
+	Digest:    digest.FromString("catalog-manifest"),
+}
+
+// stubFetcher returns a Fetcher with the registry pull and sigstore check
+// replaced: the catalog is "signed" by signer, and verification fails with
+// ErrIdentityMismatch when a pin is enforced and differs, like the real one.
+func stubFetcher(dir, signer string) *Fetcher {
+	f := NewFetcher(&bytes.Buffer{}, oci.NewClient(), nil).WithBinariesDir(dir)
+	f.pull = func(_ context.Context, repository, tag string, _ oci.PullOptions) (*oci.FetchedIndex, error) {
+		return oci.NewFetchedIndex(repository, tag, stubDesc, nil, nil, nil), nil
+	}
+	f.verifyCatalog = func(_ context.Context, _ *oci.FetchedIndex, policy verify.IdentityPolicy) (*verify.VerifiedCatalog, error) {
+		if policy.PinnedIdentity != "" && policy.PinnedIdentity != signer {
+			return nil, fmt.Errorf("%w: got %s, pinned %s", verify.ErrIdentityMismatch, signer, policy.PinnedIdentity)
+		}
+		return &verify.VerifiedCatalog{SignerIdentity: signer, YAML: []byte("metadata:\n  id: osps-baseline\n")}, nil
+	}
+	return f
+}
+
+// The mismatch branch of Fetch, driven end to end with stubs: a local pin that
+// differs from the catalog's signer fails closed, names the .signer file, and
+// leaves the pin untouched.
+func TestFetch_LocalPinMismatchFailsClosed(t *testing.T) {
+	pinned := "keyless:https://issuer#original"
+	pinHub(t, pinned)
+	dir := t.TempDir()
+	c := pluginkit.CatalogCoordinate{Namespace: "openssf", ID: "osps-baseline", Version: "v1"}
+	pinPath := pluginkit.CatalogPinPath(dir, c)
+	if err := writeCatalogPin(pinPath, pinned); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := stubFetcher(dir, "keyless:https://attacker#evil").Fetch(context.Background(), c)
+	if !errors.Is(err, verify.ErrIdentityMismatch) {
+		t.Fatalf("got %v, want ErrIdentityMismatch", err)
+	}
+	if !strings.Contains(err.Error(), pinPath) {
+		t.Errorf("error %q does not name the pin file %s", err, pinPath)
+	}
+	if got, _ := readCatalogPin(pinPath); got != pinned {
+		t.Errorf("pin changed to %q, want %q", got, pinned)
+	}
+}
+
+// Fetch enforces but never writes a pin, so `pvtr publish`, which reads
+// catalogs through Fetch, leaves no pin files behind.
+func TestFetch_DoesNotWritePin(t *testing.T) {
+	signer := "keyless:https://issuer#wf"
+	pinHub(t, signer)
+	dir := t.TempDir()
+	c := pluginkit.CatalogCoordinate{Namespace: "openssf", ID: "osps-baseline", Version: "v1"}
+
+	if _, err := stubFetcher(dir, signer).Fetch(context.Background(), c); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if _, err := os.Stat(pluginkit.CatalogPinPath(dir, c)); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("Fetch wrote a pin file (stat err %v)", err)
+	}
+}
+
+// Install is where the pin is written, through the real Fetcher pin path, and
+// a later signer change is then refused.
+func TestInstall_PinsThenRefusesNewSigner(t *testing.T) {
+	signer := "keyless:https://issuer#wf"
+	pinHub(t, "")
+	dir := t.TempDir()
+	c := pluginkit.CatalogCoordinate{Namespace: "openssf", ID: "osps-baseline", Version: "v1"}
+
+	if _, err := Install(context.Background(), &bytes.Buffer{}, stubFetcher(dir, signer), dir, []pluginkit.CatalogCoordinate{c}); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if got, _ := readCatalogPin(pluginkit.CatalogPinPath(dir, c)); got != signer {
+		t.Fatalf("pin = %q, want %q", got, signer)
+	}
+
+	// Drop the cached YAML (the pin stays) and reinstall from a different
+	// signer: the pin refuses it.
+	if err := os.Remove(pluginkit.CatalogCachePath(dir, c)); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Install(context.Background(), &bytes.Buffer{}, stubFetcher(dir, "keyless:https://attacker#evil"), dir, []pluginkit.CatalogCoordinate{c})
+	if !errors.Is(err, verify.ErrIdentityMismatch) {
+		t.Fatalf("got %v, want ErrIdentityMismatch", err)
+	}
+}
+
+// An unreadable pin aborts Install instead of being overwritten.
+func TestInstall_UnreadablePinAborts(t *testing.T) {
+	dir := t.TempDir()
+	c := pluginkit.CatalogCoordinate{Namespace: "openssf", ID: "osps-baseline", Version: "v1"}
+	if err := os.MkdirAll(pluginkit.CatalogPinPath(dir, c), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	src := &stubSource{catalogs: map[pluginkit.CatalogCoordinate]*verify.VerifiedCatalog{
+		c: {YAML: []byte("x"), SignerIdentity: "keyless:example#wf"},
+	}}
+	if _, err := Install(context.Background(), &bytes.Buffer{}, src, dir, []pluginkit.CatalogCoordinate{c}); err == nil {
+		t.Fatal("Install succeeded with a directory at the pin path")
+	}
 }
