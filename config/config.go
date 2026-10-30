@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -89,10 +90,9 @@ func NewConfig(requiredVars []string) Config {
 		}
 	}
 
-	// Overlay env vars after AI key inheritance so that env-sourced values
-	// take precedence. Keys discovered from the environment are lowercased,
-	// which aligns with the underscore-cased keys in inheritedTopLevelVarKeys.
-	overlayEnvVars(vars, serviceName, requiredVars)
+	// Overlay env vars after config vars are assembled so that environment-sourced
+	// values take precedence. Keys discovered from the environment are lowercased.
+	overlayEnvVars(vars, serviceName, svcKey, requiredVars)
 
 	topLoglevel := viper.GetString("loglevel")
 	loglevel := viper.GetString(fmt.Sprintf("%s.%s.loglevel", svcKey, serviceName))
@@ -200,29 +200,67 @@ func normalizeVarKey(k string) string {
 	return strings.ToUpper(strings.ReplaceAll(strings.ReplaceAll(k, "-", "_"), ".", "_"))
 }
 
+// coerceEnvValue attempts to cast an environment variable string into the type
+// of an existing config value so typed getters (GetInt, GetBool, etc.) work as expected.
+func coerceEnvValue(existing interface{}, val string) interface{} {
+	if existing == nil {
+		return val
+	}
+	switch existing.(type) {
+	case int:
+		if i, err := strconv.Atoi(val); err == nil {
+			return i
+		}
+	case int64:
+		if i, err := strconv.ParseInt(val, 10, 64); err == nil {
+			return i
+		}
+	case bool:
+		if b, err := strconv.ParseBool(val); err == nil {
+			return b
+		}
+	case float64:
+		if f, err := strconv.ParseFloat(val, 64); err == nil {
+			return f
+		}
+	}
+	return val
+}
+
 // overlayEnvVars overlays environment variables on top of vars.
 // Precedence from lowest to highest:
 // 1. global vars (config)
 // 2. target vars (config)
 // 3. PVTR_VARS_<KEY>
-// 4. PVTR_SERVICES_<TARGET>_VARS_<KEY> (legacy)
+// 4. PVTR_SERVICES_<TARGET>_VARS_<KEY> (legacy, only when config uses services)
 // 5. PVTR_TARGETS_<TARGET>_VARS_<KEY>
-func overlayEnvVars(vars map[string]interface{}, serviceName string, requiredVars []string) {
+func overlayEnvVars(vars map[string]interface{}, serviceName, svcKey string, requiredVars []string) {
 	globalPrefix := "PVTR_VARS_"
 	targetNorm := normalizeVarKey(serviceName)
 	targetsPrefix := ""
 	servicesPrefix := ""
 	if targetNorm != "" {
 		targetsPrefix = fmt.Sprintf("PVTR_TARGETS_%s_VARS_", targetNorm)
-		servicesPrefix = fmt.Sprintf("PVTR_SERVICES_%s_VARS_", targetNorm)
+		if svcKey == "services" {
+			servicesPrefix = fmt.Sprintf("PVTR_SERVICES_%s_VARS_", targetNorm)
+		}
 	}
 
-	normToKey := make(map[string]string)
+	normToKeys := make(map[string][]string)
+	addKey := func(norm, actual string) {
+		for _, k := range normToKeys[norm] {
+			if k == actual {
+				return
+			}
+		}
+		normToKeys[norm] = append(normToKeys[norm], actual)
+	}
+
 	for k := range vars {
-		normToKey[normalizeVarKey(k)] = k
+		addKey(normalizeVarKey(k), k)
 	}
 	for _, k := range requiredVars {
-		normToKey[normalizeVarKey(k)] = k
+		addKey(normalizeVarKey(k), k)
 	}
 
 	globalEnv := make(map[string]string)
@@ -242,33 +280,42 @@ func overlayEnvVars(vars map[string]interface{}, serviceName string, requiredVar
 		if targetsPrefix != "" && strings.HasPrefix(upperKey, targetsPrefix) {
 			suffix := upperKey[len(targetsPrefix):]
 			targetsEnv[suffix] = val
-			if _, exists := normToKey[suffix]; !exists {
-				normToKey[suffix] = strings.ToLower(rawKey[len(targetsPrefix):])
+			if _, exists := normToKeys[suffix]; !exists {
+				addKey(suffix, strings.ToLower(rawKey[len(targetsPrefix):]))
 			}
 		} else if servicesPrefix != "" && strings.HasPrefix(upperKey, servicesPrefix) {
 			suffix := upperKey[len(servicesPrefix):]
 			servicesEnv[suffix] = val
-			if _, exists := normToKey[suffix]; !exists {
-				normToKey[suffix] = strings.ToLower(rawKey[len(servicesPrefix):])
+			if _, exists := normToKeys[suffix]; !exists {
+				addKey(suffix, strings.ToLower(rawKey[len(servicesPrefix):]))
 			}
 		} else if strings.HasPrefix(upperKey, globalPrefix) {
 			suffix := upperKey[len(globalPrefix):]
 			globalEnv[suffix] = val
-			if _, exists := normToKey[suffix]; !exists {
-				normToKey[suffix] = strings.ToLower(rawKey[len(globalPrefix):])
+			if _, exists := normToKeys[suffix]; !exists {
+				addKey(suffix, strings.ToLower(rawKey[len(globalPrefix):]))
 			}
 		}
 	}
 
-	for norm, actualKey := range normToKey {
-		if val, ok := globalEnv[norm]; ok {
-			vars[actualKey] = val
-		}
-		if val, ok := servicesEnv[norm]; ok {
-			vars[actualKey] = val
-		}
+	for norm, actualKeys := range normToKeys {
+		var envVal string
+		var found bool
 		if val, ok := targetsEnv[norm]; ok {
-			vars[actualKey] = val
+			envVal = val
+			found = true
+		} else if val, ok := servicesEnv[norm]; ok {
+			envVal = val
+			found = true
+		} else if val, ok := globalEnv[norm]; ok {
+			envVal = val
+			found = true
+		}
+
+		if found {
+			for _, actualKey := range actualKeys {
+				vars[actualKey] = coerceEnvValue(vars[actualKey], envVal)
+			}
 		}
 	}
 }

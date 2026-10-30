@@ -1027,4 +1027,118 @@ services:
 			t.Errorf("token = %v, want 'legacy-svc-token'", got)
 		}
 	})
+
+	t.Run("Ignores PVTR_SERVICES env vars when config uses targets", func(t *testing.T) {
+		viper.Reset()
+		t.Cleanup(viper.Reset)
+
+		t.Setenv("PVTR_SERVICES_MY_TARGET_VARS_TOKEN", "legacy-token")
+
+		cfgYAML := `
+targets:
+  my-target:
+    vars:
+      token: original-token
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: ["tlp_green"]
+`
+		viper.SetConfigType("yaml")
+		if err := viper.ReadConfig(bytes.NewBufferString(cfgYAML)); err != nil {
+			t.Fatalf("error reading config: %v", err)
+		}
+		viper.Set("target", "my-target")
+
+		cfg := NewConfig([]string{"token"})
+		if cfg.Error != nil {
+			t.Fatalf("unexpected error: %v", cfg.Error)
+		}
+		if got := cfg.Vars["token"]; got != "original-token" {
+			t.Errorf("token = %v, want 'original-token' (services env ignored under targets config)", got)
+		}
+	})
+
+	t.Run("Coerces env string to type of existing config value", func(t *testing.T) {
+		viper.Reset()
+		t.Cleanup(viper.Reset)
+
+		t.Setenv("PVTR_VARS_MAX", "10")
+		t.Setenv("PVTR_VARS_ENABLED", "true")
+		t.Setenv("PVTR_VARS_RATIO", "3.14")
+		t.Setenv("PVTR_VARS_STR", "new-str")
+
+		cfgYAML := `
+targets:
+  my-target:
+    vars:
+      max: 5
+      enabled: false
+      ratio: 1.0
+      str: old-str
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: ["tlp_green"]
+`
+		viper.SetConfigType("yaml")
+		if err := viper.ReadConfig(bytes.NewBufferString(cfgYAML)); err != nil {
+			t.Fatalf("error reading config: %v", err)
+		}
+		viper.Set("target", "my-target")
+
+		cfg := NewConfig(nil)
+		if cfg.Error != nil {
+			t.Fatalf("unexpected error: %v", cfg.Error)
+		}
+
+		if got := cfg.GetInt("max"); got != 10 {
+			t.Errorf("GetInt(max) = %v, want 10", got)
+		}
+		if got := cfg.GetBool("enabled"); got != true {
+			t.Errorf("GetBool(enabled) = %v, want true", got)
+		}
+		if got := cfg.Vars["ratio"]; got != 3.14 {
+			t.Errorf("Vars[ratio] = %v (%T), want 3.14 (float64)", got, got)
+		}
+		if got := cfg.GetString("str"); got != "new-str" {
+			t.Errorf("GetString(str) = %v, want 'new-str'", got)
+		}
+	})
+
+	t.Run("Updates all keys that normalize to the same form deterministically", func(t *testing.T) {
+		viper.Reset()
+		t.Cleanup(viper.Reset)
+
+		t.Setenv("PVTR_VARS_API_KEY", "secret-from-env")
+
+		cfgYAML := `
+targets:
+  my-target:
+    vars:
+      api-key: stale-hyphen
+      api_key: stale-underscore
+    policy:
+      catalogs:
+        - FINOS-CCC
+      applicability: ["tlp_green"]
+`
+		viper.SetConfigType("yaml")
+		if err := viper.ReadConfig(bytes.NewBufferString(cfgYAML)); err != nil {
+			t.Fatalf("error reading config: %v", err)
+		}
+		viper.Set("target", "my-target")
+
+		cfg := NewConfig([]string{"api-key"})
+		if cfg.Error != nil {
+			t.Fatalf("unexpected error: %v", cfg.Error)
+		}
+
+		if got := cfg.Vars["api-key"]; got != "secret-from-env" {
+			t.Errorf("Vars[api-key] = %v, want 'secret-from-env'", got)
+		}
+		if got := cfg.Vars["api_key"]; got != "secret-from-env" {
+			t.Errorf("Vars[api_key] = %v, want 'secret-from-env'", got)
+		}
+	})
 }
