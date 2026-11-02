@@ -458,3 +458,202 @@ func TestEvaluationSuiteIntegration(t *testing.T) {
 		}
 	})
 }
+
+func TestEvaluationSuite_RetiredRequirementsAndControls(t *testing.T) {
+	t.Run("Retired requirement ignores mapped steps and records NotRun", func(t *testing.T) {
+		stepExecuted := false
+		failingStep := func(payload interface{}) (gemara.Result, string, gemara.ConfidenceLevel) {
+			stepExecuted = true
+			return gemara.Failed, "should not be called", gemara.High
+		}
+		passingStep := func(payload interface{}) (gemara.Result, string, gemara.ConfidenceLevel) {
+			return gemara.Passed, "active check passed", gemara.High
+		}
+
+		catalog := &gemara.ControlCatalog{
+			Metadata: gemara.Metadata{Id: "test-catalog"},
+			Controls: []gemara.Control{
+				{
+					Id:        "SEC-01",
+					Title:     "Security Control",
+					Objective: "Ensure security",
+					AssessmentRequirements: []gemara.AssessmentRequirement{
+						{
+							Id:            "SEC-01.01",
+							Text:          "Active requirement",
+							Applicability: requestedApplicability,
+							State:         gemara.LifecycleActive,
+						},
+						{
+							Id:            "SEC-01.02",
+							Text:          "Retired requirement",
+							Applicability: requestedApplicability,
+							State:         gemara.LifecycleRetired,
+							ReplacedBy: &gemara.EntryMapping{
+								EntryId: "SEC-01.03",
+							},
+						},
+					},
+				},
+			},
+		}
+
+		suite := &EvaluationSuite{
+			Name:    "Retired Requirement Test",
+			catalog: catalog,
+			steps: map[string][]gemara.AssessmentStep{
+				"SEC-01.01": {passingStep},
+				"SEC-01.02": {failingStep}, // Mapped step should be ignored!
+			},
+		}
+		suite.config = setBasicConfig()
+
+		if err := suite.Evaluate("testService"); err != nil {
+			t.Fatalf("unexpected evaluate error: %v", err)
+		}
+
+		if stepExecuted {
+			t.Errorf("mapped step for retired requirement was executed")
+		}
+
+		// Suite and control results should be Passed because active requirement passed and retired is NotRun
+		if suite.Result != gemara.Passed {
+			t.Errorf("suite.Result = %v, want Passed", suite.Result)
+		}
+
+		// Check the individual assessment logs
+		evals := suite.EvaluationLog.Evaluations
+		if len(evals) != 1 || len(evals[0].AssessmentLogs) != 2 {
+			t.Fatalf("unexpected evaluations structure: %+v", evals)
+		}
+
+		activeLog := evals[0].AssessmentLogs[0]
+		retiredLog := evals[0].AssessmentLogs[1]
+
+		if activeLog.Result != gemara.Passed {
+			t.Errorf("activeLog.Result = %v, want Passed", activeLog.Result)
+		}
+		if retiredLog.Result != gemara.NotRun {
+			t.Errorf("retiredLog.Result = %v, want NotRun", retiredLog.Result)
+		}
+		if !strings.Contains(retiredLog.Message, "SEC-01.02 is retired (replaced by SEC-01.03)") {
+			t.Errorf("retiredLog.Message = %q, want retirement and replaced-by mention", retiredLog.Message)
+		}
+
+		// Check scoring metrics: only 1 success, 0 failures, 0 warnings
+		if suite.evalSuccesses != 1 {
+			t.Errorf("evalSuccesses = %d, want 1", suite.evalSuccesses)
+		}
+		if suite.evalFailures != 0 {
+			t.Errorf("evalFailures = %d, want 0", suite.evalFailures)
+		}
+		if suite.evalWarnings != 0 {
+			t.Errorf("evalWarnings = %d, want 0", suite.evalWarnings)
+		}
+	})
+
+	t.Run("Retired requirement without mapped steps does not log warning or set Unknown", func(t *testing.T) {
+		catalog := &gemara.ControlCatalog{
+			Metadata: gemara.Metadata{Id: "test-catalog"},
+			Controls: []gemara.Control{
+				{
+					Id:        "SEC-02",
+					Title:     "Security Control 2",
+					Objective: "Ensure security",
+					AssessmentRequirements: []gemara.AssessmentRequirement{
+						{
+							Id:            "SEC-02.01",
+							Text:          "Retired requirement without mapped steps",
+							Applicability: requestedApplicability,
+							State:         gemara.LifecycleRetired,
+						},
+					},
+				},
+			},
+		}
+
+		passingStep := func(payload interface{}) (gemara.Result, string, gemara.ConfidenceLevel) {
+			return gemara.Passed, "unrelated step", gemara.High
+		}
+
+		suite := &EvaluationSuite{
+			Name:    "Retired Requirement No Steps Test",
+			catalog: catalog,
+			steps: map[string][]gemara.AssessmentStep{
+				"OTHER.REQ": {passingStep}, // SEC-02.01 has NO mapped steps
+			},
+		}
+		suite.config = setBasicConfig()
+
+		if err := suite.Evaluate("testService"); err != nil {
+			t.Fatalf("unexpected evaluate error: %v", err)
+		}
+
+		evals := suite.EvaluationLog.Evaluations
+		if len(evals) != 1 || len(evals[0].AssessmentLogs) != 1 {
+			t.Fatalf("unexpected evaluations structure: %+v", evals)
+		}
+
+		log := evals[0].AssessmentLogs[0]
+		if log.Result != gemara.NotRun {
+			t.Errorf("log.Result = %v, want NotRun (must not be Unknown)", log.Result)
+		}
+		if !strings.Contains(log.Message, "requirement SEC-02.01 is retired") {
+			t.Errorf("log.Message = %q, want retired requirement message", log.Message)
+		}
+	})
+
+	t.Run("Entire control retired marks all requirements NotRun", func(t *testing.T) {
+		catalog := &gemara.ControlCatalog{
+			Metadata: gemara.Metadata{Id: "test-catalog"},
+			Controls: []gemara.Control{
+				{
+					Id:        "LEGACY-01",
+					Title:     "Legacy Control",
+					Objective: "Old objective",
+					State:     gemara.LifecycleRetired,
+					ReplacedBy: &gemara.EntryMapping{
+						EntryId: "MODERN-01",
+					},
+					AssessmentRequirements: []gemara.AssessmentRequirement{
+						{
+							Id:            "LEGACY-01.01",
+							Text:          "Legacy requirement",
+							Applicability: requestedApplicability,
+						},
+					},
+				},
+			},
+		}
+
+		failingStep := func(payload interface{}) (gemara.Result, string, gemara.ConfidenceLevel) {
+			return gemara.Failed, "should not be called", gemara.High
+		}
+
+		suite := &EvaluationSuite{
+			Name:    "Retired Control Test",
+			catalog: catalog,
+			steps: map[string][]gemara.AssessmentStep{
+				"LEGACY-01.01": {failingStep},
+			},
+		}
+		suite.config = setBasicConfig()
+
+		if err := suite.Evaluate("testService"); err != nil {
+			t.Fatalf("unexpected evaluate error: %v", err)
+		}
+
+		evals := suite.EvaluationLog.Evaluations
+		if len(evals) != 1 || len(evals[0].AssessmentLogs) != 1 {
+			t.Fatalf("unexpected evaluations structure: %+v", evals)
+		}
+
+		log := evals[0].AssessmentLogs[0]
+		if log.Result != gemara.NotRun {
+			t.Errorf("log.Result = %v, want NotRun", log.Result)
+		}
+		if !strings.Contains(log.Message, "control LEGACY-01 is retired (replaced by MODERN-01)") {
+			t.Errorf("log.Message = %q, want control retirement message", log.Message)
+		}
+	})
+}
