@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/spf13/pflag"
@@ -163,6 +164,43 @@ func (c *Config) GetString(key string) string {
 		return ""
 	}
 	return val.(string)
+}
+
+// GetStringMatching retrieves the string value associated with the given key
+// and checks it against a regular expression. Unlike GetString, it reports why
+// no value is available, so a plugin can reject a malformed var up front.
+// The pattern is not anchored, so use ^ and $ to match the whole value.
+// Errors never include the value, because vars can hold secrets.
+//
+// Parameters:
+//   - key: The key name in the config vars.
+//   - pattern: The regular expression the value must match.
+//
+// Returns:
+//   - string: The value associated with the key, or an empty string if an error is returned.
+//   - error: An error if the pattern is invalid, or if the value is missing, not a string, empty, or does not match.
+func (c *Config) GetStringMatching(key, pattern string) (string, error) {
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return "", fmt.Errorf("invalid pattern for var %q: %w", key, err)
+	}
+
+	val, valType := c.GetVar(key)
+	if valType == "missing" {
+		return "", fmt.Errorf("var %q is not set", key)
+	}
+	if valType != "string" {
+		return "", fmt.Errorf("var %q must be a string, got %s", key, valType)
+	}
+
+	value := val.(string)
+	if value == "" {
+		return "", fmt.Errorf("var %q is empty", key)
+	}
+	if !re.MatchString(value) {
+		return "", fmt.Errorf("var %q does not match pattern %q", key, pattern)
+	}
+	return value, nil
 }
 
 // GetInt retrieves the value associated with the given key as an integer.
