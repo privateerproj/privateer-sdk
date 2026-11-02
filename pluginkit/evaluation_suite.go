@@ -34,6 +34,7 @@ type EvaluationSuite struct {
 	catalog       *gemara.ControlCatalog             // The Catalog this evaluation suite evaluates: source plus resolved imports
 	source        *gemara.ControlCatalog             // The registered catalog, untouched; Mobilize rebuilds catalog from it
 	steps         map[string][]gemara.AssessmentStep // steps is a map of control IDs to their assessment steps
+	retired       map[string]string                  // retired maps retired requirement IDs to their retirement message
 
 	evalSuccesses int // successes is the number of successful evaluations
 	evalFailures  int // failures is the number of failed evaluations
@@ -85,6 +86,14 @@ func (e *EvaluationSuite) Evaluate(serviceName string) error {
 
 	for _, evaluation := range e.EvaluationLog.Evaluations {
 		evaluation.Evaluate(e.payload, e.config.Policy.Applicability)
+		// gemara records a retired requirement outside the requested
+		// applicability as NotApplicable with its own message, without running
+		// retiredStep. Record it as retired either way so the ReplacedBy pointer
+		// is never lost, then recompute the control so the NotApplicable that
+		// gemara already rolled up does not linger.
+		if e.markRetired(evaluation) {
+			recomputeControlResult(evaluation)
+		}
 
 		// Make sure the evaluation result is updated based on the complete assessment results
 		e.Result = gemara.UpdateAggregateResult(e.Result, evaluation.Result)
@@ -102,6 +111,10 @@ func (e *EvaluationSuite) Evaluate(serviceName string) error {
 				e.config.Logger.Error(message)
 			case gemara.Unknown:
 				e.config.Logger.Error(message)
+			case gemara.NotRun:
+				if assessment.Message != "" {
+					e.config.Logger.Info(message)
+				}
 			}
 
 			if len(requirements) > 0 && requirements[assessment.Requirement.EntryId] != nil {
@@ -148,6 +161,39 @@ func (e *EvaluationSuite) Evaluate(serviceName string) error {
 	return nil
 }
 
+// markRetired records each retired assessment as NotRun with its retirement
+// message and reports whether any changed. An Unknown result is kept: it means
+// the assessment could not run (a failed precheck), and its message says why.
+func (e *EvaluationSuite) markRetired(evaluation *gemara.ControlEvaluation) bool {
+	changed := false
+	for _, assessment := range evaluation.AssessmentLogs {
+		msg, ok := e.retired[assessment.Requirement.EntryId]
+		if !ok || assessment.Result == gemara.Unknown {
+			continue
+		}
+		if assessment.Result != gemara.NotRun || assessment.Message != msg {
+			assessment.Result = gemara.NotRun
+			assessment.Message = msg
+			changed = true
+		}
+	}
+	return changed
+}
+
+// recomputeControlResult rebuilds the control's Result and Message from its
+// assessments the same way gemara's ControlEvaluation.Evaluate rolls them up.
+func recomputeControlResult(evaluation *gemara.ControlEvaluation) {
+	evaluation.Result = gemara.NotRun
+	evaluation.Message = ""
+	for _, assessment := range evaluation.AssessmentLogs {
+		aggregate := gemara.UpdateAggregateResult(evaluation.Result, assessment.Result)
+		if aggregate != evaluation.Result {
+			evaluation.Message = assessment.Message
+		}
+		evaluation.Result = aggregate
+	}
+}
+
 // restoreSteps restores benchmark-wrapped steps back to the original for stack tracing
 func (e *EvaluationSuite) restoreSteps() {
 	if e.config == nil || !e.config.Benchmark {
@@ -155,6 +201,10 @@ func (e *EvaluationSuite) restoreSteps() {
 	}
 	for _, evaluation := range e.EvaluationLog.Evaluations {
 		for _, assessment := range evaluation.AssessmentLogs {
+			// Retired requirements never had timed steps; keep their retiredStep.
+			if _, ok := e.retired[assessment.Requirement.EntryId]; ok {
+				continue
+			}
 			assessment.Steps = e.steps[assessment.Requirement.EntryId]
 		}
 	}
@@ -220,6 +270,7 @@ func (e *EvaluationSuite) setupEvalLog(steps map[string][]gemara.AssessmentStep)
 	if len(e.catalog.Controls) == 0 {
 		return evalLog, EVAL_SUITE_CRASHED("sel20")
 	}
+	e.retired = make(map[string]string)
 
 	for _, control := range e.catalog.Controls {
 		controlsFound = true
@@ -238,10 +289,18 @@ func (e *EvaluationSuite) setupEvalLog(steps map[string][]gemara.AssessmentStep)
 		}
 
 		for _, requirement := range control.AssessmentRequirements {
-			// benchmark mode times each step; later on restoreSteps will unwrap this before serialization
-			reqSteps := steps[requirement.Id]
-			if e.config != nil && e.config.Benchmark {
-				reqSteps = e.timedSteps(control.Id, requirement.Id, reqSteps)
+			isRetired := requirement.State == gemara.LifecycleRetired || control.State == gemara.LifecycleRetired
+
+			var reqSteps []gemara.AssessmentStep
+			if isRetired {
+				msg := retiredAssessmentMessage(control, requirement)
+				e.retired[requirement.Id] = msg
+				reqSteps = []gemara.AssessmentStep{retiredStep(msg)}
+			} else {
+				reqSteps = steps[requirement.Id]
+				if e.config != nil && e.config.Benchmark {
+					reqSteps = e.timedSteps(control.Id, requirement.Id, reqSteps)
+				}
 			}
 
 			// Use AddAssessment instead of manual struct creation
@@ -254,13 +313,15 @@ func (e *EvaluationSuite) setupEvalLog(steps map[string][]gemara.AssessmentStep)
 
 			assessment.Requirement.ReferenceId = e.CatalogId
 
-			// Handle case where no steps were found
-			if _, ok := steps[requirement.Id]; !ok {
-				assessment.Result = gemara.Unknown
-				if e.config != nil {
-					msg := fmt.Sprintf("requirement: %s, control %s+sel30", requirement.Id, control.Id)
-					err := NO_ASSESSMENT_STEPS_PROVIDED(msg)
-					e.config.Logger.Debug(err.Error())
+			// Handle case where no steps were found (suppressed for retired requirements)
+			if !isRetired {
+				if _, ok := steps[requirement.Id]; !ok {
+					assessment.Result = gemara.Unknown
+					if e.config != nil {
+						msg := fmt.Sprintf("requirement: %s, control %s+sel30", requirement.Id, control.Id)
+						err := NO_ASSESSMENT_STEPS_PROVIDED(msg)
+						e.config.Logger.Debug(err.Error())
+					}
 				}
 			}
 		}
@@ -275,4 +336,28 @@ func (e *EvaluationSuite) setupEvalLog(steps map[string][]gemara.AssessmentStep)
 	}
 
 	return evalLog, nil
+}
+
+func retiredAssessmentMessage(control gemara.Control, req gemara.AssessmentRequirement) string {
+	if req.State == gemara.LifecycleRetired {
+		if req.ReplacedBy != nil && req.ReplacedBy.EntryId != "" {
+			return fmt.Sprintf("requirement %s is retired (replaced by %s)", req.Id, req.ReplacedBy.EntryId)
+		}
+		return fmt.Sprintf("requirement %s is retired", req.Id)
+	}
+	// Only the control is retired; the requirement itself is not.
+	msg := fmt.Sprintf("control %s is retired", control.Id)
+	if control.ReplacedBy != nil && control.ReplacedBy.EntryId != "" {
+		msg += fmt.Sprintf(" (replaced by %s)", control.ReplacedBy.EntryId)
+	}
+	if req.ReplacedBy != nil && req.ReplacedBy.EntryId != "" {
+		msg += fmt.Sprintf("; requirement %s is replaced by %s", req.Id, req.ReplacedBy.EntryId)
+	}
+	return msg
+}
+
+func retiredStep(message string) gemara.AssessmentStep {
+	return gemara.NamedStep("retired", func(payload interface{}) (gemara.Result, string, gemara.ConfidenceLevel) {
+		return gemara.NotRun, message, gemara.High
+	})
 }
