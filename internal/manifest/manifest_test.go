@@ -57,8 +57,7 @@ func TestLoad_ValidFile(t *testing.T) {
 	p := m.Find("ossf/pvtr-scanner")
 	if p == nil {
 		t.Fatal("expected to find ossf/pvtr-scanner, got nil")
-	}
-	if p.Version != "1.0.0" {
+	} else if p.Version != "1.0.0" {
 		t.Errorf("expected version 1.0.0, got %s", p.Version)
 	}
 }
@@ -263,8 +262,7 @@ func TestFind(t *testing.T) {
 	p := m.Find("ossf/pvtr-scanner")
 	if p == nil {
 		t.Fatal("expected to find plugin, got nil")
-	}
-	if p.Version != "2.0.0" {
+	} else if p.Version != "2.0.0" {
 		t.Errorf("expected latest version 2.0.0, got %s", p.Version)
 	}
 
