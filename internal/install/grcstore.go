@@ -221,29 +221,13 @@ func fetchIndex(ctx context.Context, w io.Writer, hub *oci.Client, release *oci.
 }
 
 // pinnedIdentityFor determines the effective PinnedIdentity to enforce and
-// any warning to surface, applying the three-tier precedence:
-//
-//  1. Local manifest pin (non-empty existing.SignerIdentity) — always wins.
-//  2. Hub-declared signer identity (hubIdentity) — used on first install.
-//  3. Open TOFU (empty) — only when both are absent.
-//
-// When a local pin and hubIdentity are both non-empty and differ, a warning
-// message is returned so the caller can inform the user; the local pin is
-// still enforced.
+// any warning to surface, delegating to verify.PinnedIdentityFor.
 func pinnedIdentityFor(existing *manifest.Plugin, hubIdentity string) (pin string, warn string) {
-	if existing != nil && existing.SignerIdentity != "" {
-		localPin := existing.SignerIdentity
-		if hubIdentity != "" && hubIdentity != localPin {
-			warn = fmt.Sprintf(
-				"local signer pin %q differs from hub-declared identity %q — "+
-					"enforcing local pin; uninstall first to accept the new identity",
-				localPin, hubIdentity,
-			)
-		}
-		return localPin, warn
+	var localPin string
+	if existing != nil {
+		localPin = existing.SignerIdentity
 	}
-	// No local pin: seed from hub identity (may be empty → open TOFU).
-	return hubIdentity, ""
+	return verify.PinnedIdentityFor(localPin, hubIdentity, "uninstall first to accept the new identity")
 }
 
 // writeVerifiedBinary writes the verified bytes to {destDir}/{relPath}, +x,

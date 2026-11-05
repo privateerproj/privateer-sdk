@@ -182,6 +182,13 @@ func TestInstall_WritesVerifiedCatalogToCache(t *testing.T) {
 	if !strings.Contains(w.String(), "Installed catalog openssf/osps-baseline@v1 (signed by keyless:example#wf)") {
 		t.Errorf("progress = %q", w.String())
 	}
+	pinBytes, err := os.ReadFile(pluginkit.CatalogPinPath(dir, c))
+	if err != nil {
+		t.Fatalf("catalog signer pin was not written: %v", err)
+	}
+	if strings.TrimSpace(string(pinBytes)) != "keyless:example#wf" {
+		t.Errorf("pinned identity = %q, want %q", string(pinBytes), "keyless:example#wf")
+	}
 
 	// Second pass: the version is immutable, so the cached file short-circuits.
 	if _, err := Install(context.Background(), &w, src, dir, []pluginkit.CatalogCoordinate{c}); err != nil {
@@ -210,4 +217,78 @@ func TestFetch_LiveHub(t *testing.T) {
 		t.Fatalf("unexpected catalog: id=%q controls=%d", cat.Metadata.Id, len(cat.Controls))
 	}
 	t.Logf("verified %s: signed by %s, %d controls", c, vc.SignerIdentity, len(cat.Controls))
+}
+
+func TestCatalogPin_ReadWrite(t *testing.T) {
+	dir := t.TempDir()
+	c := pluginkit.CatalogCoordinate{Namespace: "openssf", ID: "osps-baseline", Version: "v1"}
+	pinPath := pluginkit.CatalogPinPath(dir, c)
+
+	// Non-existent path returns empty string
+	if got := readCatalogPin(pinPath); got != "" {
+		t.Fatalf("readCatalogPin on missing file = %q, want empty", got)
+	}
+
+	// Empty identity write is a no-op
+	if err := writeCatalogPin(pinPath, ""); err != nil {
+		t.Fatalf("writeCatalogPin empty identity: %v", err)
+	}
+	if got := readCatalogPin(pinPath); got != "" {
+		t.Fatalf("readCatalogPin after empty write = %q, want empty", got)
+	}
+
+	// Write valid identity and read back
+	id := "keyless:https://token.actions.githubusercontent.com#workflow.yml"
+	if err := writeCatalogPin(pinPath, id); err != nil {
+		t.Fatalf("writeCatalogPin: %v", err)
+	}
+	if got := readCatalogPin(pinPath); got != id {
+		t.Fatalf("readCatalogPin = %q, want %q", got, id)
+	}
+}
+
+func TestFetcher_PinnedIdentity(t *testing.T) {
+	dir := t.TempDir()
+	c := pluginkit.CatalogCoordinate{Namespace: "openssf", ID: "osps-baseline", Version: "v1"}
+	f := NewFetcher(&bytes.Buffer{}, nil, nil).WithBinariesDir(dir)
+
+	// 1. First fetch (no local pin): seeds from hub identity, no warning
+	hubID := "keyless:https://issuer#workflow"
+	pin, warn := f.pinnedIdentity(c, hubID)
+	if pin != hubID {
+		t.Errorf("pin = %q, want %q", pin, hubID)
+	}
+	if warn != "" {
+		t.Errorf("unexpected warning on first install: %q", warn)
+	}
+
+	// Write local pin
+	if err := writeCatalogPin(pluginkit.CatalogPinPath(dir, c), hubID); err != nil {
+		t.Fatalf("writeCatalogPin: %v", err)
+	}
+
+	// 2. Subsequent fetch with matching identity: local pin enforced, no warning
+	pin, warn = f.pinnedIdentity(c, hubID)
+	if pin != hubID {
+		t.Errorf("pin = %q, want %q", pin, hubID)
+	}
+	if warn != "" {
+		t.Errorf("unexpected warning when identities match: %q", warn)
+	}
+
+	// 3. Subsequent fetch with differing identity: local pin enforced, warning emitted
+	rogueHubID := "keyless:https://attacker#evil-workflow"
+	pin, warn = f.pinnedIdentity(c, rogueHubID)
+	if pin != hubID {
+		t.Errorf("local pin must win, got %q, want %q", pin, hubID)
+	}
+	if warn == "" {
+		t.Fatal("expected warning when local pin differs from hub identity")
+	}
+	if !strings.Contains(warn, hubID) || !strings.Contains(warn, rogueHubID) {
+		t.Errorf("warning should mention both identities, got: %q", warn)
+	}
+	if !strings.Contains(warn, "delete the cached catalog to accept the new identity") {
+		t.Errorf("warning should suggest resolution hint, got: %q", warn)
+	}
 }

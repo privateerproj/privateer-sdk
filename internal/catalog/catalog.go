@@ -11,7 +11,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"github.com/privateerproj/privateer-sdk/config"
 	"github.com/privateerproj/privateer-sdk/internal/oci"
 	"github.com/privateerproj/privateer-sdk/internal/verify"
 	"github.com/privateerproj/privateer-sdk/pluginkit"
@@ -29,9 +31,10 @@ type Source interface {
 // Fetcher serves a whole run, so the sigstore trust root is parsed once however
 // many catalogs a plugin declares.
 type Fetcher struct {
-	w        io.Writer
-	hub      *oci.Client
-	verifier *verify.Verifier
+	w           io.Writer
+	hub         *oci.Client
+	verifier    *verify.Verifier
+	binariesDir string
 }
 
 // NewFetcher returns a Fetcher that writes warnings to w. Pass the verifier the
@@ -39,6 +42,24 @@ type Fetcher struct {
 // that reaches verification.
 func NewFetcher(w io.Writer, hub *oci.Client, verifier *verify.Verifier) *Fetcher {
 	return &Fetcher{w: w, hub: hub, verifier: verifier}
+}
+
+// WithBinariesDir overrides the binaries directory used for local catalog pinning.
+func (f *Fetcher) WithBinariesDir(dir string) *Fetcher {
+	f.binariesDir = dir
+	return f
+}
+
+func (f *Fetcher) binariesPath() string {
+	if f.binariesDir != "" {
+		return f.binariesDir
+	}
+	return config.GetBinariesPath()
+}
+
+func (f *Fetcher) pinnedIdentity(c pluginkit.CatalogCoordinate, hubIdentity string) (pin, warn string) {
+	localPin := readCatalogPin(pluginkit.CatalogPinPath(f.binariesPath(), c))
+	return verify.PinnedIdentityFor(localPin, hubIdentity, "delete the cached catalog to accept the new identity")
 }
 
 // Fetch pulls <namespace>/<id>:<version> from the hub's registry and verifies
@@ -76,20 +97,29 @@ func (f *Fetcher) Fetch(ctx context.Context, c pluginkit.CatalogCoordinate) (*ve
 		return nil, err
 	}
 
+	pinPath := pluginkit.CatalogPinPath(f.binariesPath(), c)
+	localPin := readCatalogPin(pinPath)
+	pin, warn := verify.PinnedIdentityFor(localPin, detail.SignerIdentity, "delete the cached catalog to accept the new identity")
+	if warn != "" {
+		_, _ = fmt.Fprintf(f.w, "Warning: %s\n", warn)
+	}
+
 	if f.verifier == nil {
 		if f.verifier, err = verify.NewVerifier(); err != nil {
 			return nil, fmt.Errorf("initializing verifier: %w", err)
 		}
 	}
-	// TODO: the hub's signer identity is taken as the expected one on every
-	// fetch. Catalogs have no local trust-on-first-use pin, unlike plugins
-	// (internal/install.pinnedIdentityFor), so a hub that changes a catalog's
-	// signer for a new version meets no local resistance. Deferred to a
-	// follow-up issue.
-	verified, err := f.verifier.Catalog(ctx, fetched, verify.IdentityPolicy{PinnedIdentity: detail.SignerIdentity})
+	verified, err := f.verifier.Catalog(ctx, fetched, verify.IdentityPolicy{PinnedIdentity: pin})
 	if err != nil {
 		return nil, fmt.Errorf("verifying %s: %w", c, err)
 	}
+
+	if localPin == "" && verified.SignerIdentity != "" {
+		if err := writeCatalogPin(pinPath, verified.SignerIdentity); err != nil {
+			return nil, fmt.Errorf("saving catalog signer pin: %w", err)
+		}
+	}
+
 	return verified, nil
 }
 
@@ -118,6 +148,9 @@ func checkHubDigest(w io.Writer, c pluginkit.CatalogCoordinate, hubDigest, regis
 // detail) while the rest are cached; what a missing catalog means is the
 // caller's call. Any other failure aborts. Progress is written to w.
 func Install(ctx context.Context, w io.Writer, src Source, binariesDir string, coords []pluginkit.CatalogCoordinate) (unpublished []error, err error) {
+	if f, ok := src.(*Fetcher); ok && f.binariesDir == "" {
+		f.binariesDir = binariesDir
+	}
 	for _, c := range coords {
 		path := pluginkit.CatalogCachePath(binariesDir, c)
 		if _, err := os.Stat(path); err == nil {
@@ -138,7 +171,29 @@ func Install(ctx context.Context, w io.Writer, src Source, binariesDir string, c
 		if err := utils.WriteFileAtomic(path, verified.YAML, 0o644); err != nil {
 			return nil, fmt.Errorf("writing catalog %s: %w", c, err)
 		}
+		pinPath := pluginkit.CatalogPinPath(binariesDir, c)
+		if readCatalogPin(pinPath) == "" && verified.SignerIdentity != "" {
+			_ = writeCatalogPin(pinPath, verified.SignerIdentity)
+		}
 		_, _ = fmt.Fprintf(w, "Installed catalog %s (signed by %s)\n", c, verified.SignerIdentity)
 	}
 	return unpublished, nil
+}
+
+func readCatalogPin(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+func writeCatalogPin(path, identity string) error {
+	if identity == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("creating catalog dir for signer pin: %w", err)
+	}
+	return utils.WriteFileAtomic(path, []byte(strings.TrimSpace(identity)+"\n"), 0o644)
 }
