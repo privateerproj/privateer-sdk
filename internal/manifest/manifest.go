@@ -1,9 +1,12 @@
 package manifest
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,6 +39,41 @@ type Plugin struct {
 	// ("keyless:<issuer>#<workflow-path>") pinned on first install and enforced
 	// on update (client-side TOFU). Empty for GitHub-Releases-sourced plugins.
 	SignerIdentity string `json:"signerIdentity,omitempty"`
+	// BinaryDigest is the sha256 digest ("sha256:<hex>") of the binary bytes
+	// written at install time. The run-time resolver re-hashes the on-disk
+	// binary against it before exec, so a binary modified after install is
+	// refused rather than run. Empty for entries written before digests were
+	// recorded.
+	BinaryDigest string `json:"binaryDigest,omitempty"`
+}
+
+// Signed reports whether the entry came from a signature-verified install: it
+// carries both the verified index digest and the pinned signer identity. Local
+// installs (`pvtr install <path>`) and legacy entries are not signed.
+func (p Plugin) Signed() bool {
+	return p.IndexDigest != "" && p.SignerIdentity != ""
+}
+
+// DigestBytes returns the "sha256:<hex>" digest of b, the form BinaryDigest
+// records.
+func DigestBytes(b []byte) string {
+	sum := sha256.Sum256(b)
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// DigestFile streams the file at path through sha256 and returns its
+// "sha256:<hex>" digest.
+func DigestFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = f.Close() }()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // Manifest tracks installed plugins, keyed by "<name>@<version>" so multiple

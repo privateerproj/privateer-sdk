@@ -16,6 +16,11 @@ import (
 	"github.com/privateerproj/privateer-sdk/utils"
 )
 
+// ErrUnsignedLocalInstall is returned by Local when require-signed-plugins is
+// enabled: a local binary carries no signature to verify, so it can never
+// satisfy the policy.
+var ErrUnsignedLocalInstall = errors.New("refusing to install a local plugin binary: require-signed-plugins is enabled and local binaries are not signed; publish the plugin to grc.store (or your internal mirror) and install it by coordinate")
+
 // Local installs a plugin from a local binary path: it copies the binary into
 // the SDK's binaries dir (atomically), registers it in the manifest as
 // local/<name> at version "local", then caches the grc.store catalogs it
@@ -24,6 +29,9 @@ import (
 // build, the same trust `pvtr publish` extends. Progress is written to w; the
 // caller owns flushing w.
 func Local(ctx context.Context, w io.Writer, binaryPath string) error {
+	if config.RequireSignedPlugins() {
+		return ErrUnsignedLocalInstall
+	}
 	binaryName, err := getSourceName(binaryPath)
 	if err != nil {
 		return err
@@ -37,12 +45,12 @@ func Local(ctx context.Context, w io.Writer, binaryPath string) error {
 		return fmt.Errorf("creating local plugin directory: %w", err)
 	}
 
-	err = moveFileWithCrashProtection(binaryPath, destDir, binaryName)
+	digest, err := moveFileWithCrashProtection(binaryPath, destDir, binaryName)
 	if err != nil {
 		return err
 	}
 
-	err = saveManifestInMem(binDirPath, binaryName)
+	err = saveManifestInMem(binDirPath, binaryName, digest)
 	if err != nil {
 		return err
 	}
@@ -103,28 +111,30 @@ func getSourceName(binaryPath string) (string, error) {
 
 // Read file and then write it to the new location with atomic write
 // (temp + rename) so a crash mid-copy can't leave a partial binary
-// that would be detected as if it were a complete plugin.
-func moveFileWithCrashProtection(binaryPath, destDir, binaryName string) error {
+// that would be detected as if it were a complete plugin. It returns the
+// digest of the bytes written, recorded so `pvtr run` can detect later tampering.
+func moveFileWithCrashProtection(binaryPath, destDir, binaryName string) (string, error) {
 	src, err := os.ReadFile(binaryPath)
 	if err != nil {
-		return fmt.Errorf("reading %s: %w", binaryPath, err)
+		return "", fmt.Errorf("reading %s: %w", binaryPath, err)
 	}
 
 	destPath := filepath.Join(destDir, binaryName)
 	err = utils.WriteFileAtomic(destPath, src, 0o755)
 	if err != nil {
-		return fmt.Errorf("writing %s: %w", destPath, err)
+		return "", fmt.Errorf("writing %s: %w", destPath, err)
 	}
-	return nil
+	return manifest.DigestBytes(src), nil
 }
 
-func saveManifestInMem(binDirPath, binaryName string) error {
+func saveManifestInMem(binDirPath, binaryName, digest string) error {
 	manifestBinaryPath := filepath.Join("local", binaryName)
 	if err := manifest.Update(binDirPath, func(m *manifest.Manifest) error {
 		m.Add(manifest.Plugin{
-			Name:       "local/" + binaryName,
-			Version:    "local",
-			BinaryPath: manifestBinaryPath,
+			Name:         "local/" + binaryName,
+			Version:      "local",
+			BinaryPath:   manifestBinaryPath,
+			BinaryDigest: digest,
 		})
 		return nil
 	}); err != nil {

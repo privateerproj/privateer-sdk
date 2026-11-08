@@ -31,4 +31,13 @@ func SetHarnessFlags(cmd *cobra.Command) {
 	// PVTR_AUTOINSTALL environment variable.
 	cmd.PersistentFlags().Bool("autoinstall", false, "Before a run, install any config-requested plugins that are not yet installed")
 	_ = viper.BindPFlag("autoinstall", cmd.PersistentFlags().Lookup("autoinstall"))
+
+	// require-signed-plugins: when true, only signature-verified grc.store
+	// installs may be installed or run; local/unsigned plugins fail loudly (see
+	// config.RequireSignedPlugins). At run time it trusts what plugins.json
+	// records, so a hand-edited manifest passes. Also settable via the
+	// require-signed-plugins config.yml key or the PVTR_REQUIRE_SIGNED_PLUGINS
+	// environment variable.
+	cmd.PersistentFlags().Bool("require-signed-plugins", false, "Refuse to install local plugins, and refuse to run plugins that plugins.json does not record as signature-verified at install (trusts plugins.json: a hand-edited manifest passes)")
+	_ = viper.BindPFlag("require-signed-plugins", cmd.PersistentFlags().Lookup("require-signed-plugins"))
 }

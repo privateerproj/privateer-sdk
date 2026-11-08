@@ -255,6 +255,26 @@ func TestAutoInstall_FromEnv(t *testing.T) {
 	}
 }
 
+func TestRequireSignedPlugins(t *testing.T) {
+	withEnvAwareViper(t)
+	if RequireSignedPlugins() {
+		t.Error("RequireSignedPlugins() = true by default, want false")
+	}
+	viper.Set("require-signed-plugins", true)
+	if !RequireSignedPlugins() {
+		t.Error("RequireSignedPlugins() = false after viper.Set, want true")
+	}
+}
+
+// CI enables enforcement by exporting PVTR_REQUIRE_SIGNED_PLUGINS.
+func TestRequireSignedPlugins_FromEnv(t *testing.T) {
+	withEnvAwareViper(t)
+	t.Setenv("PVTR_REQUIRE_SIGNED_PLUGINS", "true")
+	if !RequireSignedPlugins() {
+		t.Error("RequireSignedPlugins() = false with PVTR_REQUIRE_SIGNED_PLUGINS=true, want true")
+	}
+}
+
 func TestGetServiceVersion_NormalizesLeadingV(t *testing.T) {
 	t.Cleanup(viper.Reset)
 	cases := map[string]string{

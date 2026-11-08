@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/privateerproj/privateer-sdk/internal/manifest"
+	"github.com/privateerproj/privateer-sdk/internal/verify"
 )
 
 // --- pinnedIdentityFor tests -----------------------------------------------
@@ -151,5 +152,26 @@ func TestWriteVerifiedBinary_CreatesNestedDirs(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, rel)); err != nil {
 		t.Errorf("expected binary at nested path: %v", err)
+	}
+}
+
+// The grc.store install records the digest of the bytes it writes, so run can
+// detect a later change, and the entry counts as signed.
+func TestVerifiedEntry_RecordsBinaryDigest(t *testing.T) {
+	bin := []byte("verified-binary")
+	got := verifiedEntry("ossf/scanner", "ossf/scanner/1.0.0/scanner", &verify.VerifiedPlugin{
+		Version:        "1.0.0",
+		IndexDigest:    "sha256:abc",
+		SignerIdentity: "keyless:https://issuer#wf",
+		Binary:         bin,
+	})
+	if got.BinaryDigest != manifest.DigestBytes(bin) {
+		t.Errorf("BinaryDigest = %q, want %q", got.BinaryDigest, manifest.DigestBytes(bin))
+	}
+	if !got.Signed() {
+		t.Error("entry from a verified install is not Signed()")
+	}
+	if got.Coordinate != "ossf/scanner" || got.Version != "1.0.0" {
+		t.Errorf("got %+v", got)
 	}
 }
