@@ -157,12 +157,25 @@ func getRequestedPlugins() []*PluginPkg {
 	return out
 }
 
-// getLocalPlugins returns installed plugins from the manifest.
+// getLocalPlugins returns installed plugins from the manifest. An entry is
+// marked Requested when a configured target would run that exact version: the
+// pinned version, or the latest installed one when the target is unpinned.
 func getLocalPlugins() []*PluginPkg {
 	binPath := config.GetBinariesPath()
 	m, err := manifest.Load(binPath)
 	if err != nil {
 		return nil
+	}
+	requested := make(map[string]bool)
+	for serviceName := range config.GetServices() {
+		name := config.GetServicePlugin(serviceName)
+		version := config.GetServiceVersion(serviceName)
+		if version == "" {
+			if latest := m.Latest(name); latest != nil {
+				version = latest.Version
+			}
+		}
+		requested[name+"@"+version] = true
 	}
 	var plugins []*PluginPkg
 	for _, p := range m.Plugins {
@@ -171,6 +184,7 @@ func getLocalPlugins() []*PluginPkg {
 			Version:   p.Version,
 			Path:      filepath.Join(binPath, p.BinaryPath),
 			Installed: true,
+			Requested: requested[p.Name+"@"+p.Version],
 		}
 		pkg.queueCmd()
 		plugins = append(plugins, pkg)
