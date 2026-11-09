@@ -927,6 +927,38 @@ func TestEvaluationOrchestrator_WriteResults_IncludePayload(t *testing.T) {
 		}
 	})
 
+	// The plugin scaffold puts *config.Config in the payload, and config vars
+	// carry credentials such as a GitHub token. Results files get shared and
+	// published, so the vars must never reach them.
+	for _, output := range []string{"yaml", "json"} {
+		t.Run("config vars are never written with the payload as "+output, func(t *testing.T) {
+			const secret = "SECRET-PROBE-xyz"
+			payload := struct {
+				Config *config.Config
+				Owner  string
+			}{
+				Config: &config.Config{
+					ServiceName: "test-service",
+					Vars:        map[string]any{"token": secret, "ai_api_key": secret},
+				},
+				Owner: "acme",
+			}
+
+			resultPath := writeResultsFixture(t, output, true, payload)
+
+			data, err := os.ReadFile(resultPath)
+			if err != nil {
+				t.Fatalf("read output: %v", err)
+			}
+			if strings.Contains(string(data), secret) {
+				t.Errorf("config vars leaked into %s results:\n%s", output, data)
+			}
+			if !strings.Contains(string(data), "acme") {
+				t.Errorf("the rest of the payload should still be written, got:\n%s", data)
+			}
+		})
+	}
+
 	t.Run("orchestrator Payload is restored after WriteResults", func(t *testing.T) {
 		// Verifies the snapshot-and-restore: calling WriteResults must not
 		// permanently mutate v.Payload, so repeated calls and post-write
