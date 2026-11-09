@@ -43,8 +43,11 @@ type Config struct {
 	WriteDirectory string
 	Invasive       bool
 	Policy         Policy
-	Vars           map[string]interface{}
-	Error          error
+	// Vars is never serialized. Plugins often carry the Config in their payload,
+	// and vars hold credentials such as tokens, so --include-payload would
+	// otherwise write them into results files that get shared and published.
+	Vars  map[string]interface{} `json:"-" yaml:"-"`
+	Error error
 
 	Benchmark            bool
 	BenchmarkPayloadOnly bool
