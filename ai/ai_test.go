@@ -82,15 +82,23 @@ func TestNewClientWithAIConfig_UnknownProvider(t *testing.T) {
 		APIKey:   "test-key",
 		Model:    "gpt-4o-mini",
 	})
-	if err == nil || !strings.Contains(err.Error(), "unsupported ai provider") {
-		t.Fatalf("expected unsupported provider error, got %v", err)
+	const want = `unsupported ai provider "no-such-provider"; supported: anthropic, openai`
+	if err == nil || err.Error() != want {
+		t.Fatalf("error = %v, want %q", err, want)
 	}
 }
 
-func TestNewClientWithAIConfig_Validate(t *testing.T) {
-	_, err := NewClientWithAIConfig(Config{Provider: ProviderOpenAI, Model: "gpt-4o-mini"})
-	if err == nil {
-		t.Fatal("expected validation error, got nil")
+func TestNewClientWithAIConfig_CustomBaseURLDoesNotRequireAPIKey(t *testing.T) {
+	client, err := NewClientWithAIConfig(Config{
+		Provider: ProviderOpenAI,
+		Model:    "gpt-4o-mini",
+		BaseURL:  "http://127.0.0.1:8000/v1",
+	})
+	if err != nil {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+	if client == nil {
+		t.Fatal("expected configured client")
 	}
 }
 
@@ -160,7 +168,7 @@ func TestNewClient_PartialLiveConfigErrors(t *testing.T) {
 			vars: map[string]interface{}{
 				"ai_model": "gpt-4o-mini",
 			},
-			wantErrText: "ai provider is required",
+			wantErrText: "",
 		},
 		{
 			name: "provider and model without api key",
@@ -168,7 +176,7 @@ func TestNewClient_PartialLiveConfigErrors(t *testing.T) {
 				"ai_provider": "openai",
 				"ai_model":    "gpt-4o-mini",
 			},
-			wantErrText: "ai api key is required",
+			wantErrText: "ai api key is required unless ai base url is set",
 		},
 	}
 
@@ -178,8 +186,17 @@ func TestNewClient_PartialLiveConfigErrors(t *testing.T) {
 			t.Cleanup(viper.Reset)
 
 			client, err := NewClient(sdkconfig.Config{Vars: tt.vars})
+			if tt.wantErrText == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if client != nil {
+					t.Fatalf("expected nil client for disabled AI, got %T", client)
+				}
+				return
+			}
 			if err == nil {
-				t.Fatal("expected error, got nil")
+				t.Fatal("expected error")
 			}
 			if !strings.Contains(err.Error(), tt.wantErrText) {
 				t.Fatalf("error = %q, want substring %q", err.Error(), tt.wantErrText)

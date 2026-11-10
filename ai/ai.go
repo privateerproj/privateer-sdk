@@ -14,6 +14,8 @@ package ai
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/gemaraproj/go-gemara"
 
@@ -94,7 +96,12 @@ func NewClientWithAIConfig(config Config) (Client, error) {
 
 	factory, ok := clientFactories[config.Provider]
 	if !ok {
-		return nil, fmt.Errorf("unsupported ai provider %q", config.Provider)
+		supported := make([]string, 0, len(clientFactories))
+		for registered := range clientFactories {
+			supported = append(supported, string(registered))
+		}
+		slices.Sort(supported)
+		return nil, fmt.Errorf("unsupported ai provider %q; supported: %s", config.Provider, strings.Join(supported, ", "))
 	}
 
 	return factory(config), nil
