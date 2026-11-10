@@ -1,10 +1,12 @@
 package command
 
 import (
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/privateerproj/privateer-sdk/pluginkit"
+	"github.com/privateerproj/privateer-sdk/shared"
 )
 
 var (
@@ -91,5 +93,21 @@ func TestVersionCommand(t *testing.T) {
 	}
 	if cmd.Run == nil {
 		t.Error("Expected cmd.Run to be set")
+	}
+}
+
+func TestDebugCommand_ExitCodeMatchesRPCPath(t *testing.T) {
+	// An unconfigured orchestrator makes Mobilize fail, which ExitCodeFor
+	// maps to InternalError; debug must exit with the same code as Start.
+	ActiveEvaluationOrchestrator = &pluginkit.EvaluationOrchestrator{}
+	got := -1
+	exit = func(code int) { got = code }
+	t.Cleanup(func() { ActiveEvaluationOrchestrator = nil; exit = os.Exit })
+
+	want, _ := (&Plugin{}).Start()
+	cmd := debugCommand()
+	cmd.Run(cmd, nil)
+	if want != shared.InternalError || got != want {
+		t.Errorf("expected debug to exit %d like Start, got %d (Start=%d)", shared.InternalError, got, want)
 	}
 }
