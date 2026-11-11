@@ -29,21 +29,6 @@ const (
 	NoTests       = shared.NoTests
 )
 
-// Across multi-plugin runs the most severe outcome wins.
-var exitSeverity = map[int]int{
-	TestPass:      0,
-	TestFail:      1,
-	BadUsage:      2,
-	InternalError: 3,
-}
-
-func mergeExitCode(prev, next int) int {
-	if exitSeverity[next] > exitSeverity[prev] {
-		return next
-	}
-	return prev
-}
-
 // planRun decides, without executing anything, what Run should do with the
 // resolved plugin list:
 //   - toRun is the requested-and-installed plugins to execute, in input order.
@@ -198,7 +183,7 @@ func runSequential(toRun []*PluginPkg, run runFunc) (exitCode int) {
 		if fatal {
 			return InternalError
 		}
-		exitCode = mergeExitCode(exitCode, code)
+		exitCode = shared.MergeExitCode(exitCode, code)
 	}
 	return exitCode
 }
@@ -227,7 +212,7 @@ func runParallel(toRun []*PluginPkg, limit int, run runFunc) (exitCode int) {
 	}
 	_ = g.Wait() // run never returns an error; Wait is only the barrier
 	for _, code := range codes {
-		exitCode = mergeExitCode(exitCode, code)
+		exitCode = shared.MergeExitCode(exitCode, code)
 	}
 	return exitCode
 }
