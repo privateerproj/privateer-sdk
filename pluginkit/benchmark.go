@@ -92,7 +92,19 @@ func (v *EvaluationOrchestrator) recordLoader(scope string, loader DataLoader, d
 func (v *EvaluationOrchestrator) apiCallsReported() (int, bool) {
 	var total int
 	var found bool
+	seen := make(map[uintptr]struct{})
 	add := func(payload any) {
+		if payload == nil {
+			return
+		}
+		val := reflect.ValueOf(payload)
+		if val.Kind() == reflect.Pointer || val.Kind() == reflect.UnsafePointer {
+			ptr := val.Pointer()
+			if _, ok := seen[ptr]; ok {
+				return
+			}
+			seen[ptr] = struct{}{}
+		}
 		if reporter, ok := payload.(APICallReporter); ok {
 			total += reporter.APICallCount()
 			found = true

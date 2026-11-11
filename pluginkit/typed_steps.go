@@ -62,6 +62,10 @@ func adaptTypedSteps[S ~func(T) (gemara.Result, string, gemara.ConfidenceLevel),
 //
 // All steps in one call share the payload type T; register a second suite for a
 // step family that consumes a different payload.
+//
+// Pass nil for loader to inherit the shared orchestrator payload configured via AddLoader.
+// A non-nil loader overrides the orchestrator loader for this suite; identical loaders
+// across suites are deduplicated and executed only once.
 func AddEvaluationSuiteTyped[S ~func(T) (gemara.Result, string, gemara.ConfidenceLevel), T any](
 	v *EvaluationOrchestrator, catalogId string, loader DataLoader, steps map[string][]S,
 ) error {
@@ -71,6 +75,10 @@ func AddEvaluationSuiteTyped[S ~func(T) (gemara.Result, string, gemara.Confidenc
 // AddEvaluationSuiteTypedForAllCatalogs is AddEvaluationSuiteTyped applied to
 // every catalog declared with AddCatalogs or loaded via AddReferenceCatalogs,
 // mirroring AddEvaluationSuiteForAllCatalogs.
+//
+// Pass nil for loader to inherit the shared orchestrator payload configured via AddLoader.
+// A non-nil loader overrides the orchestrator loader; identical loaders across suites are
+// deduplicated and executed only once.
 func AddEvaluationSuiteTypedForAllCatalogs[S ~func(T) (gemara.Result, string, gemara.ConfidenceLevel), T any](
 	v *EvaluationOrchestrator, loader DataLoader, steps map[string][]S,
 ) error {

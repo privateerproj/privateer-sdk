@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -76,7 +77,12 @@ type DataLoader func(*config.Config) (any, error)
 // back to the service name from the run configuration.
 type TargetBuilder func(*config.Config) gemara.Resource
 
-// AddLoader sets the data loader function for the orchestrator.
+// AddLoader sets the default data loader function for the orchestrator.
+//
+// When registered, loadPayload invokes this loader once before mobilizing
+// suites and stores the result in v.Payload. Evaluation suites that do not
+// specify their own loader (by passing nil to AddEvaluationSuite) inherit
+// this shared payload.
 func (v *EvaluationOrchestrator) AddLoader(loader DataLoader) {
 	v.loader = loader
 }
@@ -209,6 +215,12 @@ func (v *EvaluationOrchestrator) loadDeclaredCatalogs() error {
 
 // AddEvaluationSuite adds an evaluation suite for the given catalog ID.
 //
+// The loader parameter specifies a data loader for this suite. Pass nil to inherit
+// the shared orchestrator payload configured via AddLoader. If a non-nil loader is
+// provided, it overrides the orchestrator loader for this suite. If multiple suites
+// provide the same non-nil loader (or if it matches AddLoader), the loader is only
+// executed once during mobilization and its resulting payload is reused across matching suites.
+//
 // Steps registered this way are named by symbol lookup at report time, which
 // only resolves while the step is a plain function value. Plugins that adapt
 // their steps through a closure should register via AddEvaluationSuiteTyped so
@@ -241,6 +253,10 @@ func (v *EvaluationOrchestrator) AddEvaluationSuite(catalogId string, loader Dat
 // catalog declared with AddCatalogs or loaded via AddReferenceCatalogs.
 // This allows plugin developers to define their step implementations once and
 // have them automatically applied to all catalog versions.
+//
+// Pass nil for loader to inherit the shared orchestrator payload configured via AddLoader.
+// A non-nil loader overrides the orchestrator loader, identical loaders across suites are
+// deduplicated and executed only once.
 func (v *EvaluationOrchestrator) AddEvaluationSuiteForAllCatalogs(loader DataLoader, steps map[string][]gemara.AssessmentStep) error {
 	ids := v.allCatalogIDs()
 	if len(ids) == 0 {
@@ -669,9 +685,23 @@ func (v *EvaluationOrchestrator) writeResultsToFile(serviceName string, result [
 	return nil
 }
 
+// loaderKey returns a unique comparable identifier for a DataLoader based on its
+// function pointer. Returns 0 if loader is nil.
+func loaderKey(loader DataLoader) uintptr {
+	if loader == nil {
+		return 0
+	}
+	return reflect.ValueOf(loader).Pointer()
+}
+
 // loadPayload loads the payload data to be referenced in assessments.
+// If multiple suites (or the orchestrator and a suite) use the same DataLoader,
+// the loader is only executed once and the resulting payload is reused.
 func (v *EvaluationOrchestrator) loadPayload() (err error) {
+	cache := make(map[uintptr]any)
+
 	if v.loader != nil {
+		key := loaderKey(v.loader)
 		start := time.Now()
 		data, err := v.loader(v.config)
 		v.recordLoader("orchestrator", v.loader, time.Since(start))
@@ -679,9 +709,16 @@ func (v *EvaluationOrchestrator) loadPayload() (err error) {
 			return err
 		}
 		v.Payload = data
+		cache[key] = data
 	}
 	for _, suite := range v.possibleSuites {
 		if suite.loader != nil {
+			key := loaderKey(suite.loader)
+			if cached, ok := cache[key]; ok {
+				suite.payload = cached
+				continue
+			}
+
 			start := time.Now()
 			data, err := suite.loader(v.config)
 			v.recordLoader("suite:"+suite.CatalogId, suite.loader, time.Since(start))
@@ -689,6 +726,7 @@ func (v *EvaluationOrchestrator) loadPayload() (err error) {
 				return err
 			}
 			suite.payload = data
+			cache[key] = data
 		} else {
 			suite.payload = v.Payload
 		}
