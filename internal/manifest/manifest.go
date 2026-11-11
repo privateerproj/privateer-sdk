@@ -40,16 +40,20 @@ type Plugin struct {
 	// on update (client-side TOFU). Empty for GitHub-Releases-sourced plugins.
 	SignerIdentity string `json:"signerIdentity,omitempty"`
 	// BinaryDigest is the sha256 digest ("sha256:<hex>") of the binary bytes
-	// written at install time. The run-time resolver re-hashes the on-disk
-	// binary against it before exec, so a binary modified after install is
-	// refused rather than run. Empty for entries written before digests were
-	// recorded.
+	// written at install time. `pvtr run` re-hashes the on-disk binary against
+	// it just before exec (command.runOne via verifyBeforeExec), so a binary
+	// modified after install is refused rather than run. Empty for entries
+	// written before digests were recorded.
 	BinaryDigest string `json:"binaryDigest,omitempty"`
 }
 
 // Signed reports whether the entry came from a signature-verified install: it
 // carries both the verified index digest and the pinned signer identity. Local
 // installs (`pvtr install <path>`) and legacy entries are not signed.
+//
+// Signed means "a valid keyless signature from some identity", not "from the
+// expected publisher". On a first install where the hub declares no identity
+// and there is no local pin, any valid Fulcio identity is accepted and pinned.
 func (p Plugin) Signed() bool {
 	return p.IndexDigest != "" && p.SignerIdentity != ""
 }

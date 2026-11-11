@@ -58,7 +58,10 @@ func mergeExitCode(prev, next int) int {
 //
 // Pulling this decision out of the execution loop lets it be table-tested
 // without go-plugin fakes. It validates the whole scoped list up front, so a
-// config that requests an uninstalled plugin fails before any plugin runs.
+// config that requests an uninstalled plugin, or one refused by
+// require-signed-plugins, fails before any plugin runs. The binary digest is
+// not checked here: runOne hashes each binary just before it starts, so a
+// digest mismatch fails only that plugin and the others still run.
 func planRun(plugins []*PluginPkg, target string) (toRun []*PluginPkg, earlyExit int, errMsg string) {
 	if len(plugins) == 0 {
 		return nil, NoTests, ""
@@ -109,18 +112,22 @@ func planRun(plugins []*PluginPkg, target string) (toRun []*PluginPkg, earlyExit
 	return requested, 0, ""
 }
 
-// refusedPluginsMsg reports installed plugins that the execution-time check
-// refused, each with its reason, so a tampered or unsigned binary is not
-// misreported as "not installed". Deduped by plugin name: several targets
-// sharing one plugin carry the same error.
+// refusedPluginsMsg reports installed plugins that the check refused, each
+// with its reason, so an unsigned binary is not misreported as "not
+// installed". Deduped by name and version: several targets sharing one plugin
+// version carry the same error, while two pinned versions keep both reasons.
 func refusedPluginsMsg(refused []*PluginPkg) string {
 	seen := make(map[string]bool, len(refused))
 	reasons := make([]string, 0, len(refused))
 	for _, pluginPkg := range refused {
-		if seen[pluginPkg.Name+pluginPkg.Version] {
+		key := pluginPkg.Name + "@" + pluginPkg.Version
+		if pluginPkg.entry != nil {
+			key = pluginPkg.entry.Name + "@" + pluginPkg.entry.Version
+		}
+		if seen[key] {
 			continue
 		}
-		seen[pluginPkg.Name] = true
+		seen[key] = true
 		reasons = append(reasons, pluginPkg.Error.Error())
 	}
 	sort.Strings(reasons)

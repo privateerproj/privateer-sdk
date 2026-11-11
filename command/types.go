@@ -3,6 +3,7 @@ package command
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -74,10 +75,10 @@ func (p *PluginPkg) getBinary() (binaryPath string, err error) {
 	} else if entry = m.Latest(p.Name); entry == nil {
 		return "", fmt.Errorf("plugin %s is not installed in %s", p.Name, binariesPath)
 	}
+	p.entry = entry
 	if err := checkSignedPolicy(entry, config.RequireSignedPlugins()); err != nil {
 		return "", err
 	}
-	p.entry = entry
 	return filepath.Join(binariesPath, entry.BinaryPath), nil
 }
 
@@ -120,6 +121,11 @@ func verifyBinaryDigest(entry *manifest.Plugin, binaryPath string) error {
 	}
 	ref := entry.Name + "@" + entry.Version
 	got, err := manifest.DigestFile(binaryPath)
+	if errors.Is(err, fs.ErrNotExist) {
+		// A deleted binary is missing, not tampered with: report it as not
+		// installed, with the fix, rather than as a refusal.
+		return fmt.Errorf("%s binary is missing at %s; %s", ref, binaryPath, reinstallHint(entry))
+	}
 	if err != nil {
 		return fmt.Errorf("%w: hashing %s binary: %v", ErrPluginVerification, ref, err)
 	}
@@ -145,17 +151,25 @@ func reinstallHint(entry *manifest.Plugin) string {
 	return fmt.Sprintf("reinstall it with `pvtr install %s@%s`", entry.Coordinate, entry.Version)
 }
 
-// verifyBeforeExec is the last check before the plugin starts. It records a
-// failure on p.Error.
+// verifyBeforeExec is the last check before the plugin starts. It applies the
+// full check (policy and digest) here, not only at plan time, so it holds for
+// an SDK consumer that builds its own PluginPkg and skips getBinary. With
+// require-signed-plugins on, a PluginPkg with no manifest entry fails closed:
+// there is nothing recorded to check it against. It records a failure on
+// p.Error.
 func (p *PluginPkg) verifyBeforeExec() error {
-	if p.entry == nil {
-		return nil
+	requireSigned := config.RequireSignedPlugins()
+	var err error
+	switch {
+	case p.entry != nil:
+		err = verifyInstalledBinary(p.entry, p.Path, requireSigned)
+	case requireSigned:
+		err = fmt.Errorf("%w: %s at %s has no plugins.json entry to verify against and require-signed-plugins is enabled", ErrPluginVerification, p.Name, p.Path)
 	}
-	if err := verifyBinaryDigest(p.entry, p.Path); err != nil {
+	if err != nil {
 		p.Error = err
-		return err
 	}
-	return nil
+	return err
 }
 
 func (p *PluginPkg) queueCmd() {

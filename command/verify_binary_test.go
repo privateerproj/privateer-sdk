@@ -194,3 +194,68 @@ func TestList_CleanPluginInstalled(t *testing.T) {
 		t.Fatalf("got %+v, want one installed plugin with no error", plugins)
 	}
 }
+
+// An SDK consumer can build its own PluginPkg and skip getBinary. With
+// require-signed-plugins on, runOne must refuse it rather than exec it.
+func TestRunOne_HandBuiltPkgRefusedUnderPolicy(t *testing.T) {
+	viper.Set("require-signed-plugins", true)
+	t.Cleanup(func() { viper.Set("require-signed-plugins", false) })
+
+	pkg := &PluginPkg{Name: "rogue", Path: "/bin/sh", Installed: true, Requested: true}
+	code, fatal := runOne(hclog.NewNullLogger(), 1, pkg)
+	if code != BadUsage || fatal {
+		t.Fatalf("got (%d, %t), want (%d, false)", code, fatal, BadUsage)
+	}
+	if !errors.Is(pkg.Error, ErrPluginVerification) {
+		t.Fatalf("got %v, want ErrPluginVerification", pkg.Error)
+	}
+}
+
+// Without the policy, a hand-built PluginPkg keeps working as before.
+func TestVerifyBeforeExec_NoEntryNoPolicy(t *testing.T) {
+	viper.Set("require-signed-plugins", false)
+	if err := (&PluginPkg{Name: "dev", Path: "/bin/sh"}).verifyBeforeExec(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// A deleted binary is missing, not tampered with: it gets a reinstall hint and
+// is not reported as refused.
+func TestVerifyBinaryDigest_MissingBinaryIsNotRefused(t *testing.T) {
+	content := []byte("plugin-bytes")
+	_, bin := installFixture(t, signedEntry(content), content)
+	if err := os.Remove(bin); err != nil {
+		t.Fatal(err)
+	}
+
+	plugins := getLocalPlugins()
+	markRefused(plugins)
+	if len(plugins) != 1 {
+		t.Fatalf("got %d plugins, want 1", len(plugins))
+	}
+	err := plugins[0].Error
+	if err == nil || errors.Is(err, ErrPluginVerification) {
+		t.Fatalf("got %v, want a non-verification error", err)
+	}
+	if !strings.Contains(err.Error(), "pvtr install ossf/scanner@1.0.0") {
+		t.Errorf("error %q has no reinstall hint", err)
+	}
+	if got := installedStatus(plugins[0]); got != "false" {
+		t.Errorf("list status = %q, want false", got)
+	}
+}
+
+// Two pinned versions of one plugin, both refused, keep both reasons.
+func TestRefusedPluginsMsg_KeepsEachVersion(t *testing.T) {
+	v1 := &PluginPkg{Name: "ossf/scanner", Version: "1.0.0", Error: errors.New("reason-one")}
+	v2 := &PluginPkg{Name: "ossf/scanner", Version: "2.0.0", Error: errors.New("reason-two")}
+	dup := &PluginPkg{Name: "ossf/scanner", Version: "1.0.0", Error: errors.New("reason-one")}
+
+	msg := refusedPluginsMsg([]*PluginPkg{v1, v2, dup})
+	if !strings.Contains(msg, "reason-one") || !strings.Contains(msg, "reason-two") {
+		t.Errorf("message dropped a version: %q", msg)
+	}
+	if strings.Count(msg, "reason-one") != 1 {
+		t.Errorf("same version reported twice: %q", msg)
+	}
+}

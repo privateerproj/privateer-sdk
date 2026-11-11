@@ -38,6 +38,11 @@ func SetHarnessFlags(cmd *cobra.Command) {
 	// records, so a hand-edited manifest passes. Also settable via the
 	// require-signed-plugins config.yml key or the PVTR_REQUIRE_SIGNED_PLUGINS
 	// environment variable.
-	cmd.PersistentFlags().Bool("require-signed-plugins", false, "Refuse to install local plugins, and refuse to run plugins that plugins.json does not record as signature-verified at install (trusts plugins.json: a hand-edited manifest passes)")
+	//
+	// Scope: it gates `pvtr install` and `pvtr run`. `pvtr benchmark <path>`
+	// does not check it yet (tracked as a follow-up). "Signed"
+	// means a valid keyless signature from some identity: on a first install
+	// where the hub declares no identity, any signer is accepted and pinned.
+	cmd.PersistentFlags().Bool("require-signed-plugins", false, "Refuse local installs, and have `pvtr run` refuse plugins that plugins.json does not record as signature-verified. Trusts plugins.json (a hand-edited manifest passes); a first install with no hub-declared identity accepts any valid signer")
 	_ = viper.BindPFlag("require-signed-plugins", cmd.PersistentFlags().Lookup("require-signed-plugins"))
 }
