@@ -29,26 +29,6 @@ const (
 	NoTests       = shared.NoTests
 )
 
-// Across multi-plugin runs the most severe outcome wins. Every exit code needs
-// an entry here, because a missing one scores 0 and merges as if it were
-// TestPass. NoTests ranks just above TestPass, so a plugin that returns NoTests
-// never reads as a pass, while a real TestFail still wins over it.
-var exitSeverity = map[int]int{
-	TestPass:      0,
-	NoTests:       1,
-	TestFail:      2,
-	Aborted:       3,
-	BadUsage:      4,
-	InternalError: 5,
-}
-
-func mergeExitCode(prev, next int) int {
-	if exitSeverity[next] > exitSeverity[prev] {
-		return next
-	}
-	return prev
-}
-
 // planRun decides, without executing anything, what Run should do with the
 // resolved plugin list:
 //   - toRun is the requested-and-installed plugins to execute, in input order.
@@ -203,7 +183,7 @@ func runSequential(toRun []*PluginPkg, run runFunc) (exitCode int) {
 		if fatal {
 			return InternalError
 		}
-		exitCode = mergeExitCode(exitCode, code)
+		exitCode = shared.MergeExitCode(exitCode, code)
 	}
 	return exitCode
 }
@@ -232,7 +212,7 @@ func runParallel(toRun []*PluginPkg, limit int, run runFunc) (exitCode int) {
 	}
 	_ = g.Wait() // run never returns an error; Wait is only the barrier
 	for _, code := range codes {
-		exitCode = mergeExitCode(exitCode, code)
+		exitCode = shared.MergeExitCode(exitCode, code)
 	}
 	return exitCode
 }

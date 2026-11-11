@@ -1,13 +1,6 @@
 package command
 
 import (
-	"go/ast"
-	"go/build"
-	"go/constant"
-	"go/parser"
-	"go/token"
-	"go/types"
-	"path/filepath"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -16,89 +9,6 @@ import (
 	hclog "github.com/hashicorp/go-hclog"
 	"github.com/spf13/viper"
 )
-
-func TestMergeExitCode(t *testing.T) {
-	tests := []struct {
-		name       string
-		prev, next int
-		want       int
-	}{
-		{"TestPass over TestPass keeps TestPass", TestPass, TestPass, TestPass},
-		{"TestFail beats TestPass", TestPass, TestFail, TestFail},
-		{"TestPass after TestFail keeps TestFail", TestFail, TestPass, TestFail},
-		{"BadUsage beats TestFail", TestFail, BadUsage, BadUsage},
-		{"TestFail does not downgrade BadUsage", BadUsage, TestFail, BadUsage},
-		{"InternalError beats BadUsage", BadUsage, InternalError, InternalError},
-		{"BadUsage does not downgrade InternalError", InternalError, BadUsage, InternalError},
-		{"InternalError beats TestFail", TestFail, InternalError, InternalError},
-		{"InternalError beats TestPass", TestPass, InternalError, InternalError},
-		{"Aborted beats TestPass", TestPass, Aborted, Aborted},
-		{"Aborted beats TestFail", TestFail, Aborted, Aborted},
-		{"BadUsage beats Aborted", Aborted, BadUsage, BadUsage},
-		{"NoTests beats TestPass", TestPass, NoTests, NoTests},
-		{"TestFail beats NoTests", NoTests, TestFail, TestFail},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := mergeExitCode(tt.prev, tt.next); got != tt.want {
-				t.Errorf("mergeExitCode(%d, %d) = %d, want %d", tt.prev, tt.next, got, tt.want)
-			}
-		})
-	}
-}
-
-// TestExitSeverityCoversEveryExitCode reads the exit codes straight from
-// package shared, so a code added to any of its files without its own
-// exitSeverity entry fails here instead of silently merging as TestPass.
-// Severities must also be unique, since mergeExitCode keeps the earlier code
-// on a tie.
-func TestExitSeverityCoversEveryExitCode(t *testing.T) {
-	dir := filepath.Join("..", "shared")
-	bp, err := build.ImportDir(dir, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Only the const declarations are type-checked, so the package's own
-	// imports never need resolving.
-	fset := token.NewFileSet()
-	consts := &ast.File{Name: ast.NewIdent(bp.Name)}
-	for _, name := range bp.GoFiles {
-		file, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, decl := range file.Decls {
-			if gen, ok := decl.(*ast.GenDecl); ok && gen.Tok == token.CONST {
-				consts.Decls = append(consts.Decls, gen)
-			}
-		}
-	}
-	pkg, err := new(types.Config).Check(bp.Name, fset, []*ast.File{consts}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	bySeverity := map[int]string{}
-	for _, name := range pkg.Scope().Names() {
-		c, ok := pkg.Scope().Lookup(name).(*types.Const)
-		if !ok || !c.Exported() || c.Val().Kind() != constant.Int {
-			continue
-		}
-		code, _ := constant.Int64Val(c.Val())
-		severity, ok := exitSeverity[int(code)]
-		if !ok {
-			t.Errorf("exit code %s (%d) has no exitSeverity entry", name, code)
-			continue
-		}
-		if other, taken := bySeverity[severity]; taken {
-			t.Errorf("exit codes %s and %s share severity %d", other, name, severity)
-		}
-		bySeverity[severity] = name
-	}
-	if len(bySeverity) == 0 {
-		t.Fatal("found no exit codes in package shared")
-	}
-}
 
 // TestPlanRun covers Run's selection logic (which plugins execute and the
 // early-exit codes) directly, without spawning plugin subprocesses or mocking
