@@ -117,7 +117,7 @@ func refusedPluginsMsg(refused []*PluginPkg) string {
 	seen := make(map[string]bool, len(refused))
 	reasons := make([]string, 0, len(refused))
 	for _, pluginPkg := range refused {
-		if seen[pluginPkg.Name] {
+		if seen[pluginPkg.Name+pluginPkg.Version] {
 			continue
 		}
 		seen[pluginPkg.Name] = true
