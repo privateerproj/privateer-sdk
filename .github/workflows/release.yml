@@ -29,7 +29,7 @@ jobs:
     if: needs.release.outputs.full-tag != ''
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
+      id-token: write # Federate via octo-sts for plugin-example dispatch
     steps:
       - name: Harden the runner
         uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
@@ -52,4 +52,4 @@ jobs:
           gh api repos/privateerproj/plugin-example/dispatches \
             --silent \
             -f event_type="sdk-release" \
-            -F client_payload[version]="$VERSION"
+            -f 'client_payload[version]'="$VERSION"
