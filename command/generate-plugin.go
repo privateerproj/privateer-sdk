@@ -122,7 +122,7 @@ func generatePlugin(logger hclog.Logger, cfg PluginConfig) (exitCode int) {
 	}
 
 	if err := updateGeneratedPluginDependencies(cfg.OutputDir, logger); err != nil {
-		logger.Error(fmt.Sprintf("failed to update plugin dependencies: %s", err))
+    logger.Warn(fmt.Sprintf("plugin generated, but updating its dependencies failed: %s; run `go get github.com/privateerproj/privateer-sdk@latest && go mod tidy` in %s", err, cfg.OutputDir))
 		return InternalError
 	}
 
