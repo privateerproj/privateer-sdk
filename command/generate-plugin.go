@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"text/template"
@@ -120,7 +121,45 @@ func generatePlugin(logger hclog.Logger, cfg PluginConfig) (exitCode int) {
 		return TestFail
 	}
 
+	if err := updateGeneratedPluginDependencies(cfg.OutputDir, logger); err != nil {
+    logger.Warn(fmt.Sprintf("plugin generated, but updating its dependencies failed: %s; run `go get github.com/privateerproj/privateer-sdk@latest && go mod tidy` in %s", err, cfg.OutputDir))
+		return InternalError
+	}
+
 	return TestPass
+}
+
+// execCommand executes a shell command in the specified directory.
+// Package-level variable to allow mocking in unit tests.
+var execCommand = func(dir string, name string, args ...string) error {
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s: %w", strings.TrimSpace(string(out)), err)
+	}
+	return nil
+}
+
+// updateGeneratedPluginDependencies updates the generated plugin's dependencies
+// to the latest privateer-sdk release and runs go mod tidy. If go.mod does not exist
+// in outputDir, it safely returns without doing anything.
+func updateGeneratedPluginDependencies(outputDir string, logger hclog.Logger) error {
+	goModPath := filepath.Join(outputDir, "go.mod")
+	if _, err := os.Stat(goModPath); os.IsNotExist(err) {
+		return nil
+	}
+
+	logger.Trace(fmt.Sprintf("Updating generated plugin dependencies in %s...", outputDir))
+	if err := execCommand(outputDir, "go", "get", "github.com/privateerproj/privateer-sdk@latest"); err != nil {
+		return fmt.Errorf("failed to get latest privateer-sdk: %w", err)
+	}
+
+	if err := execCommand(outputDir, "go", "mod", "tidy"); err != nil {
+		return fmt.Errorf("failed to tidy go.mod: %w", err)
+	}
+
+	return nil
 }
 
 // setupTemplatingEnvironment validates and sets up the environment for plugin
