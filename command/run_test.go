@@ -41,10 +41,10 @@ func TestPlanRun(t *testing.T) {
 			wantExit: NoTests,
 		},
 		{
-			name:     "only non-requested plugins run nothing",
+			name:     "only non-requested plugins returns NoTests",
 			plugins:  []*PluginPkg{pkg("acme/installed-only", "", true, false)},
 			wantRun:  nil,
-			wantExit: 0,
+			wantExit: NoTests,
 		},
 		{
 			name:     "requested and installed is selected",
