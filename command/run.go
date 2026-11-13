@@ -36,7 +36,8 @@ const (
 //     ignored for both execution and validation, so a shared config with a
 //     broken unrelated entry cannot block a targeted run.
 //   - earlyExit is non-zero when Run must return immediately without executing:
-//     NoTests when the plugin list is empty, BadUsage when the target names no
+//     NoTests when no plugin is requested (an empty, missing, or unreadable
+//     config included) and no target is given, BadUsage when the target names no
 //     configured service or a requested plugin is not installed (errMsg is the
 //     ready-to-log explanation).
 //
@@ -53,6 +54,11 @@ func planRun(plugins []*PluginPkg, target string) (toRun []*PluginPkg, earlyExit
 		if pluginPkg.Requested {
 			requested = append(requested, pluginPkg)
 		}
+	}
+
+	// A run that evaluates nothing must not exit 0 as if every control passed.
+	if len(requested) == 0 && target == "" {
+		return nil, NoTests, ""
 	}
 
 	if target != "" {
@@ -140,7 +146,7 @@ func Run(logger hclog.Logger, getPlugins func() []*PluginPkg) (exitCode int) {
 	toRun, earlyExit, errMsg := planRun(getPlugins(), config.TargetName())
 	switch earlyExit {
 	case NoTests:
-		logger.Error(fmt.Sprintf("no plugins were requested in config: %s", config.GetBinariesPath()))
+		logger.Error(fmt.Sprintf("no plugins were requested in config %q: define at least one target with a plugin under 'targets'", viper.ConfigFileUsed()))
 		return NoTests
 	case BadUsage:
 		logger.Error(errMsg)
