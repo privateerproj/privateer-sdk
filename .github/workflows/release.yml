@@ -22,3 +22,34 @@ jobs:
       release-only-with-label: true
     secrets:
       github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  dispatch:
+    name: "Notify Downstream Repos"
+    needs: [release]
+    if: needs.release.outputs.full-tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # Federate via octo-sts for plugin-example dispatch
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: audit
+
+      - name: Get token for plugin-example
+        uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05 # v1.1.1
+        id: octo-sts
+        with:
+          scope: privateerproj/plugin-example
+          identity: privateer-sdk
+
+      - name: Dispatch sdk-release to plugin-example
+        env:
+          GH_TOKEN: ${{ steps.octo-sts.outputs.token }}
+          VERSION: ${{ needs.release.outputs.full-tag }}
+        run: |
+          echo "Dispatching sdk-release ($VERSION) to privateerproj/plugin-example..."
+          gh api repos/privateerproj/plugin-example/dispatches \
+            --silent \
+            -f event_type="sdk-release" \
+            -f 'client_payload[version]'="$VERSION"
