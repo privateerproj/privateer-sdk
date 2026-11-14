@@ -1,6 +1,7 @@
 package command
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -43,7 +44,10 @@ const (
 //
 // Pulling this decision out of the execution loop lets it be table-tested
 // without go-plugin fakes. It validates the whole scoped list up front, so a
-// config that requests an uninstalled plugin fails before any plugin runs.
+// config that requests an uninstalled plugin, or one refused by
+// require-signed-plugins, fails before any plugin runs. The binary digest is
+// not checked here: runOne hashes each binary just before it starts, so a
+// digest mismatch fails only that plugin and the others still run.
 func planRun(plugins []*PluginPkg, target string) (toRun []*PluginPkg, earlyExit int, errMsg string) {
 	if len(plugins) == 0 {
 		return nil, NoTests, ""
@@ -77,16 +81,48 @@ func planRun(plugins []*PluginPkg, target string) (toRun []*PluginPkg, earlyExit
 		requested = scoped
 	}
 
-	var missing []*PluginPkg
+	var missing, refused []*PluginPkg
 	for _, pluginPkg := range requested {
-		if !pluginPkg.Installed {
+		switch {
+		case errors.Is(pluginPkg.Error, ErrPluginVerification):
+			refused = append(refused, pluginPkg)
+		case !pluginPkg.Installed:
 			missing = append(missing, pluginPkg)
 		}
 	}
+	var msgs []string
+	if len(refused) > 0 {
+		msgs = append(msgs, refusedPluginsMsg(refused))
+	}
 	if len(missing) > 0 {
-		return nil, BadUsage, missingPluginsMsg(missing)
+		msgs = append(msgs, missingPluginsMsg(missing))
+	}
+	if len(msgs) > 0 {
+		return nil, BadUsage, strings.Join(msgs, "; ")
 	}
 	return requested, 0, ""
+}
+
+// refusedPluginsMsg reports installed plugins that the check refused, each
+// with its reason, so an unsigned binary is not misreported as "not
+// installed". Deduped by name and version: several targets sharing one plugin
+// version carry the same error, while two pinned versions keep both reasons.
+func refusedPluginsMsg(refused []*PluginPkg) string {
+	seen := make(map[string]bool, len(refused))
+	reasons := make([]string, 0, len(refused))
+	for _, pluginPkg := range refused {
+		key := pluginPkg.Name + "@" + pluginPkg.Version
+		if pluginPkg.entry != nil {
+			key = pluginPkg.entry.Name + "@" + pluginPkg.entry.Version
+		}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		reasons = append(reasons, pluginPkg.Error.Error())
+	}
+	sort.Strings(reasons)
+	return "refusing to run: " + strings.Join(reasons, "; ")
 }
 
 // unknownTargetMsg names the target that matched no configured service and
@@ -233,6 +269,12 @@ type runFunc func(num int, pluginPkg *PluginPkg) (int, bool)
 // It only touches pluginPkg's own fields, so distinct plugins are safe to run concurrently.
 func runOne(logger hclog.Logger, num int, pluginPkg *PluginPkg) (code int, fatal bool) {
 	serviceName := pluginPkg.ServiceTarget
+	// Hash the binary as late as possible: just before exec, not at plan time
+	// while earlier plugins are still running.
+	if err := pluginPkg.verifyBeforeExec(); err != nil {
+		logger.Error(fmt.Sprintf("refusing to run %s: %s", serviceName, err))
+		return BadUsage, false
+	}
 	client := newClient(pluginPkg.Command, logger)
 
 	rpcClient, err := client.Client()

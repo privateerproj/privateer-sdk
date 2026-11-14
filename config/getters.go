@@ -36,6 +36,17 @@ func AutoInstall() bool {
 	return viper.GetBool("autoinstall")
 }
 
+// RequireSignedPlugins reports whether only signature-verified plugins may be
+// installed and run (the "require-signed-plugins" config key, also settable via
+// the PVTR_REQUIRE_SIGNED_PLUGINS environment variable or the
+// --require-signed-plugins flag). When true, installing a local binary is
+// refused, and `pvtr run` refuses any plugin whose manifest entry lacks a
+// verified signer identity or a recorded binary digest. Failures are loud
+// errors, never silent skips.
+func RequireSignedPlugins() bool {
+	return viper.GetBool("require-signed-plugins")
+}
+
 // targetFlags holds the flag set registered by command.SetRunFlags so
 // TargetName can rank an explicitly passed --target/--service above env and
 // config values. Viper cannot arbitrate that itself: "target" and "service"
