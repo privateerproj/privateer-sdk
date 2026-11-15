@@ -1,6 +1,7 @@
 package command
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -246,6 +247,101 @@ func TestGeneratePlugin_BadUsage(t *testing.T) {
 			got := GeneratePlugin(hclog.NewNullLogger())
 			if got != BadUsage {
 				t.Errorf("expected BadUsage (%d), got %d", BadUsage, got)
+			}
+		})
+	}
+}
+
+func TestUpdateGeneratedPluginDependencies(t *testing.T) {
+	origExecCommand := execCommand
+	t.Cleanup(func() { execCommand = origExecCommand })
+
+	t.Run("skips when go.mod does not exist", func(t *testing.T) {
+		called := false
+		execCommand = func(dir string, name string, args ...string) error {
+			called = true
+			return nil
+		}
+
+		tmpDir := t.TempDir()
+		err := updateGeneratedPluginDependencies(tmpDir, hclog.NewNullLogger())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if called {
+			t.Error("expected execCommand not to be called when go.mod is absent")
+		}
+	})
+
+	t.Run("runs go get and go mod tidy when go.mod exists", func(t *testing.T) {
+		var invocations [][]string
+		execCommand = func(dir string, name string, args ...string) error {
+			invocations = append(invocations, append([]string{name}, args...))
+			return nil
+		}
+
+		tmpDir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte("module test\n"), 0644); err != nil {
+			t.Fatalf("failed to create go.mod: %v", err)
+		}
+
+		err := updateGeneratedPluginDependencies(tmpDir, hclog.NewNullLogger())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if len(invocations) != 2 {
+			t.Fatalf("expected 2 command invocations, got %d", len(invocations))
+		}
+
+		expectedGet := []string{"go", "get", "github.com/privateerproj/privateer-sdk@latest"}
+		if strings.Join(invocations[0], " ") != strings.Join(expectedGet, " ") {
+			t.Errorf("expected first command %v, got %v", expectedGet, invocations[0])
+		}
+
+		expectedTidy := []string{"go", "mod", "tidy"}
+		if strings.Join(invocations[1], " ") != strings.Join(expectedTidy, " ") {
+			t.Errorf("expected second command %v, got %v", expectedTidy, invocations[1])
+		}
+	})
+
+	errorTests := []struct {
+		name       string
+		failArg    string
+		wantErrSub string
+	}{
+		{
+			name:       "returns error when go get fails",
+			failArg:    "get",
+			wantErrSub: "failed to get latest privateer-sdk",
+		},
+		{
+			name:       "returns error when go mod tidy fails",
+			failArg:    "mod",
+			wantErrSub: "failed to tidy go.mod",
+		},
+	}
+
+	for _, tt := range errorTests {
+		t.Run(tt.name, func(t *testing.T) {
+			execCommand = func(dir string, name string, args ...string) error {
+				if len(args) > 0 && args[0] == tt.failArg {
+					return errors.New("command execution failed")
+				}
+				return nil
+			}
+
+			tmpDir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte("module test\n"), 0644); err != nil {
+				t.Fatalf("failed to create go.mod: %v", err)
+			}
+
+			err := updateGeneratedPluginDependencies(tmpDir, hclog.NewNullLogger())
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.wantErrSub) {
+				t.Errorf("expected error message to mention %q, got: %v", tt.wantErrSub, err)
 			}
 		})
 	}

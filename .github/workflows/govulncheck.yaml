@@ -1,0 +1,91 @@
+name: govulncheck
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    # Run weekly on Mondays at 9 AM UTC
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # Clone the repository
+      security-events: write # Upload SARIF results to code scanning
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Install govulncheck
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          go version
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          govulncheck -version
+
+      # Fails the job when reachable vulnerabilities are found.
+      - name: Run govulncheck (human-readable trace)
+        id: govulncheck-text
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          govulncheck -show traces ./...
+
+      # SARIF output exits 0 even with findings, so it runs after a failed
+      # text scan without suppressing errors.
+      - name: Generate SARIF report
+        id: govulncheck-sarif
+        if: always() && steps.govulncheck-text.outcome != 'skipped'
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          govulncheck -format sarif ./... > govulncheck.sarif
+          python3 -c "
+          import json
+          with open('govulncheck.sarif', 'r', encoding='utf-8') as f:
+              data = json.load(f)
+          for res in data.get('runs', [{}])[0].get('results', []):
+              stacks = res.get('stacks', [])
+              if not stacks:
+                  continue
+              unique_stacks, seen = [], set()
+              for s in stacks:
+                  dumped = json.dumps(s, sort_keys=True)
+                  if dumped not in seen:
+                      seen.add(dumped)
+                      unique_stacks.append(s)
+              res['stacks'] = unique_stacks
+          with open('govulncheck.sarif', 'w', encoding='utf-8') as f:
+              json.dump(data, f, indent=2)
+          "
+
+      - name: Upload SARIF to GitHub Code Scanning
+        if: always() && steps.govulncheck-sarif.outcome == 'success'
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: govulncheck.sarif
