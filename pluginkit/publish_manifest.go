@@ -63,9 +63,9 @@ type EvaluatesDeclaration struct {
 // its resolved imports. It fails closed (no manifest) when Publisher or
 // PluginName is unset, when no catalog is loaded or declared, when no suite is
 // registered and no coordinate is declared, when a catalog has no version or
-// requirements, or when a catalog has no author id and no CatalogNamespaces override (we will
-// not synthesize an owner — claiming an unattributed catalog under any namespace
-// is a false claim). Every case is a "this plugin cannot be published yet" error
+// requirements, or when a catalog has no author id and no CatalogNamespaces
+// override (we will not synthesize an owner — claiming an unattributed catalog
+// under any namespace is a false claim). Every case is a "this plugin cannot be published yet" error
 // the author fixes in code or catalog metadata. A plugin RUNS without these; it
 // cannot be PUBLISHED without them.
 func (v *EvaluationOrchestrator) PublishManifest() (PublishManifest, error) {

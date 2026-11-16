@@ -8,9 +8,10 @@ import (
 	gemara "github.com/gemaraproj/go-gemara"
 )
 
-// orchestratorWithCatalog builds an orchestrator carrying one reference catalog
-// and a PluginName, bypassing AddReferenceCatalogs' embed.FS plumbing (this
-// package's tests can set the unexported field directly). The Publisher and the
+// orchestratorWithCatalog builds an orchestrator carrying one reference catalog,
+// a suite registered on it (PublishManifest claims per suite) and a PluginName,
+// bypassing AddReferenceCatalogs' embed.FS plumbing (this package's tests can
+// set the unexported fields directly). The Publisher and the
 // catalog's author are left to the caller so fail-closed cases can omit them.
 //
 // Each control gets one assessment requirement, id "<control-id>.T01". The two
@@ -232,6 +233,48 @@ func TestPublishManifest_MultipleSuites(t *testing.T) {
 	}
 	if !reflect.DeepEqual(m.Evaluates, want) {
 		t.Errorf("evaluates = %+v, want %+v", m.Evaluates, want)
+	}
+}
+
+// TestPublishManifest_UnmatchedImportsNotClaimed: an import naming a catalog
+// that is not loaded, or a control the source lacks, resolves to nothing in
+// Mobilize, so the claim is the catalog's own requirements only.
+func TestPublishManifest_UnmatchedImportsNotClaimed(t *testing.T) {
+	orch := orchestratorWithImportingCatalog()
+	primary := orch.referenceCatalogs["primary"]
+	primary.Imports = []gemara.MultiEntryMapping{
+		{ReferenceId: "not-loaded", Entries: []gemara.ArtifactMapping{{ReferenceId: "X-1"}}},
+		{ReferenceId: "imported", Entries: []gemara.ArtifactMapping{{ReferenceId: "I-9"}}},
+	}
+	if err := orch.AddEvaluationSuite("primary", nil, map[string][]gemara.AssessmentStep{"P-1.T01": {step_Pass}}); err != nil {
+		t.Fatalf("AddEvaluationSuite: %v", err)
+	}
+	m, err := orch.PublishManifest()
+	if err != nil {
+		t.Fatalf("PublishManifest: %v", err)
+	}
+	if len(m.Evaluates) != 1 || !reflect.DeepEqual(m.Evaluates[0].RequirementIDs, []string{"P-1.T01"}) {
+		t.Errorf("evaluates = %+v, want one claim on primary with [P-1.T01]", m.Evaluates)
+	}
+}
+
+// TestPublishManifest_EmbeddedCatalogWithoutSuiteNotClaimed pins the mixed
+// case: a declared coordinate keeps the manifest publishable, and an embedded
+// catalog with no suite of its own is not claimed, because nothing evaluates it.
+func TestPublishManifest_EmbeddedCatalogWithoutSuiteNotClaimed(t *testing.T) {
+	orch := orchestratorWithImportingCatalog() // embedded catalogs, no suite on them
+	if err := orch.AddCatalogs("openssf/osps-baseline@v1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := orch.AddEvaluationSuite("openssf/osps-baseline@v1", nil, map[string][]gemara.AssessmentStep{"OSPS-AC-01.01": {step_Pass}}); err != nil {
+		t.Fatal(err)
+	}
+	m, err := orch.PublishManifest()
+	if err != nil {
+		t.Fatalf("PublishManifest: %v", err)
+	}
+	if len(m.Evaluates) != 0 || !reflect.DeepEqual(m.Catalogs, []string{"openssf/osps-baseline@v1"}) {
+		t.Errorf("manifest = %+v, want the declared coordinate and no embedded claims", m)
 	}
 }
 
