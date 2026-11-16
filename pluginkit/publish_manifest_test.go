@@ -8,9 +8,10 @@ import (
 	gemara "github.com/gemaraproj/go-gemara"
 )
 
-// orchestratorWithCatalog builds an orchestrator carrying one reference catalog
-// and a PluginName, bypassing AddReferenceCatalogs' embed.FS plumbing (this
-// package's tests can set the unexported field directly). The Publisher and the
+// orchestratorWithCatalog builds an orchestrator carrying one reference catalog,
+// a suite registered on it (PublishManifest claims per suite) and a PluginName,
+// bypassing AddReferenceCatalogs' embed.FS plumbing (this package's tests can
+// set the unexported fields directly). The Publisher and the
 // catalog's author are left to the caller so fail-closed cases can omit them.
 //
 // Each control gets one assessment requirement, id "<control-id>.T01". The two
@@ -25,15 +26,17 @@ func orchestratorWithCatalog(id, version string, controlIDs ...string) *Evaluati
 			AssessmentRequirements: []gemara.AssessmentRequirement{{Id: cid + ".T01"}},
 		})
 	}
+	catalog := &gemara.ControlCatalog{
+		Metadata: gemara.Metadata{Id: id, Version: version},
+		Controls: controls,
+	}
+	// The suite is appended directly: AddEvaluationSuite would reject the
+	// malformed catalogs the fail-closed cases build.
 	return &EvaluationOrchestrator{
-		PluginName: "hello",
-		License:    "Apache-2.0",
-		referenceCatalogs: map[string]*gemara.ControlCatalog{
-			id: {
-				Metadata: gemara.Metadata{Id: id, Version: version},
-				Controls: controls,
-			},
-		},
+		PluginName:        "hello",
+		License:           "Apache-2.0",
+		referenceCatalogs: map[string]*gemara.ControlCatalog{id: catalog},
+		possibleSuites:    []*EvaluationSuite{{CatalogId: id, catalog: catalog, source: catalog}},
 	}
 }
 
@@ -173,52 +176,112 @@ func orchestratorWithImportingCatalog() *EvaluationOrchestrator {
 	}
 }
 
-// TestPublishManifest_CopyOnImport verifies that AddEvaluationSuite does not
-// mutate the shared referenceCatalogs entry: PublishManifest output must be
-// byte-for-byte identical whether called before or after suite registration,
-// and the importing catalog's RequirementIDs must list only the requirement ids
-// of its OWN controls (not the ones it imports from another catalog).
-func TestPublishManifest_CopyOnImport(t *testing.T) {
+// TestPublishManifest_ClaimsPerSuite covers REV-1241: with "primary" importing
+// I-1 from "imported" and one suite on "primary", the manifest names only
+// primary and claims exactly what that suite evaluates, its own P-1.T01 plus
+// the imported I-1.T01. "imported" is loaded only as an import source, so it
+// gets no claim and I-2.T01 is not claimed at all.
+func TestPublishManifest_ClaimsPerSuite(t *testing.T) {
 	orch := orchestratorWithImportingCatalog()
-
-	// Capture manifest BEFORE suite registration.
-	before, err := orch.PublishManifest()
-	if err != nil {
-		t.Fatalf("PublishManifest before AddEvaluationSuite: %v", err)
-	}
-
-	// Register a suite for the importing catalog (this triggers getImportedControls).
 	steps := map[string][]gemara.AssessmentStep{"P-1.T01": {step_Pass}}
 	if err := orch.AddEvaluationSuite("primary", nil, steps); err != nil {
 		t.Fatalf("AddEvaluationSuite: %v", err)
 	}
 
-	// Capture manifest AFTER suite registration.
-	after, err := orch.PublishManifest()
+	m, err := orch.PublishManifest()
 	if err != nil {
-		t.Fatalf("PublishManifest after AddEvaluationSuite: %v", err)
+		t.Fatalf("PublishManifest: %v", err)
 	}
-
-	// The linkage must be identical — referenceCatalogs was not mutated. (Steps
-	// legitimately grows: the suite registered step keys.)
-	if !reflect.DeepEqual(before.Evaluates, after.Evaluates) {
-		t.Errorf("PublishManifest evaluates changed after AddEvaluationSuite:\nbefore=%+v\nafter=%+v", before.Evaluates, after.Evaluates)
+	want := []EvaluatesDeclaration{{
+		Catalog:        "acme/primary",
+		CatalogVersion: "1.0",
+		RequirementIDs: []string{"I-1.T01", "P-1.T01"},
+	}}
+	if !reflect.DeepEqual(m.Evaluates, want) {
+		t.Errorf("evaluates = %+v, want %+v", m.Evaluates, want)
 	}
+	// Claiming must not mutate the shared catalog (copy-on-import).
+	if n := len(orch.referenceCatalogs["primary"].Controls); n != 1 {
+		t.Errorf("primary catalog has %d controls after PublishManifest, want 1", n)
+	}
+}
 
-	// The importing catalog's RequirementIDs must contain only its OWN control's
-	// requirement.
-	var primaryEntry *EvaluatesDeclaration
-	for i := range after.Evaluates {
-		if after.Evaluates[i].Catalog == "acme/primary" {
-			primaryEntry = &after.Evaluates[i]
-			break
+// TestPublishManifest_MultipleSuites registers suites on both catalogs, the
+// importer first, so the output order must come from the sort, not from
+// registration. The import source is claimed in full by its own suite, and an
+// id that "primary" both owns and imports is claimed once.
+func TestPublishManifest_MultipleSuites(t *testing.T) {
+	orch := orchestratorWithImportingCatalog()
+	primary := orch.referenceCatalogs["primary"]
+	primary.Controls = append(primary.Controls, gemara.Control{
+		Id: "P-2", AssessmentRequirements: []gemara.AssessmentRequirement{{Id: "I-1.T01"}},
+	})
+	steps := map[string][]gemara.AssessmentStep{"P-1.T01": {step_Pass}}
+	for _, id := range []string{"primary", "imported"} {
+		if err := orch.AddEvaluationSuite(id, nil, steps); err != nil {
+			t.Fatalf("AddEvaluationSuite(%s): %v", id, err)
 		}
 	}
-	if primaryEntry == nil {
-		t.Fatalf("no evaluates entry for acme/primary in manifest: %+v", after.Evaluates)
+
+	m, err := orch.PublishManifest()
+	if err != nil {
+		t.Fatalf("PublishManifest: %v", err)
 	}
-	if len(primaryEntry.RequirementIDs) != 1 || primaryEntry.RequirementIDs[0] != "P-1.T01" {
-		t.Errorf("primary catalog RequirementIDs = %v, want [P-1.T01] (own controls only, not imports)", primaryEntry.RequirementIDs)
+	want := []EvaluatesDeclaration{
+		{Catalog: "acme/imported", CatalogVersion: "2.0", RequirementIDs: []string{"I-1.T01", "I-2.T01"}},
+		{Catalog: "acme/primary", CatalogVersion: "1.0", RequirementIDs: []string{"I-1.T01", "P-1.T01"}},
+	}
+	if !reflect.DeepEqual(m.Evaluates, want) {
+		t.Errorf("evaluates = %+v, want %+v", m.Evaluates, want)
+	}
+}
+
+// TestPublishManifest_UnmatchedImportsNotClaimed: an import naming a catalog
+// that is not loaded, or a control the source lacks, resolves to nothing in
+// Mobilize, so the claim is the catalog's own requirements only.
+func TestPublishManifest_UnmatchedImportsNotClaimed(t *testing.T) {
+	orch := orchestratorWithImportingCatalog()
+	primary := orch.referenceCatalogs["primary"]
+	primary.Imports = []gemara.MultiEntryMapping{
+		{ReferenceId: "not-loaded", Entries: []gemara.ArtifactMapping{{ReferenceId: "X-1"}}},
+		{ReferenceId: "imported", Entries: []gemara.ArtifactMapping{{ReferenceId: "I-9"}}},
+	}
+	if err := orch.AddEvaluationSuite("primary", nil, map[string][]gemara.AssessmentStep{"P-1.T01": {step_Pass}}); err != nil {
+		t.Fatalf("AddEvaluationSuite: %v", err)
+	}
+	m, err := orch.PublishManifest()
+	if err != nil {
+		t.Fatalf("PublishManifest: %v", err)
+	}
+	if len(m.Evaluates) != 1 || !reflect.DeepEqual(m.Evaluates[0].RequirementIDs, []string{"P-1.T01"}) {
+		t.Errorf("evaluates = %+v, want one claim on primary with [P-1.T01]", m.Evaluates)
+	}
+}
+
+// TestPublishManifest_EmbeddedCatalogWithoutSuiteNotClaimed pins the mixed
+// case: a declared coordinate keeps the manifest publishable, and an embedded
+// catalog with no suite of its own is not claimed, because nothing evaluates it.
+func TestPublishManifest_EmbeddedCatalogWithoutSuiteNotClaimed(t *testing.T) {
+	orch := orchestratorWithImportingCatalog() // embedded catalogs, no suite on them
+	if err := orch.AddCatalogs("openssf/osps-baseline@v1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := orch.AddEvaluationSuite("openssf/osps-baseline@v1", nil, map[string][]gemara.AssessmentStep{"OSPS-AC-01.01": {step_Pass}}); err != nil {
+		t.Fatal(err)
+	}
+	m, err := orch.PublishManifest()
+	if err != nil {
+		t.Fatalf("PublishManifest: %v", err)
+	}
+	if len(m.Evaluates) != 0 || !reflect.DeepEqual(m.Catalogs, []string{"openssf/osps-baseline@v1"}) {
+		t.Errorf("manifest = %+v, want the declared coordinate and no embedded claims", m)
+	}
+}
+
+func TestPublishManifest_NoSuitesFailsClosed(t *testing.T) {
+	orch := orchestratorWithImportingCatalog() // catalogs loaded, no suite registered
+	if _, err := orch.PublishManifest(); err == nil || !strings.Contains(err.Error(), "no evaluation suites") {
+		t.Fatalf("expected a no-evaluation-suites error, got %v", err)
 	}
 }
 
