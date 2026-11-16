@@ -205,6 +205,36 @@ func TestPublishManifest_ClaimsPerSuite(t *testing.T) {
 	}
 }
 
+// TestPublishManifest_MultipleSuites registers suites on both catalogs, the
+// importer first, so the output order must come from the sort, not from
+// registration. The import source is claimed in full by its own suite, and an
+// id that "primary" both owns and imports is claimed once.
+func TestPublishManifest_MultipleSuites(t *testing.T) {
+	orch := orchestratorWithImportingCatalog()
+	primary := orch.referenceCatalogs["primary"]
+	primary.Controls = append(primary.Controls, gemara.Control{
+		Id: "P-2", AssessmentRequirements: []gemara.AssessmentRequirement{{Id: "I-1.T01"}},
+	})
+	steps := map[string][]gemara.AssessmentStep{"P-1.T01": {step_Pass}}
+	for _, id := range []string{"primary", "imported"} {
+		if err := orch.AddEvaluationSuite(id, nil, steps); err != nil {
+			t.Fatalf("AddEvaluationSuite(%s): %v", id, err)
+		}
+	}
+
+	m, err := orch.PublishManifest()
+	if err != nil {
+		t.Fatalf("PublishManifest: %v", err)
+	}
+	want := []EvaluatesDeclaration{
+		{Catalog: "acme/imported", CatalogVersion: "2.0", RequirementIDs: []string{"I-1.T01", "I-2.T01"}},
+		{Catalog: "acme/primary", CatalogVersion: "1.0", RequirementIDs: []string{"I-1.T01", "P-1.T01"}},
+	}
+	if !reflect.DeepEqual(m.Evaluates, want) {
+		t.Errorf("evaluates = %+v, want %+v", m.Evaluates, want)
+	}
+}
+
 func TestPublishManifest_NoSuitesFailsClosed(t *testing.T) {
 	orch := orchestratorWithImportingCatalog() // catalogs loaded, no suite registered
 	if _, err := orch.PublishManifest(); err == nil || !strings.Contains(err.Error(), "no evaluation suites") {

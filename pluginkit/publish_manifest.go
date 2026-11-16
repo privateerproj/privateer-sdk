@@ -59,10 +59,11 @@ type EvaluatesDeclaration struct {
 // Publisher + PluginName and its registered suites: the coordinate is
 // <Publisher>/<PluginName>, and each suite on an embedded catalog yields one
 // claim, namespaced under the catalog's own owner (metadata.author.id), with
-// id/version read from the catalog and requirement ids from the catalog plus its
-// resolved imports. It fails closed (no manifest) when Publisher or PluginName is
-// unset, when no suites or catalogs are registered, when a catalog has no version or requirements,
-// or when a catalog has no author id and no CatalogNamespaces override (we will
+// id/version read from the catalog and requirement ids from the catalog plus
+// its resolved imports. It fails closed (no manifest) when Publisher or
+// PluginName is unset, when no catalog is loaded or declared, when no suite is
+// registered and no coordinate is declared, when a catalog has no version or
+// requirements, or when a catalog has no author id and no CatalogNamespaces override (we will
 // not synthesize an owner — claiming an unattributed catalog under any namespace
 // is a false claim). Every case is a "this plugin cannot be published yet" error
 // the author fixes in code or catalog metadata. A plugin RUNS without these; it
