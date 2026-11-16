@@ -321,9 +321,8 @@ func (v *EvaluationOrchestrator) addEvaluationSuite(suiteId string, catalog *gem
 
 // resolveImports rebuilds the suite's catalog from its registered source plus
 // the controls it imports. Copy-on-import: the shared referenceCatalogs entry
-// stays pristine, because PublishManifest reads it and the published
-// requirement_ids must list only the catalog's OWN ids. Rebuilding from
-// source keeps repeated Mobilize calls from stacking imports.
+// stays pristine, because another suite or an import may read it. Rebuilding
+// from source keeps repeated Mobilize calls from stacking imports.
 func (v *EvaluationOrchestrator) resolveImports(suite *EvaluationSuite) {
 	if suite.source == nil {
 		return

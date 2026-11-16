@@ -20,8 +20,8 @@ const PublishManifestCommand = "publish-manifest"
 // built plugin (via the publish-manifest subcommand) in place of CLI flags. The
 // plugin coordinate is Publisher + PluginName. Catalogs declared with
 // AddCatalogs are emitted as coordinates plus the plugin's step keys, and pvtr
-// publish fetches each catalog from grc.store to build the linkage. Catalogs
-// embedded with AddReferenceCatalogs are emitted as a ready
+// publish fetches each catalog from grc.store to build the linkage. Each suite
+// on a catalog embedded with AddReferenceCatalogs is emitted as a ready
 // linkage under the catalog's OWN owner (metadata.author.id), so a plugin that
 // evaluates someone else's catalog links to the real owner instead of falsely
 // claiming it under the plugin's own namespace; CatalogNamespaces overrides
@@ -56,11 +56,12 @@ type EvaluatesDeclaration struct {
 }
 
 // PublishManifest assembles the publish descriptor from the orchestrator's
-// Publisher + PluginName and its embedded reference catalogs: the coordinate is
-// <Publisher>/<PluginName>, and each evaluated catalog is namespaced under its
-// own owner (metadata.author.id), with id/version/control-ids read from the
-// catalog itself. It fails closed (no manifest) when Publisher or PluginName is
-// unset, when no catalogs are loaded, when a catalog has no version or controls,
+// Publisher + PluginName and its registered suites: the coordinate is
+// <Publisher>/<PluginName>, and each suite on an embedded catalog yields one
+// claim, namespaced under the catalog's own owner (metadata.author.id), with
+// id/version read from the catalog and requirement ids from the catalog plus its
+// resolved imports. It fails closed (no manifest) when Publisher or PluginName is
+// unset, when no suites or catalogs are registered, when a catalog has no version or requirements,
 // or when a catalog has no author id and no CatalogNamespaces override (we will
 // not synthesize an owner — claiming an unattributed catalog under any namespace
 // is a false claim). Every case is a "this plugin cannot be published yet" error
@@ -95,9 +96,14 @@ func (v *EvaluationOrchestrator) PublishManifest() (PublishManifest, error) {
 		return PublishManifest{}, fmt.Errorf("plugin declares catalogs but registers no evaluation steps; add a suite with AddEvaluationSuite first")
 	}
 
-	evals := make([]EvaluatesDeclaration, 0, len(v.referenceCatalogs))
-	for id, catalog := range v.referenceCatalogs {
-		if v.declaredCatalog(id) != nil {
+	// One claim per registered suite, not per loaded catalog: a catalog loaded
+	// only as an import source is evaluated through the importing suite and gets
+	// no claim of its own.
+	evals := make([]EvaluatesDeclaration, 0, len(v.possibleSuites))
+	for _, suite := range v.possibleSuites {
+		id := suite.CatalogId
+		catalog := suite.source
+		if catalog == nil || v.declaredCatalog(id) != nil {
 			continue // a declared coordinate is linked by pvtr publish, not here
 		}
 		version := strings.TrimSpace(catalog.Metadata.Version)
@@ -107,13 +113,14 @@ func (v *EvaluationOrchestrator) PublishManifest() (PublishManifest, error) {
 
 		// requirement_ids is assessment-requirement ids, per the wire contract in
 		// grc-store-protocol/pluginspec — the same id space evaluation steps are
-		// keyed by. Read them from the catalog's OWN controls: addEvaluationSuite
-		// no longer mutates the shared catalog (copy-on-import), so referenceCatalogs
-		// entries carry only the catalog's own controls here. Deduplicated as cheap
-		// hardening against any future source of duplicate ids.
+		// keyed by. Claim what the suite evaluates: the catalog's own controls plus
+		// the imports Mobilize would resolve (resolveImports), all under the
+		// importing catalog. Imports from a declared coordinate are not loaded
+		// before Mobilize, so they are not claimed here.
+		imported, _ := getImportedControls(catalog, v.referenceCatalogs)
 		seen := map[string]bool{}
-		reqs := make([]string, 0, len(catalog.Controls))
-		for _, c := range catalog.Controls {
+		var reqs []string
+		for _, c := range append(slices.Clone(catalog.Controls), imported...) {
 			for _, r := range c.AssessmentRequirements {
 				if r.Id != "" && !seen[r.Id] {
 					seen[r.Id] = true
@@ -154,8 +161,11 @@ func (v *EvaluationOrchestrator) PublishManifest() (PublishManifest, error) {
 			RequirementIDs: reqs,
 		})
 	}
-	// Stable order: referenceCatalogs is a map, so sort the output so the manifest
-	// (and the downstream signed config blob) is byte-deterministic.
+	if len(evals) == 0 && len(catalogs) == 0 {
+		return PublishManifest{}, fmt.Errorf("plugin registers no evaluation suites, so it evaluates nothing and cannot be published; add a suite with AddEvaluationSuite first")
+	}
+	// Sort so the manifest (and the downstream signed config blob) is
+	// byte-deterministic regardless of suite registration order.
 	slices.SortFunc(evals, func(a, b EvaluatesDeclaration) int { return strings.Compare(a.Catalog, b.Catalog) })
 
 	return PublishManifest{Coordinate: publisher + "/" + pluginID, License: license, Catalogs: catalogs, Steps: steps, Evaluates: evals}, nil
