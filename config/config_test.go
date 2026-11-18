@@ -1142,3 +1142,54 @@ targets:
 		}
 	})
 }
+
+func TestNewConfig_MultipleValidationErrorsJoined(t *testing.T) {
+	t.Run("Combines policy error and missing required variables", func(t *testing.T) {
+		viper.Reset()
+		t.Cleanup(viper.Reset)
+
+		viper.Set("target", "service-a")
+		viper.Set("targets.service-a.policy.catalogs", []string{})
+		viper.Set("targets.service-a.policy.applicability", []string{})
+
+		cfg := NewConfig([]string{"missing-token"})
+		if cfg.Error == nil {
+			t.Fatal("expected error, got nil")
+		}
+
+		errMsg := cfg.Error.Error()
+		if !strings.Contains(errMsg, "invalid policy for service service-a") {
+			t.Errorf("expected error to contain policy validation failure, got: %q", errMsg)
+		}
+		if !strings.Contains(errMsg, "missing required variables: [missing-token]") {
+			t.Errorf("expected error to contain missing variables failure, got: %q", errMsg)
+		}
+	})
+
+	t.Run("Combines policy error, missing vars, and bad output type", func(t *testing.T) {
+		viper.Reset()
+		t.Cleanup(viper.Reset)
+
+		viper.Set("target", "service-b")
+		viper.Set("output", "unsupported-format")
+		viper.Set("targets.service-b.policy.catalogs", []string{})
+		viper.Set("targets.service-b.policy.applicability", []string{})
+
+		cfg := NewConfig([]string{"required-key"})
+		if cfg.Error == nil {
+			t.Fatal("expected error, got nil")
+		}
+
+		errMsg := cfg.Error.Error()
+		if !strings.Contains(errMsg, "invalid policy for service service-b") {
+			t.Errorf("expected error to contain policy validation failure, got: %q", errMsg)
+		}
+		if !strings.Contains(errMsg, "missing required variables: [required-key]") {
+			t.Errorf("expected error to contain missing variables failure, got: %q", errMsg)
+		}
+		if !strings.Contains(errMsg, "bad output type") {
+			t.Errorf("expected error to contain bad output type failure, got: %q", errMsg)
+		}
+	})
+}
+
