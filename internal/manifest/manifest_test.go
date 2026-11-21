@@ -390,3 +390,26 @@ func TestUpdate_MutateErrorIsNotSaved(t *testing.T) {
 		t.Fatalf("a failed mutate must not write; got %d entries", len(m.Plugins))
 	}
 }
+
+func TestDigestFileMatchesDigestBytes(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "bin")
+	if err := os.WriteFile(p, []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := DigestFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := DigestBytes([]byte("hello")); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestPluginSigned(t *testing.T) {
+	if (Plugin{IndexDigest: "sha256:x"}).Signed() {
+		t.Error("entry without signer identity reported signed")
+	}
+	if !(Plugin{IndexDigest: "sha256:x", SignerIdentity: "keyless:a#b"}).Signed() {
+		t.Error("verified entry reported unsigned")
+	}
+}
