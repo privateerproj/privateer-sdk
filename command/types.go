@@ -143,6 +143,50 @@ func verifyInstalledBinary(entry *manifest.Plugin, binaryPath string, requireSig
 	return verifyBinaryDigest(entry, binaryPath)
 }
 
+// VerifyPluginBinaryPath applies require-signed-plugins to a plugin binary
+// given by path, as `pvtr benchmark` takes it, and returns the path to exec.
+// With the policy off it returns binaryPath unchanged, so a fresh build can
+// still be benchmarked. With it on, the path must resolve to a binary recorded
+// in plugins.json; that entry must pass the same policy and digest check
+// `pvtr run` applies, and the installed path is returned. Hashing and exec'ing
+// the installed path, as `pvtr run` does, means a symlink given on the command
+// line cannot be swapped to another target between the check and the exec.
+func VerifyPluginBinaryPath(binaryPath string) (string, error) {
+	if !config.RequireSignedPlugins() {
+		return binaryPath, nil
+	}
+	binariesPath := config.GetBinariesPath()
+	m, err := manifest.Load(binariesPath)
+	if err != nil {
+		return "", fmt.Errorf("loading plugin manifest: %w", err)
+	}
+	want := canonicalPath(binaryPath)
+	for k := range m.Plugins {
+		entry := m.Plugins[k]
+		installed := filepath.Join(binariesPath, entry.BinaryPath)
+		if canonicalPath(installed) == want {
+			if err := verifyInstalledBinary(&entry, installed, true); err != nil {
+				return "", err
+			}
+			return installed, nil
+		}
+	}
+	return "", fmt.Errorf("%w: %s is not a plugin installed in %s and require-signed-plugins is enabled; install it by coordinate with `pvtr install` and pass the installed binary", ErrPluginVerification, binaryPath, binariesPath)
+}
+
+// canonicalPath resolves p to an absolute path with symlinks evaluated, so two
+// spellings of the same file compare equal. It falls back to the cleaned
+// absolute path when the file cannot be resolved.
+func canonicalPath(p string) string {
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	if resolved, err := filepath.EvalSymlinks(p); err == nil {
+		return resolved
+	}
+	return filepath.Clean(p)
+}
+
 // reinstallHint names the command that repairs an entry.
 func reinstallHint(entry *manifest.Plugin) string {
 	if entry.Coordinate == "" {

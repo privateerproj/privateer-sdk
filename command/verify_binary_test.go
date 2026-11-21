@@ -259,3 +259,84 @@ func TestRefusedPluginsMsg_KeepsEachVersion(t *testing.T) {
 		t.Errorf("same version reported twice: %q", msg)
 	}
 }
+
+func TestVerifyPluginBinaryPath(t *testing.T) {
+	content := []byte("plugin-bytes")
+
+	t.Run("policy off accepts any path", func(t *testing.T) {
+		installFixture(t, signedEntry(content), content)
+		viper.Set("require-signed-plugins", false)
+		got, err := VerifyPluginBinaryPath("/not/installed/anywhere")
+		if err != nil {
+			t.Errorf("unexpected error with policy off: %v", err)
+		}
+		if got != "/not/installed/anywhere" {
+			t.Errorf("path = %q, want the given path unchanged", got)
+		}
+	})
+
+	t.Run("installed signed binary passes", func(t *testing.T) {
+		_, bin := installFixture(t, signedEntry(content), content)
+		viper.Set("require-signed-plugins", true)
+		got, err := VerifyPluginBinaryPath(bin)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if got != bin {
+			t.Errorf("path = %q, want installed path %q", got, bin)
+		}
+	})
+
+	t.Run("symlink to installed binary resolves to its entry", func(t *testing.T) {
+		_, bin := installFixture(t, signedEntry(content), content)
+		viper.Set("require-signed-plugins", true)
+		link := filepath.Join(t.TempDir(), "scanner-link")
+		if err := os.Symlink(bin, link); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+		got, err := VerifyPluginBinaryPath(link)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		// The installed path, not the symlink, is what gets hashed and exec'd.
+		if got != bin {
+			t.Errorf("path = %q, want installed path %q, not the symlink", got, bin)
+		}
+	})
+
+	t.Run("binary not in plugins.json is refused", func(t *testing.T) {
+		installFixture(t, signedEntry(content), content)
+		viper.Set("require-signed-plugins", true)
+		stray := filepath.Join(t.TempDir(), "fresh-build")
+		if err := os.WriteFile(stray, content, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		_, err := VerifyPluginBinaryPath(stray)
+		if !errors.Is(err, ErrPluginVerification) || !strings.Contains(err.Error(), "is not a plugin installed") {
+			t.Errorf("expected not-installed refusal, got: %v", err)
+		}
+	})
+
+	t.Run("tampered installed binary is refused", func(t *testing.T) {
+		_, bin := installFixture(t, signedEntry(content), content)
+		viper.Set("require-signed-plugins", true)
+		if err := os.WriteFile(bin, []byte("swapped"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		_, err := VerifyPluginBinaryPath(bin)
+		if !errors.Is(err, ErrPluginVerification) || !strings.Contains(err.Error(), "does not match the digest") {
+			t.Errorf("expected digest refusal, got: %v", err)
+		}
+	})
+
+	t.Run("unsigned local install is refused", func(t *testing.T) {
+		entry := signedEntry(content)
+		entry.IndexDigest, entry.SignerIdentity, entry.Coordinate = "", "", ""
+		_, bin := installFixture(t, entry, content)
+		viper.Set("require-signed-plugins", true)
+		_, err := VerifyPluginBinaryPath(bin)
+		if !errors.Is(err, ErrPluginVerification) || !strings.Contains(err.Error(), "is not signed") {
+			t.Errorf("expected unsigned refusal, got: %v", err)
+		}
+	})
+}
