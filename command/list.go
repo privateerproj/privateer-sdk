@@ -2,10 +2,12 @@ package command
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/privateerproj/privateer-sdk/config"
@@ -113,7 +115,33 @@ func writePluginDetails(ctx context.Context, writer Writer) {
 	} else {
 		plugins = GetPlugins()
 	}
+	markRefused(plugins)
 	renderPluginDetails(writer, plugins)
+}
+
+// markRefused runs the same check `pvtr run` applies to each installed plugin,
+// so list shows a plugin run would refuse as refused, not as installed.
+func markRefused(plugins []*PluginPkg) {
+	requireSigned := config.RequireSignedPlugins()
+	for _, pluginPkg := range plugins {
+		if pluginPkg.entry == nil || pluginPkg.Error != nil {
+			continue
+		}
+		if err := verifyInstalledBinary(pluginPkg.entry, pluginPkg.Path, requireSigned); err != nil {
+			pluginPkg.Error = err
+			pluginPkg.Installed = false
+		}
+	}
+}
+
+// installedStatus renders the Installed column. A plugin refused by the
+// verification check is shown as "refused", not "false": it is on disk, and
+// reinstalling is the fix, not installing.
+func installedStatus(pluginPkg *PluginPkg) string {
+	if errors.Is(pluginPkg.Error, ErrPluginVerification) {
+		return "refused"
+	}
+	return strconv.FormatBool(pluginPkg.Installed)
 }
 
 // renderPluginDetails writes the plugin table. Extracted from writePluginDetails
@@ -136,7 +164,7 @@ func renderPluginDetails(writer io.Writer, plugins []*PluginPkg) {
 		if version == "" {
 			version = "-" // unpinned (latest) or not installed
 		}
-		_, _ = fmt.Fprintf(writer, "| %s \t | %s \t | %t \t| %t \t|\n", pluginPkg.Name, version, pluginPkg.Installed, pluginPkg.Requested)
+		_, _ = fmt.Fprintf(writer, "| %s \t | %s \t | %s \t| %t \t|\n", pluginPkg.Name, version, installedStatus(pluginPkg), pluginPkg.Requested)
 	}
 }
 
@@ -178,13 +206,15 @@ func getLocalPlugins() []*PluginPkg {
 		requested[name+"@"+version] = true
 	}
 	var plugins []*PluginPkg
-	for _, p := range m.Plugins {
+	for _, entry := range m.Plugins {
+		p := entry
 		pkg := &PluginPkg{
 			Name:      p.Name,
 			Version:   p.Version,
 			Path:      filepath.Join(binPath, p.BinaryPath),
 			Installed: true,
 			Requested: requested[p.Name+"@"+p.Version],
+			entry:     &p,
 		}
 		pkg.queueCmd()
 		plugins = append(plugins, pkg)
