@@ -156,14 +156,7 @@ func pullVerifyInstall(ctx context.Context, w io.Writer, hub *oci.Client, detail
 	// adding: concurrent installs of other plugins (autoinstall / `install
 	// --from-config`) can't clobber this entry.
 	if err := manifest.Update(destDir, func(m *manifest.Manifest) error {
-		m.Add(manifest.Plugin{
-			Name:           coordinate,
-			Version:        verified.Version,
-			BinaryPath:     relPath,
-			Coordinate:     coordinate,
-			IndexDigest:    verified.IndexDigest,
-			SignerIdentity: verified.SignerIdentity,
-		})
+		m.Add(verifiedEntry(coordinate, relPath, verified))
 		return nil
 	}); err != nil {
 		return fmt.Errorf("saving plugin manifest: %w", err)
@@ -184,6 +177,20 @@ func pullVerifyInstall(ctx context.Context, w io.Writer, hub *oci.Client, detail
 		_, _ = fmt.Fprintf(w, "Warning: %v; skipping (the plugin must carry its own copy)\n", e)
 	}
 	return nil
+}
+
+// verifiedEntry builds the manifest entry for a verified install. BinaryDigest
+// is the hash of the exact bytes written, which `pvtr run` re-checks before exec.
+func verifiedEntry(coordinate, relPath string, verified *verify.VerifiedPlugin) manifest.Plugin {
+	return manifest.Plugin{
+		Name:           coordinate,
+		Version:        verified.Version,
+		BinaryPath:     relPath,
+		Coordinate:     coordinate,
+		IndexDigest:    verified.IndexDigest,
+		SignerIdentity: verified.SignerIdentity,
+		BinaryDigest:   manifest.DigestBytes(verified.Binary),
+	}
 }
 
 // catalogCoordinates turns the signed evaluates linkage into catalog
