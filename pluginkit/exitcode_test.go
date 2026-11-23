@@ -52,6 +52,17 @@ func TestExitCodeFor(t *testing.T) {
 			want: shared.TestPass,
 		},
 		{
+			name: "nil error, every suite NotRun returns NoTests",
+			orchestrator: &EvaluationOrchestrator{
+				Evaluation_Suites: []*EvaluationSuite{
+					{Result: gemara.NotRun},
+					{Result: gemara.NotRun},
+				},
+			},
+			err:  nil,
+			want: shared.NoTests,
+		},
+		{
 			name: "nil error, one suite Failed returns TestFail",
 			orchestrator: &EvaluationOrchestrator{
 				Evaluation_Suites: []*EvaluationSuite{
