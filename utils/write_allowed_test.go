@@ -8,17 +8,38 @@ import (
 	"testing"
 )
 
+// countOpenFDs returns the number of open file descriptors on Linux.
+func countOpenFDs() (int, bool) {
+	if runtime.GOOS != "linux" {
+		return 0, false
+	}
+	entries, err := os.ReadDir("/proc/self/fd")
+	if err != nil {
+		return 0, false
+	}
+	return len(entries), true
+}
+
 // TestWriteAllowed_Success verifies that WriteAllowed returns nil for a writable path
 // and closes the file descriptor so subsequent operations do not fail.
 func TestWriteAllowed_Success(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "writable.txt")
 
+	fdsBefore, checkFD := countOpenFDs()
+
 	if err := WriteAllowed(target); err != nil {
 		t.Fatalf("WriteAllowed(%q) unexpected error: %v", target, err)
 	}
 
-	// Verify the file was closed by removing it (on Windows, open handles block removal).
+	if checkFD {
+		fdsAfter, _ := countOpenFDs()
+		if fdsAfter > fdsBefore {
+			t.Errorf("file descriptor leak detected: before=%d, after=%d", fdsBefore, fdsAfter)
+		}
+	}
+
+	// Verify the file is removable (on Windows, open handles block removal).
 	if err := os.Remove(target); err != nil {
 		t.Errorf("expected file to be closed and removable, got: %v", err)
 	}
@@ -59,7 +80,9 @@ func TestWriteAllowed_PermissionDenied(t *testing.T) {
 // in a nonexistent parent directory returns a properly formatted error.
 func TestWriteAllowed_NonexistentDirectory(t *testing.T) {
 	dir := t.TempDir()
-	target := filepath.Join(dir, "missing-parent", "file.txt")
+	// Include '%' in the parent directory name to ensure format specifiers in paths
+	// are not evaluated as format verbs by error formatting.
+	target := filepath.Join(dir, "missing%dparent", "file.txt")
 
 	err := WriteAllowed(target)
 	if err == nil {
@@ -73,7 +96,7 @@ func TestWriteAllowed_NonexistentDirectory(t *testing.T) {
 	if !strings.Contains(errMsg, target) {
 		t.Errorf("expected error to include target path %q, got: %q", target, errMsg)
 	}
-	if strings.Contains(errMsg, "%!(EXTRA") || strings.Contains(errMsg, "%!(NOVERB)") {
+	if strings.Contains(errMsg, "%!") {
 		t.Errorf("error message contains format artifacts: %q", errMsg)
 	}
 }
