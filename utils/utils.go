@@ -96,12 +96,14 @@ func ReplaceBytesMultipleValues(b []byte, replacer *strings.Replacer) []byte {
 
 // WriteAllowed determines whether a given filepath can be written to.
 func WriteAllowed(path string) error {
-	_, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0644)
 	if os.IsPermission(err) {
-		return ReformatError("Permissions prevent this from writing to file: ", path)
+		return ReformatError("Permissions prevent this from writing to file: %s", path)
 	} else if err != nil {
-		return ReformatError(fmt.Sprintf(
-			"Could not create or write to file: %s. Error: %s", path, err))
+		return ReformatError("Could not create or write to file: %s. Error: %s", path, err)
+	}
+	if err := f.Close(); err != nil {
+		return ReformatError("Could not close file: %s. Error: %s", path, err)
 	}
 	return nil
 }
