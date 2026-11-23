@@ -6,11 +6,14 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gemaraproj/go-gemara"
+	"github.com/gemaraproj/go-gemara/gemaraconv"
 
 	"github.com/goccy/go-yaml"
 	"github.com/privateerproj/privateer-sdk/config"
@@ -673,6 +676,224 @@ func TestEvaluationOrchestrator_WriteResults_SARIF(t *testing.T) {
 				if r.Kind != kl[0] || r.Level != kl[1] {
 					t.Errorf("rule %q: expected kind/level %q/%q, got %q/%q", r.RuleID, kl[0], kl[1], r.Kind, r.Level)
 				}
+			}
+		})
+	}
+}
+
+// writeSARIF runs WriteResults with SARIF output over suites and returns the
+// bytes written to disk.
+func writeSARIF(t *testing.T, suites []*EvaluationSuite) []byte {
+	t.Helper()
+	tmpDir := t.TempDir()
+
+	cfg := setBasicConfig()
+	cfg.Output = "sarif"
+	cfg.Write = true
+	cfg.WriteDirectory = tmpDir
+
+	for _, suite := range suites {
+		suite.config = cfg
+	}
+	orchestrator := &EvaluationOrchestrator{
+		ServiceName:       "test-service",
+		PluginName:        "test-plugin",
+		PluginUri:         "https://github.com/test/repo",
+		PluginVersion:     "1.0.0",
+		Evaluation_Suites: suites,
+		config:            cfg,
+	}
+	if err := orchestrator.WriteResults(); err != nil {
+		t.Fatalf("WriteResults failed: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(tmpDir, "test-service", "test-service.sarif"))
+	if err != nil {
+		t.Fatalf("reading SARIF output: %v", err)
+	}
+	return data
+}
+
+// standaloneSARIF converts suite on its own, the way a single-suite run would.
+func standaloneSARIF(t *testing.T, suite *EvaluationSuite) gemaraconv.SarifReport {
+	t.Helper()
+	data, err := gemaraconv.EvaluationLog(suite.EvaluationLog).ToSARIF(gemaraconv.WithCatalog(suite.catalog))
+	if err != nil {
+		t.Fatalf("ToSARIF failed: %v", err)
+	}
+	var report gemaraconv.SarifReport
+	if err := json.Unmarshal(data, &report); err != nil {
+		t.Fatalf("unmarshaling standalone SARIF: %v", err)
+	}
+	return report
+}
+
+func TestEvaluationOrchestrator_WriteResults_SARIF_MultipleSuites(t *testing.T) {
+	first := createTestEvalLog()
+	first.Evaluations = append(first.Evaluations, failingEvaluation())
+	first.Evaluations[0].AssessmentLogs[0].Result = gemara.Passed
+	first.Evaluations[1].AssessmentLogs[0].Result = gemara.Failed
+
+	second := createTestEvalLog()
+	second.Metadata.Author.Name = "other-plugin"
+	second.Evaluations = []*gemara.ControlEvaluation{needsReviewEvaluation()}
+	second.Evaluations[0].AssessmentLogs[0].Result = gemara.NeedsReview
+
+	suites := []*EvaluationSuite{
+		{CatalogId: "first-catalog", EvaluationLog: first, catalog: getTestCatalogWithRequirements()},
+		{CatalogId: "second-catalog", EvaluationLog: second},
+	}
+	data := writeSARIF(t, suites)
+
+	if !json.Valid(data) {
+		t.Fatalf("SARIF output is not valid JSON: %s", data)
+	}
+	var got gemaraconv.SarifReport
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshaling SARIF output: %v", err)
+	}
+	if got.Version != "2.1.0" {
+		t.Errorf("version: got = %q, want = %q", got.Version, "2.1.0")
+	}
+	if !strings.Contains(got.Schema, "sarif-schema-2.1.0") {
+		t.Errorf("schema: got = %q, want it to reference sarif-schema-2.1.0", got.Schema)
+	}
+	if len(got.Runs) != len(suites) {
+		t.Fatalf("runs: got = %d, want = %d", len(got.Runs), len(suites))
+	}
+
+	wantRuleIDs := [][]string{
+		{"assessment-good", "assessment-bad"},
+		{"assessment-review"},
+	}
+	for i, suite := range suites {
+		run := got.Runs[i]
+		want := standaloneSARIF(t, suite).Runs[0]
+		if !reflect.DeepEqual(run, want) {
+			t.Errorf("run %d (%s): got = %+v, want = %+v", i, suite.CatalogId, run, want)
+		}
+
+		ruleIDs := make([]string, 0, len(run.Tool.Driver.Rules))
+		for _, rule := range run.Tool.Driver.Rules {
+			ruleIDs = append(ruleIDs, rule.ID)
+		}
+		if !slices.Equal(ruleIDs, wantRuleIDs[i]) {
+			t.Errorf("run %d rules: got = %v, want = %v", i, ruleIDs, wantRuleIDs[i])
+		}
+		for _, result := range run.Results {
+			if !slices.Contains(ruleIDs, result.RuleID) {
+				t.Errorf("run %d: result ruleId %q has no rule in its own run", i, result.RuleID)
+			}
+		}
+	}
+	if gotName := got.Runs[1].Tool.Driver.Name; gotName != "other-plugin" {
+		t.Errorf("run 1 driver name: got = %q, want = %q", gotName, "other-plugin")
+	}
+}
+
+func TestEvaluationOrchestrator_WriteResults_SARIF_SingleSuiteMatchesConverter(t *testing.T) {
+	evalLog := createTestEvalLog()
+	evalLog.Evaluations = append(evalLog.Evaluations, failingEvaluation())
+	evalLog.Evaluations[0].AssessmentLogs[0].Result = gemara.Passed
+	evalLog.Evaluations[1].AssessmentLogs[0].Result = gemara.Failed
+	suite := &EvaluationSuite{
+		CatalogId:     "test-catalog",
+		EvaluationLog: evalLog,
+		catalog:       getTestCatalogWithRequirements(),
+	}
+
+	data := writeSARIF(t, []*EvaluationSuite{suite})
+
+	want, err := gemaraconv.EvaluationLog(suite.EvaluationLog).ToSARIF(gemaraconv.WithCatalog(suite.catalog))
+	if err != nil {
+		t.Fatalf("ToSARIF failed: %v", err)
+	}
+	var gotDoc, wantDoc any
+	if err := json.Unmarshal(data, &gotDoc); err != nil {
+		t.Fatalf("unmarshaling SARIF output: %v", err)
+	}
+	if err := json.Unmarshal(want, &wantDoc); err != nil {
+		t.Fatalf("unmarshaling converter output: %v", err)
+	}
+	if !reflect.DeepEqual(gotDoc, wantDoc) {
+		t.Errorf("single-suite SARIF differs from converter output:\ngot  = %s\nwant = %s", data, want)
+	}
+}
+
+// assertEmptySARIF checks that data is a SARIF document with the converter's
+// $schema and version and an empty, non-null runs array.
+func assertEmptySARIF(t *testing.T, data []byte) {
+	t.Helper()
+	var doc map[string]json.RawMessage
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("SARIF output is not valid JSON: %v (%q)", err, data)
+	}
+	if got := string(doc["runs"]); got != "[]" {
+		t.Errorf("runs: got = %s, want = []", got)
+	}
+	want := standaloneSARIF(t, &EvaluationSuite{})
+	var schema, version string
+	if err := json.Unmarshal(doc["$schema"], &schema); err != nil {
+		t.Fatalf("$schema: %v", err)
+	}
+	if err := json.Unmarshal(doc["version"], &version); err != nil {
+		t.Fatalf("version: %v", err)
+	}
+	if schema != want.Schema {
+		t.Errorf("$schema: got = %q, want = %q", schema, want.Schema)
+	}
+	if version != want.Version {
+		t.Errorf("version: got = %q, want = %q", version, want.Version)
+	}
+}
+
+func TestEvaluationOrchestrator_WriteResults_SARIF_NoSuites(t *testing.T) {
+	assertEmptySARIF(t, writeSARIF(t, nil))
+}
+
+func TestMergeSARIF(t *testing.T) {
+	t.Run("no documents", func(t *testing.T) {
+		got, err := mergeSARIF(nil)
+		if err != nil {
+			t.Fatalf("mergeSARIF: unexpected error: %v", err)
+		}
+		assertEmptySARIF(t, got)
+	})
+
+	tests := []struct {
+		name    string
+		docs    [][]byte
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "runs concatenated in order with header from first document",
+			docs: [][]byte{
+				[]byte(`{"$schema":"s1","version":"2.1.0","runs":[{"tool":{"driver":{"name":"a"}}}]}`),
+				[]byte(`{"$schema":"s2","version":"9.9.9","runs":[{"tool":{"driver":{"name":"b"}}},{"tool":{"driver":{"name":"c"}}}]}`),
+			},
+			want: `{"$schema":"s1","version":"2.1.0","runs":[{"tool":{"driver":{"name":"a"}}},{"tool":{"driver":{"name":"b"}}},{"tool":{"driver":{"name":"c"}}}]}`,
+		},
+		{
+			name:    "invalid document",
+			docs:    [][]byte{[]byte(`{"$schema":"s1","version":"2.1.0","runs":[]}`), []byte(`{not json`)},
+			wantErr: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := mergeSARIF(tc.docs)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("mergeSARIF: got = nil error, want error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("mergeSARIF: unexpected error: %v", err)
+			}
+			if string(got) != tc.want {
+				t.Errorf("mergeSARIF:\ngot  = %s\nwant = %s", got, tc.want)
 			}
 		})
 	}

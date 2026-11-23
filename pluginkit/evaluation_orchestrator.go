@@ -622,13 +622,18 @@ func (v *EvaluationOrchestrator) WriteResults() error {
 		result, err = v.marshalGemara()
 		err = errMod(err, "wr25")
 	case "sarif":
+		sarifDocs := make([][]byte, 0, len(v.Evaluation_Suites))
 		for _, suite := range v.Evaluation_Suites {
 			sarifBytes, sarifErr := v.toSARIF(suite)
 			if sarifErr != nil {
 				err = errMod(fmt.Errorf("catalog %q: %w", suite.CatalogId, sarifErr), "wr27")
 				break
 			}
-			result = append(result, sarifBytes...)
+			sarifDocs = append(sarifDocs, sarifBytes)
+		}
+		if err == nil {
+			result, err = mergeSARIF(sarifDocs)
+			err = errMod(err, "wr26")
 		}
 	default:
 		err = fmt.Errorf("output type '%s' is not supported. Supported types are 'json', 'yaml', 'sarif', and 'gemara'", v.config.Output)
@@ -643,6 +648,41 @@ func (v *EvaluationOrchestrator) WriteResults() error {
 	}
 
 	return nil
+}
+
+// mergeSARIF combines per-suite SARIF documents into one SARIF document with
+// one run per input run, in input order. The $schema and version come from
+// the first document. Each run keeps its own tool.driver, so rules stay scoped
+// to the results that reference them. With no documents it returns a valid
+// SARIF document with an empty runs array.
+func mergeSARIF(docs [][]byte) ([]byte, error) {
+	merged := gemaraconv.SarifReport{Runs: []gemaraconv.Run{}}
+	for i, doc := range docs {
+		var report gemaraconv.SarifReport
+		if err := json.Unmarshal(doc, &report); err != nil {
+			return nil, fmt.Errorf("parsing SARIF document %d: %w", i, err)
+		}
+		if i == 0 {
+			merged.Schema = report.Schema
+			merged.Version = report.Version
+		}
+		merged.Runs = append(merged.Runs, report.Runs...)
+	}
+	if len(docs) == 0 {
+		// gemaraconv exports no constants for $schema and version, so take
+		// them from the converter's output for an empty log.
+		empty, err := gemaraconv.ToSARIF(gemara.EvaluationLog{})
+		if err != nil {
+			return nil, fmt.Errorf("building empty SARIF document: %w", err)
+		}
+		var header gemaraconv.SarifReport
+		if err := json.Unmarshal(empty, &header); err != nil {
+			return nil, fmt.Errorf("parsing empty SARIF document: %w", err)
+		}
+		merged.Schema = header.Schema
+		merged.Version = header.Version
+	}
+	return json.Marshal(merged)
 }
 
 // marshalGemara serializes the run as gemara-native EvaluationLog objects.
