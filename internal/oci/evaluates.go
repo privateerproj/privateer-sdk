@@ -42,11 +42,13 @@ func ValidateForPublish(p AssembleParams) error {
 	// evaluates, with namespaced catalogs and requirement ids. Entries reach
 	// here from two sources, both owned by the plugin: coordinates declared with
 	// AddCatalogs, namespaced by the coordinate itself and linked against the
-	// fetched catalog in internal/publish; and catalogs loaded through the
-	// AddReferenceCatalogs, namespaced by their own
-	// metadata.author.id. Never by orchestrator.Publisher — claiming a catalog
-	// we do not own under our own namespace is a false attribution. An empty
-	// list means the plugin declared and loaded nothing.
+	// fetched catalog in internal/publish; and one entry per suite registered on
+	// a catalog loaded through AddReferenceCatalogs, namespaced by that
+	// catalog's own metadata.author.id. A catalog loaded only as an import
+	// source gets no entry of its own. Never by orchestrator.Publisher —
+	// claiming a catalog we do not own under our own namespace is a false
+	// attribution. An empty list means the plugin declared and evaluates
+	// nothing.
 	if len(p.Evaluates) == 0 {
 		return fmt.Errorf("a plugin must declare what it evaluates (the hub rejects an empty evaluates list): declare catalogs with AddCatalogs and set orchestrator.Publisher")
 	}
