@@ -1,6 +1,8 @@
 package command
 
 import (
+	"bytes"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -295,5 +297,46 @@ func TestReadConfig_HyphenatedKeyViaUnderscoredEnv(t *testing.T) {
 	ReadConfig()
 	if viper.GetString("write-directory") != "/tmp/test-output" {
 		t.Errorf("expected '/tmp/test-output', got %q", viper.GetString("write-directory"))
+	}
+}
+
+func TestReadConfig_MissingDefaultConfigDoesNotLogError(t *testing.T) {
+	resetViper()
+	emptyDir := t.TempDir()
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(origDir) }()
+	if err := os.Chdir(emptyDir); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", emptyDir)
+	t.Setenv("USERPROFILE", emptyDir)
+
+	var logBuf bytes.Buffer
+	origWriter := log.Writer()
+	log.SetOutput(&logBuf)
+	defer log.SetOutput(origWriter)
+
+	ReadConfig()
+
+	if logBuf.Len() > 0 {
+		t.Errorf("expected no log output when default config is missing, got: %s", logBuf.String())
+	}
+}
+
+func TestReadConfig_ExplicitMissingConfigLogsError(t *testing.T) {
+	resetViper()
+	var logBuf bytes.Buffer
+	origWriter := log.Writer()
+	log.SetOutput(&logBuf)
+	defer log.SetOutput(origWriter)
+
+	viper.Set("config", filepath.Join(t.TempDir(), "nonexistent.yml"))
+	ReadConfig()
+
+	if !strings.Contains(logBuf.String(), "[ERROR]") {
+		t.Errorf("expected [ERROR] in log output for explicit missing config, got: %s", logBuf.String())
 	}
 }

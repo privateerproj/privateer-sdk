@@ -4,6 +4,7 @@ package command
 // Wontfix: Logging in this file has unexpected behavior related to the WriteDirectory and loglevel values.
 
 import (
+	"errors"
 	"log"
 	"os"
 	"path/filepath"
@@ -91,6 +92,10 @@ func ReadConfig() {
 	}
 
 	if err := viper.ReadInConfig(); err != nil {
+		var notFound viper.ConfigFileNotFoundError
+		if errors.As(err, &notFound) && configPath == "" {
+			return
+		}
 		log.Print("[ERROR] " + err.Error())
 	}
 }
