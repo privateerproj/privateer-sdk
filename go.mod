@@ -3,7 +3,7 @@ module github.com/privateerproj/privateer-sdk
 go 1.27.4
 
 require (
-	github.com/gemaraproj/go-gemara v0.12.0
+	github.com/gemaraproj/go-gemara v0.13.0
 	github.com/gemaraproj/grc-store-clientkit v0.3.0
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/goccy/go-yaml v1.19.2
@@ -33,7 +33,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.21.0 // indirect
 	github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467 // indirect
 	github.com/cyphar/filepath-securejoin v0.6.1 // indirect
-	github.com/defenseunicorns/go-oscal v0.7.1 // indirect
+	github.com/defenseunicorns/go-oscal v0.7.2 // indirect
 	github.com/digitorus/pkcs7 v0.0.0-20260821105541-05f79448fa77 // indirect
 	github.com/digitorus/timestamp v0.0.0-20231217203849-220c5c2851b7 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
