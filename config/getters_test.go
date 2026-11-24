@@ -121,9 +121,14 @@ func TestGetString(t *testing.T) {
 func TestGetStringMatching(t *testing.T) {
 	c := Config{
 		Vars: map[string]interface{}{
-			"owner": "privateerproj",
-			"empty": "",
-			"count": 123,
+			"owner":    "privateerproj",
+			"empty":    "",
+			"count":    123,
+			"unset":    nil,
+			"apitoken": "ghp_abc123",
+			"food":     "food",
+			"bar":      "bar",
+			"cmd":      "x; rm -rf /",
 		},
 	}
 
@@ -135,7 +140,13 @@ func TestGetStringMatching(t *testing.T) {
 		wantErr string
 	}{
 		{name: "value matches", key: "owner", pattern: `^[a-z]+$`, want: "privateerproj"},
-		{name: "pattern is not anchored", key: "owner", pattern: `teer`, want: "privateerproj"},
+		{name: "partial match is rejected", key: "owner", pattern: `teer`, wantErr: "does not match pattern"},
+		{name: "value with extra text is rejected", key: "cmd", pattern: `[a-z0-9-]+`, wantErr: "does not match pattern"},
+		{name: "alternation does not accept a prefix", key: "food", pattern: `^foo|bar$`, wantErr: "does not match pattern"},
+		{name: "alternation matches a whole branch", key: "bar", pattern: `^foo|bar$`, want: "bar"},
+		{name: "mixed-case key finds lowercased var", key: "apiToken", pattern: `ghp_[a-z0-9]+`, want: "ghp_abc123"},
+		{name: "nil value is not set", key: "unset", pattern: `.*`, wantErr: "is not set"},
+		{name: "pattern made valid by anchoring is still invalid", key: "owner", pattern: `a)(b`, wantErr: "invalid pattern"},
 		{name: "value does not match", key: "owner", pattern: `^[0-9]+$`, wantErr: "does not match pattern"},
 		{name: "missing key", key: "absent", pattern: `.*`, wantErr: "is not set"},
 		{name: "empty value", key: "empty", pattern: `.*`, wantErr: "is empty"},
