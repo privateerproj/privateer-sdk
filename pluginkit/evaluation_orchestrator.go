@@ -65,6 +65,11 @@ type EvaluationOrchestrator struct {
 	loader             DataLoader
 	targetBuilder      TargetBuilder
 	benchmark          *BenchmarkReport
+	// sarifConverter replaces SARIF conversion in tests. We can't force a
+	// failure that reaches the conversion error branch in WriteResults except
+	// by mocking the function, so tests replace it with a broken one. Nil uses
+	// gemaraconv.
+	sarifConverter func(gemara.EvaluationLog, *gemara.ControlCatalog) ([]byte, error)
 }
 
 // DataLoader is a function type for loading plugin data from configuration.
@@ -577,6 +582,14 @@ func (v *EvaluationOrchestrator) stampEvaluationLog(suite *EvaluationSuite) {
 	suite.EvaluationLog.Target = target
 }
 
+// toSARIF converts one suite's EvaluationLog to a SARIF document.
+func (v *EvaluationOrchestrator) toSARIF(suite *EvaluationSuite) ([]byte, error) {
+	if v.sarifConverter != nil {
+		return v.sarifConverter(suite.EvaluationLog, suite.catalog)
+	}
+	return gemaraconv.EvaluationLog(suite.EvaluationLog).ToSARIF(gemaraconv.WithCatalog(suite.catalog))
+}
+
 // WriteResults writes the evaluation results to files in the configured output format.
 func (v *EvaluationOrchestrator) WriteResults() error {
 
@@ -610,9 +623,9 @@ func (v *EvaluationOrchestrator) WriteResults() error {
 		err = errMod(err, "wr25")
 	case "sarif":
 		for _, suite := range v.Evaluation_Suites {
-			evalConverter := gemaraconv.EvaluationLog(suite.EvaluationLog)
-			sarifBytes, sarifErr := evalConverter.ToSARIF(gemaraconv.WithCatalog(suite.catalog))
+			sarifBytes, sarifErr := v.toSARIF(suite)
 			if sarifErr != nil {
+				err = errMod(fmt.Errorf("catalog %q: %w", suite.CatalogId, sarifErr), "wr27")
 				break
 			}
 			result = append(result, sarifBytes...)
