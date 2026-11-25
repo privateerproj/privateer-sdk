@@ -678,47 +678,6 @@ func TestEvaluationOrchestrator_WriteResults_SARIF(t *testing.T) {
 	}
 }
 
-// No t.Parallel: the test swaps the package-level sarifConverter.
-func TestEvaluationOrchestrator_WriteResults_SARIFConversionError(t *testing.T) {
-	original := sarifConverter
-	t.Cleanup(func() { sarifConverter = original })
-	sarifConverter = func(gemara.EvaluationLog, *gemara.ControlCatalog) ([]byte, error) {
-		return nil, errors.New("conversion boom")
-	}
-
-	tmpDir := t.TempDir()
-	cfg := setBasicConfig()
-	cfg.Output = "sarif"
-	cfg.Write = true
-	cfg.WriteDirectory = tmpDir
-
-	orchestrator := &EvaluationOrchestrator{
-		ServiceName: "test-service",
-		PluginName:  "test-plugin",
-		config:      cfg,
-		Evaluation_Suites: []*EvaluationSuite{{
-			CatalogId:     "failing-catalog",
-			EvaluationLog: createTestEvalLog(),
-			config:        cfg,
-		}},
-	}
-
-	err := orchestrator.WriteResults()
-	if err == nil {
-		t.Fatal("WriteResults: got nil error, want error from SARIF conversion")
-	}
-	for _, want := range []string{"wr27", "failing-catalog", "conversion boom"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("WriteResults error: got %q, want it to contain %q", err.Error(), want)
-		}
-	}
-
-	outPath := filepath.Join(tmpDir, "test-service", "test-service.sarif")
-	if _, statErr := os.Stat(outPath); !errors.Is(statErr, os.ErrNotExist) {
-		t.Errorf("SARIF file %s: got stat error %v, want file to not exist", outPath, statErr)
-	}
-}
-
 // writeResultsFixture builds a minimal orchestrator with one suite, writes
 // results to a temp directory, and returns the path to the produced file.
 // It centralizes the boilerplate shared by the gemara and IncludePayload

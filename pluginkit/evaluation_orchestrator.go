@@ -577,12 +577,6 @@ func (v *EvaluationOrchestrator) stampEvaluationLog(suite *EvaluationSuite) {
 	suite.EvaluationLog.Target = target
 }
 
-// sarifConverter converts one suite's EvaluationLog to a SARIF document.
-// It is a package variable so tests can substitute a failing converter.
-var sarifConverter = func(log gemara.EvaluationLog, catalog *gemara.ControlCatalog) ([]byte, error) {
-	return gemaraconv.EvaluationLog(log).ToSARIF(gemaraconv.WithCatalog(catalog))
-}
-
 // WriteResults writes the evaluation results to files in the configured output format.
 func (v *EvaluationOrchestrator) WriteResults() error {
 
@@ -616,7 +610,8 @@ func (v *EvaluationOrchestrator) WriteResults() error {
 		err = errMod(err, "wr25")
 	case "sarif":
 		for _, suite := range v.Evaluation_Suites {
-			sarifBytes, sarifErr := sarifConverter(suite.EvaluationLog, suite.catalog)
+			evalConverter := gemaraconv.EvaluationLog(suite.EvaluationLog)
+			sarifBytes, sarifErr := evalConverter.ToSARIF(gemaraconv.WithCatalog(suite.catalog))
 			if sarifErr != nil {
 				err = errMod(fmt.Errorf("catalog %q: %w", suite.CatalogId, sarifErr), "wr27")
 				break
