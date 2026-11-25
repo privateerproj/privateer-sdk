@@ -147,6 +147,26 @@ func pullVerifyInstall(ctx context.Context, w io.Writer, hub *oci.Client, detail
 	if !strings.HasPrefix(filepath.Clean(dest)+string(filepath.Separator), filepath.Clean(destDir)+string(filepath.Separator)) {
 		return fmt.Errorf("resolved install path %q escapes binaries directory %q", dest, destDir)
 	}
+
+	// The signed config says which catalogs the plugin evaluates; cache them so
+	// `pvtr run` can load them offline. Nothing here executes the binary. The
+	// plugin's verifier is reused, so the trust root is parsed once.
+	installCatalogs := func() ([]error, error) {
+		return catalog.Install(ctx, w, catalog.NewFetcher(w, hub, verifier), destDir, catalogCoordinates(w, verified.Evaluates))
+	}
+	return commitVerifiedInstall(w, destDir, coordinate, relPath, verified, installCatalogs)
+}
+
+// commitVerifiedInstall caches the plugin's catalogs, then writes the verified
+// binary and its manifest entry. Catalogs go first so a failed catalog install
+// leaves no manifest entry: otherwise `install --from-config` and autoinstall,
+// which skip anything already in the manifest, would never retry it.
+func commitVerifiedInstall(w io.Writer, destDir, coordinate, relPath string, verified *verify.VerifiedPlugin, installCatalogs func() ([]error, error)) error {
+	unpublished, err := installCatalogs()
+	if err != nil {
+		return fmt.Errorf("installing catalogs for %s:%s: %w", coordinate, verified.Version, err)
+	}
+
 	if err := writeVerifiedBinary(destDir, relPath, verified.Binary); err != nil {
 		return fmt.Errorf("writing plugin binary: %w", err)
 	}
@@ -164,13 +184,6 @@ func pullVerifyInstall(ctx context.Context, w io.Writer, hub *oci.Client, detail
 
 	_, _ = fmt.Fprintf(w, "Successfully installed %s:%s (signed by %s)\n", coordinate, verified.Version, verified.SignerIdentity)
 
-	// The signed config says which catalogs the plugin evaluates; cache them so
-	// `pvtr run` can load them offline. Nothing here executes the binary. The
-	// plugin's verifier is reused, so the trust root is parsed once.
-	unpublished, err := catalog.Install(ctx, w, catalog.NewFetcher(w, hub, verifier), destDir, catalogCoordinates(w, verified.Evaluates))
-	if err != nil {
-		return fmt.Errorf("installing catalogs for %s:%s: %w", coordinate, verified.Version, err)
-	}
 	// An older plugin's evaluates can name a catalog it embeds itself and never
 	// published, so a missing one is reported, not fatal.
 	for _, e := range unpublished {

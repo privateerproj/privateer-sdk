@@ -1,6 +1,8 @@
 package install
 
 import (
+	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -173,5 +175,138 @@ func TestVerifiedEntry_RecordsBinaryDigest(t *testing.T) {
 	}
 	if got.Coordinate != "ossf/scanner" || got.Version != "1.0.0" {
 		t.Errorf("got %+v", got)
+	}
+}
+
+// --- commitVerifiedInstall tests -------------------------------------------
+
+func testVerifiedPlugin() *verify.VerifiedPlugin {
+	return &verify.VerifiedPlugin{
+		Version:        "1.0.0",
+		IndexDigest:    "sha256:abc",
+		SignerIdentity: "keyless:https://issuer#wf",
+		Binary:         []byte("verified-binary"),
+	}
+}
+
+// A failed catalog install must leave neither the binary nor a manifest entry,
+// so `install --from-config` and autoinstall still see the plugin as missing
+// and retry it.
+func TestCommitVerifiedInstall_CatalogFailureLeavesNothingInstalled(t *testing.T) {
+	dir := t.TempDir()
+	rel := filepath.Join("ossf/scanner", "1.0.0", "scanner")
+	var w bytes.Buffer
+
+	err := commitVerifiedInstall(&w, dir, "ossf/scanner", rel, testVerifiedPlugin(), func() ([]error, error) {
+		return nil, errors.New("registry unreachable")
+	})
+	if err == nil || !strings.Contains(err.Error(), "installing catalogs for ossf/scanner:1.0.0") {
+		t.Fatalf("expected catalog install error, got: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, rel)); !os.IsNotExist(statErr) {
+		t.Errorf("binary was written despite the catalog failure (stat err: %v)", statErr)
+	}
+	m, err := manifest.Load(dir)
+	if err != nil {
+		t.Fatalf("loading manifest: %v", err)
+	}
+	if m.Find("ossf/scanner") != nil {
+		t.Error("manifest entry was written despite the catalog failure")
+	}
+	if strings.Contains(w.String(), "Successfully installed") {
+		t.Errorf("reported success despite the catalog failure:\n%s", w.String())
+	}
+}
+
+// Catalogs are installed before the binary exists; once they succeed, the
+// binary and its signed entry are written and unpublished catalogs only warn.
+func TestCommitVerifiedInstall_CatalogsFirstThenBinaryAndEntry(t *testing.T) {
+	dir := t.TempDir()
+	rel := filepath.Join("ossf/scanner", "1.0.0", "scanner")
+	var w bytes.Buffer
+
+	err := commitVerifiedInstall(&w, dir, "ossf/scanner", rel, testVerifiedPlugin(), func() ([]error, error) {
+		if _, err := os.Stat(filepath.Join(dir, rel)); !os.IsNotExist(err) {
+			t.Error("binary already written when catalogs were installed")
+		}
+		return []error{errors.New("catalog openssf/old@1 is not published")}, nil
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got, err := os.ReadFile(filepath.Join(dir, rel)); err != nil || string(got) != "verified-binary" {
+		t.Errorf("binary = %q, %v; want the verified bytes", got, err)
+	}
+	m, err := manifest.Load(dir)
+	if err != nil {
+		t.Fatalf("loading manifest: %v", err)
+	}
+	if entry := m.Find("ossf/scanner"); entry == nil || !entry.Signed() {
+		t.Errorf("expected a signed manifest entry, got %+v", entry)
+	}
+	out := w.String()
+	if !strings.Contains(out, "Successfully installed ossf/scanner:1.0.0") || !strings.Contains(out, "Warning: catalog openssf/old@1 is not published") {
+		t.Errorf("unexpected output:\n%s", out)
+	}
+}
+
+// An existing install must survive a failed catalog install on upgrade or
+// reinstall: its binary, manifest entry, signer pin and digest stay as they
+// were, and no entry is added for the new version.
+func TestCommitVerifiedInstall_CatalogFailureKeepsExistingInstall(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		newVersion string
+	}{
+		{"upgrade to a new version", "2.0.0"},
+		{"reinstall of the same version", "1.0.0"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			oldRel := filepath.Join("ossf/scanner", "1.0.0", "scanner")
+			oldBinary := []byte("old-binary")
+			if err := writeVerifiedBinary(dir, oldRel, oldBinary); err != nil {
+				t.Fatal(err)
+			}
+			seeded := manifest.Plugin{
+				Name:           "ossf/scanner",
+				Version:        "1.0.0",
+				BinaryPath:     oldRel,
+				Coordinate:     "ossf/scanner",
+				IndexDigest:    "sha256:old",
+				SignerIdentity: "keyless:https://issuer#pinned",
+				BinaryDigest:   manifest.DigestBytes(oldBinary),
+			}
+			if err := manifest.Update(dir, func(m *manifest.Manifest) error {
+				m.Add(seeded)
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			newPlugin := testVerifiedPlugin()
+			newPlugin.Version = tc.newVersion
+			newRel := filepath.Join("ossf/scanner", tc.newVersion, "scanner")
+			err := commitVerifiedInstall(&bytes.Buffer{}, dir, "ossf/scanner", newRel, newPlugin, func() ([]error, error) {
+				return nil, errors.New("registry unreachable")
+			})
+			if err == nil {
+				t.Fatal("expected catalog install error")
+			}
+
+			if got, err := os.ReadFile(filepath.Join(dir, oldRel)); err != nil || !bytes.Equal(got, oldBinary) {
+				t.Errorf("existing binary = %q, %v; want it unchanged", got, err)
+			}
+			m, err := manifest.Load(dir)
+			if err != nil {
+				t.Fatalf("loading manifest: %v", err)
+			}
+			if got := m.FindVersion("ossf/scanner", "1.0.0"); got == nil || *got != seeded {
+				t.Errorf("existing entry = %+v, want it unchanged: %+v", got, seeded)
+			}
+			if len(m.Plugins) != 1 {
+				t.Errorf("manifest has %d entries, want only the existing one", len(m.Plugins))
+			}
+		})
 	}
 }
