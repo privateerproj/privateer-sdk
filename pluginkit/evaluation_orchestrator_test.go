@@ -549,6 +549,58 @@ func BenchmarkGetPluginCatalogs(b *testing.B) {
 	}
 }
 
+func TestEvaluationOrchestrator_WriteResults_SARIF_MultipleSuites(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	cfg := setBasicConfig()
+	cfg.Output = "sarif"
+	cfg.Write = true
+	cfg.WriteDirectory = tmpDir
+
+	orchestrator := &EvaluationOrchestrator{
+		ServiceName:   "test-service",
+		PluginName:    "test-plugin",
+		PluginUri:     "https://github.com/test/repo",
+		PluginVersion: "1.0.0",
+		config:        cfg,
+	}
+	for _, id := range []string{"catalog-a", "catalog-b"} {
+		evalLog := createTestEvalLog()
+		evalLog.Evaluations[0].AssessmentLogs[0].Result = gemara.Failed
+		orchestrator.Evaluation_Suites = append(orchestrator.Evaluation_Suites, &EvaluationSuite{
+			CatalogId:     id,
+			EvaluationLog: evalLog,
+			config:        cfg,
+		})
+	}
+
+	if err := orchestrator.WriteResults(); err != nil {
+		t.Fatalf("WriteResults failed: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(tmpDir, "test-service", "test-service.sarif"))
+	if err != nil {
+		t.Fatalf("expected SARIF output: %v", err)
+	}
+	var doc struct {
+		Schema  string            `json:"$schema"`
+		Version string            `json:"version"`
+		Runs    []json.RawMessage `json:"runs"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("SARIF output with two suites is not valid JSON: %v", err)
+	}
+	if doc.Version != "2.1.0" {
+		t.Errorf("expected SARIF version 2.1.0, got %q", doc.Version)
+	}
+	if doc.Schema == "" {
+		t.Error("expected the $schema field to be kept")
+	}
+	if len(doc.Runs) != 2 {
+		t.Errorf("expected one run per suite (2), got %d", len(doc.Runs))
+	}
+}
+
 func TestEvaluationOrchestrator_WriteResults_SARIF(t *testing.T) {
 	tests := []struct {
 		name      string

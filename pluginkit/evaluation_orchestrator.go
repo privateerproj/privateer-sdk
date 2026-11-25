@@ -609,14 +609,8 @@ func (v *EvaluationOrchestrator) WriteResults() error {
 		result, err = v.marshalGemara()
 		err = errMod(err, "wr25")
 	case "sarif":
-		for _, suite := range v.Evaluation_Suites {
-			evalConverter := gemaraconv.EvaluationLog(suite.EvaluationLog)
-			sarifBytes, sarifErr := evalConverter.ToSARIF(gemaraconv.WithCatalog(suite.catalog))
-			if sarifErr != nil {
-				break
-			}
-			result = append(result, sarifBytes...)
-		}
+		result, err = v.marshalSARIF()
+		err = errMod(err, "wr50")
 	default:
 		err = fmt.Errorf("output type '%s' is not supported. Supported types are 'json', 'yaml', 'sarif', and 'gemara'", v.config.Output)
 		err = errMod(err, "wr30")
@@ -630,6 +624,40 @@ func (v *EvaluationOrchestrator) WriteResults() error {
 	}
 
 	return nil
+}
+
+// marshalSARIF writes one SARIF document for the whole run. The converter
+// returns a complete document per suite, so each suite's runs are added to the
+// first document's "runs" instead of concatenating the documents, which would
+// not be valid JSON. Runs are kept as raw JSON so no field is lost.
+func (v *EvaluationOrchestrator) marshalSARIF() ([]byte, error) {
+	type sarifDocument struct {
+		Schema  string            `json:"$schema"`
+		Version string            `json:"version"`
+		Runs    []json.RawMessage `json:"runs"`
+	}
+
+	var merged *sarifDocument
+	for _, suite := range v.Evaluation_Suites {
+		evalConverter := gemaraconv.EvaluationLog(suite.EvaluationLog)
+		sarifBytes, err := evalConverter.ToSARIF(gemaraconv.WithCatalog(suite.catalog))
+		if err != nil {
+			return nil, fmt.Errorf("converting suite %q to SARIF: %w", suite.CatalogId, err)
+		}
+		var doc sarifDocument
+		if err := json.Unmarshal(sarifBytes, &doc); err != nil {
+			return nil, fmt.Errorf("reading SARIF for suite %q: %w", suite.CatalogId, err)
+		}
+		if merged == nil {
+			merged = &doc
+			continue
+		}
+		merged.Runs = append(merged.Runs, doc.Runs...)
+	}
+	if merged == nil {
+		return nil, nil
+	}
+	return json.Marshal(merged)
 }
 
 // marshalGemara serializes the run as gemara-native EvaluationLog objects.
