@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	"github.com/privateerproj/privateer-sdk/command"
 	"github.com/privateerproj/privateer-sdk/pluginkit"
 	"github.com/privateerproj/privateer-sdk/shared"
 )
@@ -60,6 +61,13 @@ func benchmarkCmd(writerFn func() Writer) *cobra.Command {
 				return fmt.Errorf("--target is required: the plugin needs a configured target to evaluate")
 			}
 			binPath, err := resolvePluginBinary(args[0])
+			if err != nil {
+				return err
+			}
+			// Same gate as `pvtr run`: with require-signed-plugins on, only an
+			// installed, verified binary may be benchmarked, and the installed
+			// path that was hashed is the one exec'd.
+			binPath, err = command.VerifyPluginBinaryPath(binPath)
 			if err != nil {
 				return err
 			}

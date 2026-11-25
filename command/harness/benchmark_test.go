@@ -8,6 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/viper"
+
+	"github.com/privateerproj/privateer-sdk/command"
 	"github.com/privateerproj/privateer-sdk/pluginkit"
 )
 
@@ -262,5 +265,33 @@ func TestBenchmarkRunError(t *testing.T) {
 				t.Errorf("expected exit code %d to succeed, got: %v", tc.exitCode, err)
 			}
 		})
+	}
+}
+
+// With require-signed-plugins on, benchmark refuses a binary that is not
+// installed in plugins.json before it ever execs it.
+func TestBenchmarkCmd_RequireSignedRefusesUninstalledBinary(t *testing.T) {
+	dir := t.TempDir()
+	viper.Set("binaries-path", dir)
+	viper.Set("require-signed-plugins", true)
+	t.Cleanup(viper.Reset)
+
+	marker := filepath.Join(dir, "ran")
+	bin := filepath.Join(t.TempDir(), "fresh-build")
+	script := "#!/bin/sh\ntouch " + marker + "\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := GetBenchmarkCmd(func() Writer { return &benchBufWriter{} })
+	cmd.SetArgs([]string{bin, "--target", "tgt1"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	err := cmd.Execute()
+	if !errors.Is(err, command.ErrPluginVerification) {
+		t.Fatalf("expected verification refusal, got: %v", err)
+	}
+	if _, statErr := os.Stat(marker); statErr == nil {
+		t.Error("benchmark executed the binary despite the refusal")
 	}
 }
