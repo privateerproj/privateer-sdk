@@ -63,7 +63,7 @@ type Policy struct {
 
 // NewConfig creates a new Config instance from viper configuration.
 func NewConfig(requiredVars []string) Config {
-	var errString string
+	var errs []error
 
 	serviceName := TargetName() // the currently running target; if empty, we're probably running from core
 	svcKey := targetsKey()      // "targets" or its legacy "services" alias, whichever the config uses
@@ -129,11 +129,12 @@ func NewConfig(requiredVars []string) Config {
 	}
 
 	if serviceName != "" && (len(applicability) == 0 || len(catalogs) == 0) {
-		errString = fmt.Sprintf("invalid policy for service %s. applicability=%v catalogs=%v",
+		msg := fmt.Sprintf("invalid policy for service %s. applicability=%v catalogs=%v",
 			serviceName, len(applicability), len(catalogs))
 		if svcKey == "targets" && viper.IsSet("services."+serviceName) {
-			errString += fmt.Sprintf("; %q is defined under the legacy services key, which is ignored because a targets key is present", serviceName)
+			msg += fmt.Sprintf("; %q is defined under the legacy services key, which is ignored because a targets key is present", serviceName)
 		}
+		errs = append(errs, errors.New(msg))
 	}
 
 	var missingVars []string
@@ -143,19 +144,16 @@ func NewConfig(requiredVars []string) Config {
 		}
 	}
 	if len(missingVars) > 0 {
-		errString = fmt.Sprintf("missing required variables: %v", missingVars)
+		errs = append(errs, fmt.Errorf("missing required variables: %v", missingVars))
 	}
 
 	if output == "" {
 		output = "yaml"
 	} else if ok := slices.Contains(allowedOutputTypes, output); !ok {
-		errString = "bad output type, allowed output types are json, yaml, sarif, or gemara"
+		errs = append(errs, errors.New("bad output type, allowed output types are json, yaml, sarif, or gemara"))
 	}
 
-	var err error
-	if errString != "" {
-		err = errors.New(errString)
-	}
+	err := errors.Join(errs...)
 
 	config := Config{
 		ServiceName:          serviceName,
