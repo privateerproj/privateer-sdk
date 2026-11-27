@@ -370,8 +370,9 @@ func (c *Config) SetupLogging(name string, jsonFormat bool) {
 	}
 
 	writer := io.Writer(os.Stderr)
+	var logFileErr error
 	if c.Write && name != defaultServiceName {
-		writer = c.setupLoggingFilesAndDirectories(logFilePath)
+		writer, logFileErr = c.setupLoggingFilesAndDirectories(logFilePath)
 	}
 
 	logger := hclog.New(&hclog.LoggerOptions{
@@ -381,22 +382,31 @@ func (c *Config) SetupLogging(name string, jsonFormat bool) {
 	})
 	log.SetOutput(logger.StandardWriter(&hclog.StandardLoggerOptions{InferLevels: false, InferLevelsWithTimestamp: false}))
 	c.Logger = logger
+
+	if logFileErr != nil {
+		logger.Warn("could not write the log file, logging to stderr only", "path", logFilePath, "error", logFileErr)
+	}
 }
 
-func (c *Config) setupLoggingFilesAndDirectories(logFilePath string) io.Writer {
+// setupLoggingFilesAndDirectories returns a writer to both the log file and
+// stderr. If the log file can't be created or opened, for example because the
+// write directory isn't writable, it returns stderr alone and the error, so
+// the plugin keeps running and logging instead of panicking.
+func (c *Config) setupLoggingFilesAndDirectories(logFilePath string) (io.Writer, error) {
 	// Create log file and directory if it doesn't exist
 	if _, err := os.Stat(logFilePath); os.IsNotExist(err) {
 		// mkdir all directories from filepath
-		_ = os.MkdirAll(path.Dir(logFilePath), utils.DirPermissions)
+		if err := os.MkdirAll(path.Dir(logFilePath), utils.DirPermissions); err != nil {
+			return os.Stderr, fmt.Errorf("creating log directory: %w", err)
+		}
 		_, _ = os.Create(logFilePath)
 	}
 
 	logFileObj, err := os.OpenFile(logFilePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640)
-
 	if err != nil {
-		log.Panic(err) // TODO: handle this error better
+		return os.Stderr, fmt.Errorf("opening log file: %w", err)
 	}
 
 	writer := io.MultiWriter(logFileObj, os.Stderr)
-	return writer
+	return writer, nil
 }

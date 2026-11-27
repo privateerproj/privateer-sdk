@@ -793,6 +793,30 @@ func TestSetupLoggingPluginCreatesFiles(t *testing.T) {
 	}
 }
 
+func TestSetupLoggingFallsBackToStderrWhenLogFileFails(t *testing.T) {
+	// A write directory that is a regular file can't hold the plugin's log
+	// directory, so creating the log file fails.
+	notADir := path.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(notADir, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := Config{
+		WriteDirectory: notADir,
+		Write:          true,
+		LogLevel:       "Error",
+	}
+
+	c.SetupLogging("my-plugin", false)
+
+	if c.Logger == nil {
+		t.Fatal("expected logger to be set")
+	}
+	if _, err := os.Stat(path.Join(notADir, "my-plugin", "my-plugin.log")); err == nil {
+		t.Error("expected no log file to be created")
+	}
+}
+
 func BenchmarkNewConfig(b *testing.B) {
 	cfg := `
 services:
@@ -846,8 +870,10 @@ func TestSetupLoggingFilesAndDirectories(t *testing.T) {
 		LogLevel:       "Error",
 	}
 
-	writer := config.setupLoggingFilesAndDirectories(logFilePath)
-
+	writer, err := config.setupLoggingFilesAndDirectories(logFilePath)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
 	if writer == nil {
 		t.Error("expected writer to be set")
 	}
