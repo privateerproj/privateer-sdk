@@ -118,6 +118,75 @@ func TestGetString(t *testing.T) {
 	}
 }
 
+func TestGetStringMatching(t *testing.T) {
+	c := Config{
+		Vars: map[string]interface{}{
+			"owner":    "privateerproj",
+			"empty":    "",
+			"count":    123,
+			"unset":    nil,
+			"apitoken": "ghp_abc123",
+			"food":     "food",
+			"bar":      "bar",
+			"cmd":      "x; rm -rf /",
+		},
+	}
+
+	tests := []struct {
+		name    string
+		key     string
+		pattern string
+		want    string
+		wantErr string
+	}{
+		{name: "value matches", key: "owner", pattern: `^[a-z]+$`, want: "privateerproj"},
+		{name: "partial match is rejected", key: "owner", pattern: `teer`, wantErr: "does not match pattern"},
+		{name: "value with extra text is rejected", key: "cmd", pattern: `[a-z0-9-]+`, wantErr: "does not match pattern"},
+		{name: "alternation does not accept a prefix", key: "food", pattern: `^foo|bar$`, wantErr: "does not match pattern"},
+		{name: "alternation matches a whole branch", key: "bar", pattern: `^foo|bar$`, want: "bar"},
+		{name: "mixed-case key finds lowercased var", key: "apiToken", pattern: `ghp_[a-z0-9]+`, want: "ghp_abc123"},
+		{name: "nil value is not set", key: "unset", pattern: `.*`, wantErr: "is not set"},
+		{name: "pattern made valid by anchoring is still invalid", key: "owner", pattern: `a)(b`, wantErr: "invalid pattern"},
+		{name: "value does not match", key: "owner", pattern: `^[0-9]+$`, wantErr: "does not match pattern"},
+		{name: "missing key", key: "absent", pattern: `.*`, wantErr: "is not set"},
+		{name: "empty value", key: "empty", pattern: `.*`, wantErr: "is empty"},
+		{name: "not a string", key: "count", pattern: `.*`, wantErr: "must be a string, got int"},
+		{name: "invalid pattern", key: "owner", pattern: `(`, wantErr: "invalid pattern"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := c.GetStringMatching(tt.key, tt.pattern)
+
+			if got != tt.want {
+				t.Errorf("expected value %q, got %q", tt.want, got)
+			}
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Errorf("expected no error, got %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("expected error containing %q, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestGetStringMatching_ErrorOmitsValue(t *testing.T) {
+	c := Config{Vars: map[string]interface{}{"token": "not-a-valid-token"}}
+
+	_, err := c.GetStringMatching("token", `^ghp_`)
+
+	if err == nil {
+		t.Fatal("expected an error for a value that does not match")
+	}
+	if strings.Contains(err.Error(), "not-a-valid-token") {
+		t.Errorf("error exposes the var's value: %v", err)
+	}
+}
+
 func TestGetInt(t *testing.T) {
 	for _, tt := range testData {
 		t.Run(tt.name, func(t *testing.T) {

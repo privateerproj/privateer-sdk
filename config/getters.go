@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/spf13/pflag"
@@ -174,6 +175,57 @@ func (c *Config) GetString(key string) string {
 		return ""
 	}
 	return val.(string)
+}
+
+// GetStringMatching retrieves the string value associated with the given key
+// and checks it against a regular expression. Unlike GetString, it reports why
+// no value is available, so a plugin can reject a malformed var up front.
+// The pattern must match the whole value: it is compiled as ^(?:pattern)$, so
+// `[a-z]+` rejects "abc; rm -rf /" and `foo|bar` accepts only "foo" or "bar".
+// Viper lowercases var keys when it loads config, so if key is not found as
+// given, its lowercase form is tried. A var that is set but has no value (nil)
+// is reported as not set. Errors never include the value, because vars can
+// hold secrets.
+//
+// Parameters:
+//   - key: The key name in the config vars.
+//   - pattern: The regular expression the value must match.
+//
+// Returns:
+//   - string: The value associated with the key, or an empty string if an error is returned.
+//   - error: An error if the pattern is invalid, or if the value is missing, not a string, empty, or does not match.
+func (c *Config) GetStringMatching(key, pattern string) (string, error) {
+	// Check the pattern on its own first, so one like `a)(b` is reported as
+	// invalid rather than turned into a valid regexp by the anchoring below.
+	if _, err := regexp.Compile(pattern); err != nil {
+		return "", fmt.Errorf("invalid pattern for var %q: %w", key, err)
+	}
+	re, err := regexp.Compile("^(?:" + pattern + ")$")
+	if err != nil {
+		return "", fmt.Errorf("invalid pattern for var %q: %w", key, err)
+	}
+
+	val, valType := c.GetVar(key)
+	if valType == "missing" {
+		if lower := strings.ToLower(key); lower != key {
+			val, valType = c.GetVar(lower)
+		}
+	}
+	if valType == "missing" || val == nil {
+		return "", fmt.Errorf("var %q is not set", key)
+	}
+	if valType != "string" {
+		return "", fmt.Errorf("var %q must be a string, got %s", key, valType)
+	}
+
+	value := val.(string)
+	if value == "" {
+		return "", fmt.Errorf("var %q is empty", key)
+	}
+	if !re.MatchString(value) {
+		return "", fmt.Errorf("var %q does not match pattern %q", key, pattern)
+	}
+	return value, nil
 }
 
 // GetInt retrieves the value associated with the given key as an integer.
